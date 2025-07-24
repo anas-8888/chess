@@ -86,7 +86,30 @@ class AuthService {
   }
 
   // Clear authentication (logout)
-  public logout(): void {
+  public async logout(): Promise<void> {
+    // Call server logout API first if we have a token
+    if (this.token) {
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/auth/logout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.token}`
+          }
+        });
+        
+        if (response.ok) {
+          console.log('Successfully logged out from server');
+        } else {
+          console.warn('Server logout failed, but continuing with local logout');
+        }
+      } catch (error) {
+        console.error('Error during server logout:', error);
+        // Continue with local logout even if server logout fails
+      }
+    }
+    
+    // Clear local authentication data
     this.clearAuth();
   }
 

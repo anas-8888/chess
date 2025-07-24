@@ -144,7 +144,7 @@ const Dashboard = () => {
       // Continue with logout even if status update fails
     }
     
-    logout();
+    await logout();
   };
 
   const refreshFriends = async () => {

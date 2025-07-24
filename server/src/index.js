@@ -145,7 +145,7 @@ app.use(compression());
 // Global rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 2000, // limit each IP to 100 requests per windowMs
+  max: 2000, // limit each IP to 2000 requests per windowMs
   message: {
     success: false,
     message: 'Too many requests from this IP, please try again later.',

@@ -222,13 +222,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.error('Failed to update status on logout:', error);
     }
     
-    authService.logout();
+    // Call authService logout which will handle server logout
+    await authService.logout();
     setAuthState({
       isAuthenticated: false,
       user: null,
       token: null,
       loading: false,
     });
+    
+    // Redirect to login page
+    window.location.href = '/auth';
   };
 
   // Refresh auth function
