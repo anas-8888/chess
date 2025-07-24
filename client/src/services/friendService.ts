@@ -2,12 +2,14 @@ import { authService } from './authService';
 
 export interface Friend {
   id: string;
+  user_id: number;
   username: string;
-  avatar?: string;
-  status: 'online' | 'offline' | 'in-game';
-  rating: number;
-  email?: string;
-  created_at?: string;
+  thumbnail?: string;
+  rank: number;
+  state: 'online' | 'offline' | 'in-game';
+  is_online: boolean;
+  friendship_id: number;
+  is_initiator: boolean;
 }
 
 export interface FriendRequest {
@@ -47,7 +49,16 @@ class FriendService {
       }
 
       const data = await response.json();
-      return data.data || data;
+      console.log('Raw friends response:', data); // للتصحيح
+      // تأكد من أن البيانات تأتي بالشكل الصحيح
+      if (data.data && Array.isArray(data.data)) {
+        return data.data;
+      } else if (Array.isArray(data)) {
+        return data;
+      } else {
+        console.error('Unexpected friends data format:', data);
+        return [];
+      }
     } catch (error) {
       console.error('Error fetching friends:', error);
       throw error;
@@ -171,7 +182,4 @@ class FriendService {
 }
 
 // Export singleton instance
-export const friendService = new FriendService();
-
-// Export types
-export type { Friend, FriendRequest }; 
+export const friendService = new FriendService(); 

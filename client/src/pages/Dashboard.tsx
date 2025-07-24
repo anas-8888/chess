@@ -147,7 +147,14 @@ const Dashboard = () => {
   const refreshFriends = async () => {
     try {
       const friendsData = await friendService.getFriends();
-      setFriends(friendsData);
+      console.log('Friends data:', friendsData); // للتصحيح
+      // تأكد من أن البيانات تأتي بالشكل الصحيح
+      if (Array.isArray(friendsData)) {
+        setFriends(friendsData);
+      } else {
+        console.error('Unexpected friends data format:', friendsData);
+        setFriends([]);
+      }
     } catch (error: any) {
       console.error('Error refreshing friends:', error);
       toast({
@@ -359,23 +366,23 @@ const Dashboard = () => {
                              <div className="flex items-center gap-3">
                                <div className="relative">
                                  <Avatar>
-                                   <AvatarImage src={friend.avatar} />
+                                   <AvatarImage src={friend.thumbnail} />
                                    <AvatarFallback>{friend.username.charAt(0)}</AvatarFallback>
                                  </Avatar>
-                                 <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${getStatusColor(friend.status)}`} />
+                                 <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${getStatusColor(friend.state || 'offline')}`} />
                                </div>
                                <div>
                                  <h3 className="font-cairo font-medium">{friend.username}</h3>
                                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                   <span>{getStatusText(friend.status)}</span>
+                                   <span>{getStatusText(friend.state || 'offline')}</span>
                                    <Badge variant="outline" className="text-xs">
-                                     {friend.rating}
+                                     {friend.rank || 1200}
                                    </Badge>
                                  </div>
                                </div>
                              </div>
                              
-                             {friend.status === 'online' && (
+                             {(friend.state === 'online' || friend.is_online) && (
                                <Button size="sm" variant="chess">
                                  تحدي
                                </Button>
