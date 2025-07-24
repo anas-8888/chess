@@ -92,7 +92,7 @@ class FriendService {
       const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/friends/request`, {
         method: 'POST',
         headers: this.getAuthHeaders(),
-        body: JSON.stringify({ to_user_id: userId }),
+        body: JSON.stringify({ toUserId: userId }),
       });
 
       if (!response.ok) {

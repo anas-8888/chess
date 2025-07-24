@@ -302,7 +302,7 @@ const Dashboard = () => {
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <Button variant="secondary" className="w-full">
+                      <Button variant="secondary" className="w-full" onClick={() => window.location.href = '/friends'}>
                         اختر صديق
                       </Button>
                     </CardContent>

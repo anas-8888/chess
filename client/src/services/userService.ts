@@ -122,6 +122,29 @@ class UserService {
     }
   }
 
+  // Search users
+  async searchUsers(query: string): Promise<any[]> {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/users/search?q=${encodeURIComponent(query)}`, {
+        method: 'GET',
+        headers: {
+          ...this.getAuthHeaders(),
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to search users');
+      }
+
+      const data = await response.json();
+      // API returns data directly, not wrapped in data property
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      console.error('Error searching users:', error);
+      throw error;
+    }
+  }
+
   // Get user by ID
   async getUserById(userId: string): Promise<UserProfile> {
     try {

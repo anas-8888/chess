@@ -136,13 +136,16 @@ export const searchUsersController = asyncHandler(async (req, res) => {
   }
 
   try {
-            const User = await import('../models/User.js');
+    const User = await import('../models/User.js');
+    const Friend = await import('../models/Friend.js');
     const { Op } = await import('sequelize');
 
     const searchTerm = q.trim();
     const searchPattern = `%${searchTerm}%`;
+    const currentUserId = req.user.user_id;
 
-    const users = await User.default.findAll({
+    // البحث عن المستخدمين المطابقين
+    const allUsers = await User.default.findAll({
       where: {
         [Op.or]: [
           { username: { [Op.like]: searchPattern } },
@@ -150,16 +153,58 @@ export const searchUsersController = asyncHandler(async (req, res) => {
           { username: { [Op.like]: `${searchTerm}%` } },
           { email: { [Op.like]: `${searchTerm}%` } }
         ],
-        user_id: { [Op.ne]: req.user.user_id } // استبعاد المستخدم الحالي
+        user_id: { [Op.ne]: currentUserId } // استبعاد المستخدم الحالي
       },
-      limit: parseInt(limit) || 10,
       attributes: ['user_id', 'username', 'email', 'thumbnail', 'rank'],
       order: [
         ['username', 'ASC']
       ]
     });
 
-    res.status(200).json(users);
+    // الحصول على معرفات المستخدمين
+    const userIds = allUsers.map(user => user.user_id);
+
+    if (userIds.length === 0) {
+      return res.status(200).json([]);
+    }
+
+    // البحث عن العلاقات الموجودة مع المستخدم الحالي
+    const existingRelationships = await Friend.default.findAll({
+      where: {
+        [Op.or]: [
+          { user_id: currentUserId, friend_user_id: { [Op.in]: userIds } },
+          { user_id: { [Op.in]: userIds }, friend_user_id: currentUserId }
+        ]
+      },
+      attributes: ['user_id', 'friend_user_id', 'status']
+    });
+
+    // إنشاء مجموعة من المستخدمين الذين لا يمكن إرسال طلب صداقة لهم
+    const excludedUserIds = new Set();
+    
+    existingRelationships.forEach(relationship => {
+      const otherUserId = relationship.user_id === currentUserId 
+        ? relationship.friend_user_id 
+        : relationship.user_id;
+      
+      // استبعاد الأصدقاء الحاليين
+      if (relationship.status === 'accepted') {
+        excludedUserIds.add(otherUserId);
+      }
+      // استبعاد طلبات الصداقة المعلقة
+      else if (relationship.status === 'pending') {
+        excludedUserIds.add(otherUserId);
+      }
+      // لا نستبعد طلبات الصداقة المرفوضة - يمكن إعادة المحاولة
+    });
+
+    // تصفية المستخدمين لاستبعاد من لا يمكن إرسال طلب صداقة لهم
+    const filteredUsers = allUsers.filter(user => !excludedUserIds.has(user.user_id));
+
+    // تطبيق الحد الأقصى
+    const limitedUsers = filteredUsers.slice(0, parseInt(limit) || 10);
+
+    res.status(200).json(limitedUsers);
   } catch (error) {
     logger.error('خطأ في البحث عن المستخدمين:', error);
     res.status(500).json(formatError('فشل البحث عن المستخدمين'));

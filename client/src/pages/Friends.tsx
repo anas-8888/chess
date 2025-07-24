@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
+import { userService } from "@/services/userService";
+import { friendService } from "@/services/friendService";
 import { 
   Home, 
   Users, 
@@ -32,6 +34,8 @@ const Friends = () => {
   const [friends, setFriends] = useState<any[]>([]);
   const [invites, setInvites] = useState<any[]>([]);
   const [pendingInvites, setPendingInvites] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   // Mock data
   const mockFriends = [
@@ -101,6 +105,19 @@ const Friends = () => {
     setupSocketListeners();
   }, []);
 
+  // Search effect
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (searchTerm.length >= 2) {
+        searchUsers(searchTerm);
+      } else {
+        setSearchResults([]);
+      }
+    }, 500); // Debounce search
+
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm]);
+
   const loadFriendsData = async () => {
     try {
       // REST: GET /api/friends -> fetch user's friends list
@@ -148,18 +165,43 @@ const Friends = () => {
     // });
   };
 
-  const sendFriendRequest = async (username: string) => {
+  const searchUsers = async (query: string) => {
+    if (query.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+
     try {
-      // REST: POST /api/friends/request -> send friend request
-      toast({
-        title: "تم إرسال طلب الصداقة",
-        description: `تم إرسال طلب صداقة إلى ${username}`
-      });
-      setSearchTerm("");
+      setIsSearching(true);
+      const results = await userService.searchUsers(query);
+      setSearchResults(results);
     } catch (error) {
+      console.error('Error searching users:', error);
       toast({
         title: "خطأ",
-        description: "لم نتمكن من إرسال طلب الصداقة",
+        description: "لم نتمكن من البحث عن المستخدمين",
+        variant: "destructive"
+      });
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const sendFriendRequest = async (userId: string) => {
+    try {
+      await friendService.sendFriendRequest(userId);
+      toast({
+        title: "تم إرسال طلب الصداقة",
+        description: "تم إرسال طلب الصداقة بنجاح"
+      });
+      setSearchTerm("");
+      setSearchResults([]);
+    } catch (error) {
+      console.error('Error sending friend request:', error);
+      toast({
+        title: "خطأ",
+        description: error instanceof Error ? error.message : "لم نتمكن من إرسال طلب الصداقة",
         variant: "destructive"
       });
     }
@@ -258,18 +300,6 @@ const Friends = () => {
                 <h1 className="text-xl font-bold text-foreground font-cairo">الأصدقاء والدعوات</h1>
               </div>
             </div>
-
-            {/* Quick Stats */}
-            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <div className="flex items-center gap-1">
-                <Users className="h-4 w-4" />
-                <span>{friends.length} صديق</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Mail className="h-4 w-4" />
-                <span>{invites.length} دعوة</span>
-              </div>
-            </div>
           </div>
         </div>
       </header>
@@ -277,7 +307,7 @@ const Friends = () => {
       <div className="container mx-auto px-4 py-8">
         <Tabs defaultValue="friends" className="space-y-6">
           <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="friends">الأصدقاء ({friends.length})</TabsTrigger>
+            <TabsTrigger value="friends">إضافة أصدقاء </TabsTrigger>
             <TabsTrigger value="invites">
               الدعوات الواردة ({invites.length})
             </TabsTrigger>
@@ -300,98 +330,59 @@ const Friends = () => {
                   <div className="relative flex-1">
                     <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
                     <Input
-                      placeholder="ابحث باسم المستخدم..."
+                      placeholder="ابحث باسم المستخدم أو الإيميل"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="pr-10"
                     />
                   </div>
-                  <Button onClick={() => sendFriendRequest(searchTerm)} disabled={!searchTerm}>
-                    إرسال طلب
-                  </Button>
                 </div>
+                
+                {/* Search Results */}
+                {searchTerm.length >= 2 && (
+                  <div className="mt-4 space-y-2">
+                    {isSearching ? (
+                      <div className="text-center py-4">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto"></div>
+                        <p className="text-sm text-muted-foreground mt-2">جاري البحث...</p>
+                      </div>
+                    ) : searchResults.length > 0 ? (
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-medium text-muted-foreground">نتائج البحث:</h4>
+                        {searchResults.map((user) => (
+                          <div key={user.user_id} className="flex items-center justify-between p-3 border rounded-lg">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-8 w-8">
+                                <AvatarImage src={user.thumbnail} />
+                                <AvatarFallback>{user.username[0]}</AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <h4 className="font-medium">{user.username}</h4>
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                  <Crown className="h-3 w-3" />
+                                  <span>{user.rank || 1200}</span>
+                                </div>
+                              </div>
+                            </div>
+                                                         <Button 
+                               size="sm" 
+                               variant="outline"
+                               onClick={() => sendFriendRequest(user.user_id.toString())}
+                             >
+                               إرسال طلب صداقة
+                             </Button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : searchTerm.length >= 2 ? (
+                      <div className="text-center py-4">
+                        <p className="text-sm text-muted-foreground">لا توجد نتائج</p>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
               </CardContent>
             </Card>
-
-            {/* Friends List */}
-            <div className="grid gap-4">
-              {filteredFriends.map((friend) => (
-                <Card key={friend.id} className="hover:shadow-card transition-all duration-300">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <Avatar className="h-12 w-12">
-                          <AvatarImage src={friend.avatar} />
-                          <AvatarFallback>{friend.username[0]}</AvatarFallback>
-                        </Avatar>
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-semibold font-cairo">{friend.username}</h3>
-                            {getStatusBadge(friend.status, friend.inGame, friend.currentGame)}
-                          </div>
-                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                            <div className="flex items-center gap-1">
-                              <Crown className="h-3 w-3" />
-                              <span>{friend.rating}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
-                              <span>{friend.lastSeen}</span>
-                            </div>
-                          </div>
-                          {friend.inGame && friend.currentGame && (
-                            <div className="text-xs text-yellow-600">
-                              {friend.currentGame}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        {friend.status === "online" && !friend.inGame && (
-                          <div className="flex items-center gap-2">
-                            <Select defaultValue={selectedTime} onValueChange={setSelectedTime}>
-                              <SelectTrigger className="w-24">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="5">5 د</SelectItem>
-                                <SelectItem value="10">10 د</SelectItem>
-                                <SelectItem value="15">15 د</SelectItem>
-                                <SelectItem value="30">30 د</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <Button 
-                              onClick={() => sendGameInvite(friend.id, selectedTime)}
-                              variant="chess"
-                              size="sm"
-                            >
-                              دعوة للعب
-                            </Button>
-                          </div>
-                        )}
-                        <Button variant="ghost" size="icon">
-                          <MessageCircle className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-
-              {filteredFriends.length === 0 && (
-                <Card>
-                  <CardContent className="text-center py-12">
-                    <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold mb-2 font-cairo">لا توجد أصدقاء</h3>
-                    <p className="text-muted-foreground">ابدأ بإضافة أصدقاء جدد للعب معهم</p>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
           </TabsContent>
 
           <TabsContent value="invites" className="space-y-4">
