@@ -83,6 +83,98 @@ router.get('/incoming', async (req, res) => {
 // POST /api/friends/request - Send friend request
 router.post('/request', validate(sendFriendRequestSchema), sendFriendRequest);
 
+// POST /api/friends/request/:requestId/accept - Accept friend request by request ID
+router.post('/request/:requestId/accept', async (req, res) => {
+  try {
+    const requestId = parseInt(req.params.requestId);
+    const userId = req.user.user_id;
+    
+    if (!requestId || isNaN(requestId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'معرف الطلب غير صحيح'
+      });
+    }
+    
+    // Find the friend request
+    const friendRequest = await Friend.findOne({
+      where: {
+        id: requestId,
+        friend_user_id: userId,
+        status: 'pending'
+      }
+    });
+    
+    if (!friendRequest) {
+      return res.status(404).json({
+        success: false,
+        message: 'طلب الصداقة غير موجود أو تم الرد عليه مسبقاً'
+      });
+    }
+    
+    // Update the request status to accepted
+    await friendRequest.update({ status: 'accepted' });
+    
+    return res.status(200).json({
+      success: true,
+      message: 'تم قبول طلب الصداقة بنجاح'
+    });
+    
+  } catch (error) {
+    console.error('خطأ في قبول طلب الصداقة:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'فشل في قبول طلب الصداقة'
+    });
+  }
+});
+
+// POST /api/friends/request/:requestId/reject - Reject friend request by request ID
+router.post('/request/:requestId/reject', async (req, res) => {
+  try {
+    const requestId = parseInt(req.params.requestId);
+    const userId = req.user.user_id;
+    
+    if (!requestId || isNaN(requestId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'معرف الطلب غير صحيح'
+      });
+    }
+    
+    // Find the friend request
+    const friendRequest = await Friend.findOne({
+      where: {
+        id: requestId,
+        friend_user_id: userId,
+        status: 'pending'
+      }
+    });
+    
+    if (!friendRequest) {
+      return res.status(404).json({
+        success: false,
+        message: 'طلب الصداقة غير موجود أو تم الرد عليه مسبقاً'
+      });
+    }
+    
+    // Update the request status to rejected
+    await friendRequest.update({ status: 'rejected' });
+    
+    return res.status(200).json({
+      success: true,
+      message: 'تم رفض طلب الصداقة بنجاح'
+    });
+    
+  } catch (error) {
+    console.error('خطأ في رفض طلب الصداقة:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'فشل في رفض طلب الصداقة'
+    });
+  }
+});
+
 // POST /api/friends - Send friend request by email
 router.post('/', sendFriendRequestByEmail);
 

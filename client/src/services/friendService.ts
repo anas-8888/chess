@@ -86,6 +86,27 @@ class FriendService {
     }
   }
 
+  // Get incoming friend requests
+  async getIncomingRequests(): Promise<any[]> {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/friends/incoming`, {
+        method: 'GET',
+        headers: this.getAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'فشل في جلب طلبات الصداقة الواردة');
+      }
+
+      const data = await response.json();
+      return data.data || [];
+    } catch (error) {
+      console.error('Error fetching incoming friend requests:', error);
+      throw error;
+    }
+  }
+
   // Send friend request
   async sendFriendRequest(userId: string): Promise<void> {
     try {
@@ -105,7 +126,7 @@ class FriendService {
     }
   }
 
-  // Accept friend request
+  // Accept friend request (by request ID)
   async acceptFriendRequest(requestId: string): Promise<void> {
     try {
       const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/friends/request/${requestId}/accept`, {
@@ -123,10 +144,10 @@ class FriendService {
     }
   }
 
-  // Decline friend request
-  async declineFriendRequest(requestId: string): Promise<void> {
+  // Reject friend request (by request ID)
+  async rejectFriendRequest(requestId: string): Promise<void> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/friends/request/${requestId}/decline`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/friends/request/${requestId}/reject`, {
         method: 'POST',
         headers: this.getAuthHeaders(),
       });
@@ -136,7 +157,7 @@ class FriendService {
         throw new Error(errorData.message || 'فشل في رفض طلب الصداقة');
       }
     } catch (error) {
-      console.error('Error declining friend request:', error);
+      console.error('Error rejecting friend request:', error);
       throw error;
     }
   }

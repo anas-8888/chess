@@ -36,6 +36,8 @@ const Friends = () => {
   const [pendingInvites, setPendingInvites] = useState<any[]>([]);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
+  const [isLoadingIncoming, setIsLoadingIncoming] = useState(false);
 
   // Mock data
   const mockFriends = [
@@ -102,6 +104,7 @@ const Friends = () => {
   useEffect(() => {
     loadFriendsData();
     loadInvites();
+    loadIncomingRequests();
     setupSocketListeners();
   }, []);
 
@@ -142,6 +145,23 @@ const Friends = () => {
         description: "لم نتمكن من تحميل الدعوات",
         variant: "destructive"
       });
+    }
+  };
+
+  const loadIncomingRequests = async () => {
+    try {
+      setIsLoadingIncoming(true);
+      const requests = await friendService.getIncomingRequests();
+      setIncomingRequests(requests);
+    } catch (error) {
+      console.error('Error loading incoming requests:', error);
+      toast({
+        title: "خطأ",
+        description: "فشل في تحميل طلبات الصداقة الواردة",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoadingIncoming(false);
     }
   };
 
@@ -202,6 +222,45 @@ const Friends = () => {
       toast({
         title: "خطأ",
         description: error instanceof Error ? error.message : "لم نتمكن من إرسال طلب الصداقة",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const acceptFriendRequest = async (requestId: string) => {
+    try {
+      await friendService.acceptFriendRequest(requestId);
+      toast({
+        title: "تم قبول طلب الصداقة",
+        description: "تم قبول طلب الصداقة بنجاح"
+      });
+      // Reload incoming requests and friends list
+      loadIncomingRequests();
+      loadFriendsData();
+    } catch (error) {
+      console.error('Error accepting friend request:', error);
+      toast({
+        title: "خطأ",
+        description: "لم نتمكن من قبول طلب الصداقة",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const rejectFriendRequest = async (requestId: string) => {
+    try {
+      await friendService.rejectFriendRequest(requestId);
+      toast({
+        title: "تم رفض طلب الصداقة",
+        description: "تم رفض طلب الصداقة بنجاح"
+      });
+      // Reload incoming requests
+      loadIncomingRequests();
+    } catch (error) {
+      console.error('Error rejecting friend request:', error);
+      toast({
+        title: "خطأ",
+        description: "لم نتمكن من رفض طلب الصداقة",
         variant: "destructive"
       });
     }
@@ -383,7 +442,68 @@ const Friends = () => {
                 )}
               </CardContent>
             </Card>
+            {/* Incoming Friend Requests */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="font-cairo flex items-center gap-2">
+                  <UserPlus className="h-5 w-5" />
+                  طلبات الصداقة الواردة
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {isLoadingIncoming ? (
+                  <div className="text-center py-4">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto"></div>
+                    <p className="text-sm text-muted-foreground mt-2">جاري التحميل...</p>
+                  </div>
+                ) : incomingRequests.length > 0 ? (
+                  <div className="space-y-3">
+                    {incomingRequests.map((request) => (
+                      <div key={request.id} className="flex items-center justify-between p-3 border rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage src={request.from_user?.thumbnail} />
+                            <AvatarFallback>{request.from_user?.username?.[0]}</AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <h4 className="font-medium">{request.from_user?.username}</h4>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Clock className="h-3 w-3" />
+                              <span>منذ {new Date(request.created_at).toLocaleDateString('ar-EG')}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button 
+                            size="sm" 
+                            variant="chess"
+                            onClick={() => acceptFriendRequest(request.id.toString())}
+                          >
+                            <Check className="h-3 w-3 ml-1" />
+                            قبول
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => rejectFriendRequest(request.id.toString())}
+                          >
+                            <X className="h-3 w-3 ml-1" />
+                            رفض
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-4">
+                    <UserPlus className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">لا توجد طلبات صداقة واردة</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
+          
 
           <TabsContent value="invites" className="space-y-4">
             {invites.map((invite) => (
