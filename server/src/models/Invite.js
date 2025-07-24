@@ -56,7 +56,7 @@ const Invite = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: true,
       references: {
-        model: 'games',
+        model: 'game',
         key: 'id'
       }
     },

@@ -9,7 +9,7 @@ const Game = sequelize.define(
       primaryKey: true,
       autoIncrement: true,
     },
-    player1_id: {
+    white_user_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
       references: {
@@ -17,7 +17,7 @@ const Game = sequelize.define(
         key: 'user_id'
       }
     },
-    player2_id: {
+    black_user_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
       references: {
@@ -25,55 +25,32 @@ const Game = sequelize.define(
         key: 'user_id'
       }
     },
-    status: {
-      type: DataTypes.ENUM('waiting', 'active', 'paused', 'finished', 'abandoned'),
-      defaultValue: 'waiting',
+    white_play_method: {
+      type: DataTypes.ENUM('local', 'board'),
       allowNull: false,
     },
-    winner: {
-      type: DataTypes.ENUM('player1', 'player2', 'draw', null),
+    black_play_method: {
+      type: DataTypes.ENUM('local', 'board'),
+      allowNull: false,
+    },
+    game_time: {
+      type: DataTypes.ENUM('5', '10', '15'),
+      defaultValue: '5',
+      allowNull: false,
+    },
+    mode: {
+      type: DataTypes.ENUM('friend', 'random', 'ai', 'challenge'),
+      allowNull: false,
+    },
+    white_rating_change: {
+      type: DataTypes.INTEGER,
       allowNull: true,
     },
-    game_type: {
-      type: DataTypes.ENUM('friendly', 'competitive'),
-      defaultValue: 'friendly',
-      allowNull: false,
+    black_rating_change: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
     },
-    time_control: {
-      type: DataTypes.INTEGER, // في الدقائق
-      defaultValue: 10,
-      allowNull: false,
-    },
-    current_fen: {
-      type: DataTypes.TEXT,
-      defaultValue: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-      allowNull: false,
-    },
-    move_history: {
-      type: DataTypes.TEXT, // JSON string of moves
-      defaultValue: '[]',
-    },
-    white_time_left: {
-      type: DataTypes.INTEGER, // في الثواني
-      defaultValue: 600,
-    },
-    black_time_left: {
-      type: DataTypes.INTEGER, // في الثواني
-      defaultValue: 600,
-    },
-    current_turn: {
-      type: DataTypes.ENUM('white', 'black'),
-      defaultValue: 'white',
-    },
-    last_move_time: {
-      type: DataTypes.DATE,
-      defaultValue: DataTypes.NOW,
-    },
-    created_at: {
-      type: DataTypes.DATE,
-      defaultValue: DataTypes.NOW,
-    },
-    updated_at: {
+    date_time: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,
     },
@@ -82,7 +59,7 @@ const Game = sequelize.define(
     },
   },
   {
-    tableName: 'games',
+    tableName: 'game',
     timestamps: false,
     paranoid: true,
     deletedAt: 'deleted_at',

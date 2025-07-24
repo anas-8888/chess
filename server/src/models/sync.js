@@ -25,10 +25,10 @@ CourseVideo.belongsTo(Course, { foreignKey: 'course_id' });
 Course.hasMany(CourseVideo, { foreignKey: 'course_id' });
 
 // Game relationships
-Game.belongsTo(User, { as: 'whitePlayer', foreignKey: 'whiteUserId' });
-Game.belongsTo(User, { as: 'blackPlayer', foreignKey: 'blackUserId' });
-User.hasMany(Game, { as: 'whiteGames', foreignKey: 'whiteUserId' });
-User.hasMany(Game, { as: 'blackGames', foreignKey: 'blackUserId' });
+Game.belongsTo(User, { as: 'whitePlayer', foreignKey: 'white_user_id' });
+Game.belongsTo(User, { as: 'blackPlayer', foreignKey: 'black_user_id' });
+User.hasMany(Game, { as: 'whiteGames', foreignKey: 'white_user_id' });
+User.hasMany(Game, { as: 'blackGames', foreignKey: 'black_user_id' });
 
 // GameMove belongs to Game
 GameMove.belongsTo(Game, { foreignKey: 'gameId' });
@@ -47,8 +47,10 @@ User.hasMany(Friend, { as: 'friendOf', foreignKey: 'friend_user_id' });
 // Invite relationships
 Invite.belongsTo(User, { as: 'FromUser', foreignKey: 'from_user_id' });
 Invite.belongsTo(User, { as: 'ToUser', foreignKey: 'to_user_id' });
+Invite.belongsTo(Game, { foreignKey: 'game_id' });
 User.hasMany(Invite, { as: 'SentInvites', foreignKey: 'from_user_id' });
 User.hasMany(Invite, { as: 'ReceivedInvites', foreignKey: 'to_user_id' });
+Game.hasMany(Invite, { foreignKey: 'game_id' });
 
 // UserBoard belongs to User
 UserBoard.belongsTo(User, { foreignKey: 'user_id' });
@@ -80,7 +82,7 @@ Course.hasMany(UserCourse, { foreignKey: 'course_id' });
 
     // 3) مزامنة الجداول عبر نفس الـ instance الذي تعرفت عليه موديلاتك
     logger.info('Creating tables...');
-    await sequelize.sync({ force: true });
+    await sequelize.sync({ alter: true });
     logger.info('All tables created successfully');
 
     // 4) إضافة البيانات الأولية
@@ -243,11 +245,11 @@ Course.hasMany(UserCourse, { foreignKey: 'course_id' });
     logger.info('Adding games...');
     await Game.bulkCreate([
       {
-        whiteUserId: 1,
-        blackUserId: 2,
-        whitePlayMethod: 'phone',
-        blackPlayMethod: 'physical_board',
-        gameTime: '5',
+        white_user_id: 1,
+        black_user_id: 2,
+        white_play_method: 'local',
+        black_play_method: 'board',
+        game_time: '5',
         mode: 'friend',
       },
     ]);
@@ -256,10 +258,10 @@ Course.hasMany(UserCourse, { foreignKey: 'course_id' });
     // إضافة حركات اللعبة
     logger.info('Adding game moves...');
     await GameMove.bulkCreate([
-      { gameId: 1, moveNum: 1, san: 'e4', fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1', movedBy: 'white' },
-      { gameId: 1, moveNum: 1, san: 'e5', fen: 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2', movedBy: 'black' },
-      { gameId: 1, moveNum: 2, san: 'Nf3', fen: 'rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2', movedBy: 'white' },
-      { gameId: 1, moveNum: 2, san: 'Nc6', fen: 'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3', movedBy: 'black' },
+      { gameId: 1, moveNum: 1, move: 'e4', movedBy: 'white' },
+      { gameId: 1, moveNum: 1, move: 'e5', movedBy: 'black' },
+      { gameId: 1, moveNum: 2, move: 'Nf3', movedBy: 'white' },
+      { gameId: 1, moveNum: 2, move: 'Nc6', movedBy: 'black' },
     ]);
     logger.info('Game moves added');
 
@@ -277,31 +279,7 @@ Course.hasMany(UserCourse, { foreignKey: 'course_id' });
     ]);
     logger.info('Sessions added');
 
-    // تحديث الأعمدة في جدول game
-    logger.info('Updating game table columns...');
-    try {
-      await sequelize.query(`
-        ALTER TABLE game 
-        MODIFY COLUMN game_time INT NOT NULL COMMENT 'Game time in minutes',
-        MODIFY COLUMN mode ENUM('friend', 'random', 'ai', 'challenge') NOT NULL DEFAULT 'friend'
-      `);
-      logger.info('Game table updated');
-    } catch (error) {
-      logger.info('Game table update skipped (columns may already be correct)');
-    }
 
-    // تحديث الأعمدة في جدول invites
-    logger.info('Updating invites table columns...');
-    try {
-      await sequelize.query(`
-        ALTER TABLE invites 
-        MODIFY COLUMN status ENUM('pending', 'accepted', 'rejected', 'expired', 'game_started') NOT NULL DEFAULT 'pending',
-        MODIFY COLUMN game_type ENUM('friendly', 'competitive') NOT NULL DEFAULT 'friendly'
-      `);
-      logger.info('Invites table updated');
-    } catch (error) {
-      logger.info('Invites table update skipped (columns may already be correct)');
-    }
 
     logger.info('Database initialization completed successfully!');
     process.exit(0);

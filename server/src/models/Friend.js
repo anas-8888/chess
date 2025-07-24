@@ -43,7 +43,7 @@ const Friend = sequelize.define(
     },
   },
   {
-    tableName: 'friends',
+    tableName: 'friend',
     timestamps: false,
     paranoid: true,
     deletedAt: 'deleted_at',

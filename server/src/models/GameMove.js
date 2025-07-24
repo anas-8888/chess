@@ -19,12 +19,8 @@ const GameMove = sequelize.define(
       allowNull: false,
       field: 'move_num',
     },
-    san: {
+    move: {
       type: DataTypes.STRING(10),
-      allowNull: false,
-    },
-    fen: {
-      type: DataTypes.STRING(100),
       allowNull: false,
     },
     movedBy: {
@@ -32,14 +28,8 @@ const GameMove = sequelize.define(
       allowNull: false,
       field: 'moved_by',
     },
-    createdAt: {
-      type: DataTypes.DATE,
-      defaultValue: DataTypes.NOW,
-      field: 'created_at',
-    },
-    deleted_at: {
-      type: DataTypes.DATE,
-    },
+
+
   },
   {
     tableName: 'game_move',

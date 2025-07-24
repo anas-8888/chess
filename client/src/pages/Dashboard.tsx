@@ -17,6 +17,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { userService, UserProfile } from '@/services/userService';
+import { friendService, Friend as FriendType } from '@/services/friendService';
 
 interface GameInvite {
   id: string;
@@ -31,13 +32,7 @@ interface GameInvite {
   created_at: string;
 }
 
-interface Friend {
-  id: string;
-  username: string;
-  avatar: string;
-  status: 'online' | 'offline' | 'in-game';
-  rating: number;
-}
+// Using FriendType from friendService instead of local interface
 
 interface ActiveGame {
   id: string;
@@ -53,7 +48,7 @@ interface ActiveGame {
 const Dashboard = () => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [friends, setFriends] = useState<Friend[]>([]);
+  const [friends, setFriends] = useState<FriendType[]>([]);
   const [invites, setInvites] = useState<GameInvite[]>([]);
   const [activeGames, setActiveGames] = useState<ActiveGame[]>([]);
   const { toast } = useToast();
@@ -68,17 +63,19 @@ const Dashboard = () => {
         const userProfile = await userService.getCurrentUserProfile();
         setUser(userProfile);
         
-        // TODO: Fetch friends, invites, and active games from server
-        // REST: GET /api/friends -> get friends list
+        // Fetch friends from server
+        try {
+          const friendsData = await friendService.getFriends();
+          setFriends(friendsData);
+        } catch (error) {
+          console.error('Error fetching friends:', error);
+          // Keep empty array if friends fetch fails
+          setFriends([]);
+        }
+        
+        // TODO: Fetch invites and active games from server
         // REST: GET /api/invites -> get pending invites
         // REST: GET /api/games/active -> get active games
-        
-        // Mock data for demo (will be replaced with real API calls)
-        setFriends([
-          { id: '1', username: 'أحمد الشطرنجي', avatar: '', status: 'online', rating: 1450 },
-          { id: '2', username: 'فاطمة الذكية', avatar: '', status: 'in-game', rating: 1320 },
-          { id: '3', username: 'محمد الاستراتيجي', avatar: '', status: 'offline', rating: 1180 }
-        ]);
 
         setInvites([
           {
@@ -145,6 +142,20 @@ const Dashboard = () => {
       title: "تم تسجيل الخروج",
       description: "تم تسجيل خروجك بنجاح",
     });
+  };
+
+  const refreshFriends = async () => {
+    try {
+      const friendsData = await friendService.getFriends();
+      setFriends(friendsData);
+    } catch (error: any) {
+      console.error('Error refreshing friends:', error);
+      toast({
+        title: "خطأ في تحديث الأصدقاء",
+        description: error.message || "فشل في تحديث قائمة الأصدقاء",
+        variant: "destructive",
+      });
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -321,40 +332,59 @@ const Dashboard = () => {
                 </div>
               </TabsContent>
 
-              <TabsContent value="friends">
-                <div className="space-y-4">
-                  {friends.map((friend) => (
-                    <Card key={friend.id}>
-                      <CardContent className="p-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="relative">
-                              <Avatar>
-                                <AvatarImage src={friend.avatar} />
-                                <AvatarFallback>{friend.username.charAt(0)}</AvatarFallback>
-                              </Avatar>
-                              <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${getStatusColor(friend.status)}`} />
-                            </div>
-                            <div>
-                              <h3 className="font-cairo font-medium">{friend.username}</h3>
-                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                <span>{getStatusText(friend.status)}</span>
-                                <Badge variant="outline" className="text-xs">
-                                  {friend.rating}
-                                </Badge>
-                              </div>
-                            </div>
-                          </div>
-                          
-                          {friend.status === 'online' && (
-                            <Button size="sm" variant="chess">
-                              تحدي
-                            </Button>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                             <TabsContent value="friends">
+                 <div className="flex justify-between items-center mb-4">
+                   <h3 className="font-amiri text-lg font-bold">الأصدقاء ({friends.length})</h3>
+                   <Button 
+                     variant="outline" 
+                     size="sm" 
+                     onClick={refreshFriends}
+                     className="text-xs"
+                   >
+                     تحديث
+                   </Button>
+                 </div>
+                 <div className="space-y-4">
+                   {friends.length === 0 ? (
+                     <div className="text-center py-8">
+                       <Users className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
+                       <h3 className="font-amiri text-lg font-bold mb-2">لا توجد أصدقاء</h3>
+                       <p className="text-muted-foreground">ابحث عن لاعبين وأضفهم كأصدقاء</p>
+                     </div>
+                   ) : (
+                     friends.map((friend) => (
+                       <Card key={friend.id}>
+                         <CardContent className="p-4">
+                           <div className="flex items-center justify-between">
+                             <div className="flex items-center gap-3">
+                               <div className="relative">
+                                 <Avatar>
+                                   <AvatarImage src={friend.avatar} />
+                                   <AvatarFallback>{friend.username.charAt(0)}</AvatarFallback>
+                                 </Avatar>
+                                 <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${getStatusColor(friend.status)}`} />
+                               </div>
+                               <div>
+                                 <h3 className="font-cairo font-medium">{friend.username}</h3>
+                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                   <span>{getStatusText(friend.status)}</span>
+                                   <Badge variant="outline" className="text-xs">
+                                     {friend.rating}
+                                   </Badge>
+                                 </div>
+                               </div>
+                             </div>
+                             
+                             {friend.status === 'online' && (
+                               <Button size="sm" variant="chess">
+                                 تحدي
+                               </Button>
+                             )}
+                           </div>
+                         </CardContent>
+                       </Card>
+                     ))
+                   )}
                 </div>
               </TabsContent>
 
