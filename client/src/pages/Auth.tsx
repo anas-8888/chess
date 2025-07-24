@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { apiClient } from '@/services/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { testApiConnection, testEnvironment } from '@/utils/test-api';
 
 const Auth = () => {
@@ -18,6 +19,7 @@ const Auth = () => {
   });
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const { login } = useAuth();
 
   // Test API connection on component mount
   React.useEffect(() => {
@@ -43,9 +45,11 @@ const Auth = () => {
         password: loginData.password,
       });
 
-      // Store token and user data
-      localStorage.setItem('token', response.token);
-      localStorage.setItem('user', JSON.stringify(response.user));
+      // Store token and user data using auth context
+      login(response.token, {
+        ...response.user,
+        email: loginData.email // Add email from login data
+      });
       
       toast({
         title: "تم تسجيل الدخول بنجاح",
@@ -88,9 +92,11 @@ const Auth = () => {
         confirmPassword: registerData.confirmPassword,
       });
 
-      // Store token and user data
-      localStorage.setItem('token', response.token);
-      localStorage.setItem('user', JSON.stringify(response.user));
+      // Store token and user data using auth context
+      login(response.token, {
+        ...response.user,
+        email: registerData.email // Add email from register data
+      });
       
       toast({
         title: "تم إنشاء الحساب بنجاح",

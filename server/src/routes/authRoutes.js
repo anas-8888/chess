@@ -14,14 +14,14 @@ const router = express.Router();
 // Apply rate limiting to all auth routes
 router.use(rateLimit(50, 15 * 60 * 1000)); // 50 requests per 15 minutes
 
-// Public routes
+// Public routes (no authentication required)
 router.post('/register', register);
 router.post('/login', login);
 router.post('/validate', validate);
 router.post('/refresh', refresh); // Accept token from body like validate
 router.get('/validate', validateToken); // GET endpoint for token validation
 
-// Protected routes
+// Protected routes (authentication required)
 router.post('/logout', protect, logout);
 
 // TODO: Add more auth routes as needed

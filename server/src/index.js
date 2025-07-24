@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url';
 import session from 'express-session';
 import { errorHandler, notFound } from './middlewares/errorHandler.js';
 import logger from './utils/logger.js';
-import { optionalAuth } from './middlewares/authMiddleware.js';
+import { optionalAuth, globalAuthMiddleware } from './middlewares/authMiddleware.js';
 import fs from 'fs';
 
 // Get current directory
@@ -169,8 +169,8 @@ app.use('/.well-known/appspecific/*', (req, res) => {
   res.status(204).end();
 });
 
-// Optional authentication middleware for all routes
-app.use(optionalAuth);
+// Global authentication middleware for all routes
+app.use(globalAuthMiddleware);
 
 // Serve static files
 app.use('/css', express.static(path.join(__dirname, '../../public/css')));

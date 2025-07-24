@@ -97,6 +97,8 @@ export async function registerUser(data) {
       user_id: user.user_id,
       username: user.username,
       type: user.type,
+      rank: user.rank,
+      email: user.email,
     });
 
     // Calculate session expiration based on JWT expiration
@@ -181,6 +183,8 @@ export async function authenticateUser(data) {
     user_id: user.user_id,
     username: user.username,
     type: user.type,
+    rank: user.rank,
+    email: user.email,
   });
   
   const expiresInMs = parseExpiresIn(JWT_EXPIRES_IN);
@@ -283,6 +287,8 @@ export async function validateSession(token) {
     user_id: user.user_id,
     username: user.username,
     type: user.type,
+    rank: user.rank,
+    email: user.email,
   };
 }
 

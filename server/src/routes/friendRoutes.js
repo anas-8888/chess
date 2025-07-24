@@ -25,8 +25,8 @@ import User from '../models/User.js';
 const router = express.Router();
 
 // Apply authentication middleware to all routes
-// router.use(protect); // Temporarily disabled for testing
-// router.use(userOnly); // Temporarily disabled for testing
+router.use(protect);
+router.use(userOnly);
 
 // GET /api/friends - Get current user's friends
 router.get('/', getMyFriends);

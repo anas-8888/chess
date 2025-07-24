@@ -41,7 +41,7 @@ const router = express.Router();
 // } from '../controllers/userController.js';
 
 // Apply authentication middleware to all routes
-// router.use(protect); // Temporarily disabled for testing
+router.use(protect);
 
 // Current user routes (no ID needed)
 router.get('/profile', getProfile);

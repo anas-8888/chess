@@ -2,14 +2,21 @@ import { validateSession } from '../services/authService.js';
 import { formatError, extractToken } from '../utils/helpers.js';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import { isProtectedRoute, isPublicRoute } from '../config/auth.js';
 
 // Main authentication middleware
 export const protect = async (req, res, next) => {
   const token = extractToken(req);
-  if (!token)
-    return res
-      .status(401)
-      .json(formatError('Access denied. No token provided.'));
+  
+  if (!token) {
+    return res.status(401).json({
+      success: false,
+      message: 'Access denied. No token provided.',
+      timestamp: new Date().toISOString(),
+      code: 'NO_TOKEN',
+      redirect: '/auth'
+    });
+  }
 
   try {
     const userData = await validateSession(token);
@@ -17,7 +24,56 @@ export const protect = async (req, res, next) => {
     req.token = token;
     next();
   } catch (err) {
-    return res.status(401).json(formatError(err.message));
+    return res.status(401).json({
+      success: false,
+      message: err.message,
+      timestamp: new Date().toISOString(),
+      code: 'INVALID_TOKEN',
+      redirect: '/auth'
+    });
+  }
+};
+
+// Global authentication middleware for all routes
+export const globalAuthMiddleware = async (req, res, next) => {
+  const path = req.path;
+  
+  // Skip authentication for public routes
+  if (isPublicRoute(path)) {
+    return next();
+  }
+  
+  // Check if route is protected
+  if (isProtectedRoute(path)) {
+    const token = extractToken(req);
+    
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access denied. No token provided.',
+        timestamp: new Date().toISOString(),
+        code: 'NO_TOKEN',
+        redirect: '/auth'
+      });
+    }
+
+    try {
+      const userData = await validateSession(token);
+      req.user = userData;
+      req.token = token;
+      next();
+    } catch (err) {
+      return res.status(401).json({
+        success: false,
+        message: err.message,
+        timestamp: new Date().toISOString(),
+        code: 'INVALID_TOKEN',
+        redirect: '/auth'
+      });
+    }
+  } else {
+    // For non-protected routes, continue without authentication
+    next();
   }
 };
 
@@ -303,4 +359,48 @@ export const checkOwnership = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+};
+
+// Enhanced authentication middleware with better error handling
+export const enhancedProtect = async (req, res, next) => {
+  const token = extractToken(req);
+  
+  if (!token) {
+    return res.status(401).json({
+      success: false,
+      message: 'Access denied. No token provided.',
+      timestamp: new Date().toISOString(),
+      code: 'NO_TOKEN',
+      redirect: '/auth'
+    });
+  }
+
+  try {
+    const userData = await validateSession(token);
+    req.user = userData;
+    req.token = token;
+    next();
+  } catch (err) {
+    return res.status(401).json({
+      success: false,
+      message: err.message,
+      timestamp: new Date().toISOString(),
+      code: 'INVALID_TOKEN',
+      redirect: '/auth'
+    });
+  }
+};
+
+// Middleware to handle authentication errors and redirect
+export const handleAuthError = (err, req, res, next) => {
+  if (err.name === 'UnauthorizedError' || err.status === 401) {
+    return res.status(401).json({
+      success: false,
+      message: 'Authentication required',
+      timestamp: new Date().toISOString(),
+      code: 'AUTH_REQUIRED',
+      redirect: '/auth'
+    });
+  }
+  next(err);
 };
