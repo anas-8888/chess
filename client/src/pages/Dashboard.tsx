@@ -46,52 +46,36 @@ interface ActiveGame {
 }
 
 const Dashboard = () => {
+  const { user: authUser, logout } = useAuth();
+  const { toast } = useToast();
   const [user, setUser] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
   const [friends, setFriends] = useState<FriendType[]>([]);
   const [invites, setInvites] = useState<GameInvite[]>([]);
   const [activeGames, setActiveGames] = useState<ActiveGame[]>([]);
-  const { toast } = useToast();
-  const { user: authUser, logout } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const { updateStatus } = useAuth();
 
   useEffect(() => {
     const fetchUserData = async () => {
       try {
         setLoading(true);
-        
-        // Fetch user profile from server
+        // Update status to online when fetching data
+        try {
+          await updateStatus('online');
+        } catch (error) {
+          console.error('Failed to update status:', error);
+          // Continue with data fetching even if status update fails
+        }
         const userProfile = await userService.getCurrentUserProfile();
         setUser(userProfile);
-        
-        // Fetch friends from server
-        try {
-          const friendsData = await friendService.getFriends();
+        const friendsData = await friendService.getFriends();
+        // تأكد من أن البيانات تأتي بالشكل الصحيح
+        if (Array.isArray(friendsData)) {
           setFriends(friendsData);
-        } catch (error) {
-          console.error('Error fetching friends:', error);
-          // Keep empty array if friends fetch fails
+        } else {
+          console.error('Unexpected friends data format:', friendsData);
           setFriends([]);
         }
-        
-        // TODO: Fetch invites and active games from server
-        // REST: GET /api/invites -> get pending invites
-        // REST: GET /api/games/active -> get active games
-
-        setInvites([
-          {
-            id: '1',
-            from_user: {
-              id: '2',
-              username: 'سارة المفكرة',
-              avatar: '',
-              rating: 1380
-            },
-            game_type: 'standard',
-            time_control: 10,
-            created_at: new Date().toISOString()
-          }
-        ]);
-        
       } catch (error: any) {
         console.error('Error fetching user data:', error);
         toast({
@@ -103,49 +87,70 @@ const Dashboard = () => {
         setLoading(false);
       }
     };
-
     fetchUserData();
-  }, [toast]);
+  }, [toast, updateStatus]);
+
+  // Update status when component mounts
+  useEffect(() => {
+    if (authUser) {
+      try {
+        updateStatus('online');
+      } catch (error) {
+        console.error('Failed to update status on mount:', error);
+      }
+    }
+  }, [authUser, updateStatus]);
+
+  // Update status when component unmounts
+  useEffect(() => {
+    return () => {
+      if (authUser) {
+        updateStatus('offline');
+      }
+    };
+  }, [authUser, updateStatus]);
 
   const handleStartQuickGame = () => {
-    // REST: POST /api/games/quick-match
-    // Expected: { time_control: number, mode: 'random' }
-    
-    toast({
-      title: "جاري البحث عن خصم",
-      description: "سيتم إشعارك عند العثور على لاعب مناسب",
-    });
+    // Update status to in-game
+    updateStatus('in-game');
+    // Navigate to game page
+    window.location.href = '/game';
   };
 
   const handleAcceptInvite = (inviteId: string) => {
-    // REST: POST /api/invites/:id/accept
-    // SOCKET: socket.emit('acceptInvite', { inviteId })
-    
+    // Update status to in-game when accepting invite
+    updateStatus('in-game');
+    // TODO: Implement accept invite logic
     toast({
       title: "تم قبول الدعوة",
-      description: "سيتم توجيهك إلى المباراة",
+      description: "جاري الانتقال إلى اللعبة...",
     });
   };
 
   const handleDeclineInvite = (inviteId: string) => {
-    // REST: POST /api/invites/:id/decline
-    
-    setInvites(invites.filter(invite => invite.id !== inviteId));
+    // TODO: Implement decline invite logic
     toast({
       title: "تم رفض الدعوة",
+      description: "تم إرسال الرد إلى المرسل",
     });
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      // Update status to offline before logout
+      await updateStatus('offline');
+    } catch (error) {
+      console.error('Failed to update status on logout:', error);
+      // Continue with logout even if status update fails
+    }
+    
     logout();
-    toast({
-      title: "تم تسجيل الخروج",
-      description: "تم تسجيل خروجك بنجاح",
-    });
   };
 
   const refreshFriends = async () => {
     try {
+      // Update status to online when refreshing friends
+      updateStatus('online');
       const friendsData = await friendService.getFriends();
       console.log('Friends data:', friendsData); // للتصحيح
       // تأكد من أن البيانات تأتي بالشكل الصحيح

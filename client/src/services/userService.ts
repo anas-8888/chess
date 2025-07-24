@@ -93,6 +93,35 @@ class UserService {
     }
   }
 
+  // Update user status
+  async updateStatus(status: 'online' | 'offline' | 'in-game'): Promise<void> {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/users/status`, {
+        method: 'PUT',
+        headers: {
+          ...this.getAuthHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Status update error:', errorData);
+        // Don't throw error to avoid breaking the app
+        // Just log it for debugging
+        return;
+      }
+
+      const data = await response.json();
+      console.log('Status updated:', data);
+    } catch (error) {
+      console.error('Error updating status:', error);
+      // Don't throw error to avoid breaking the app
+      // Just log it for debugging
+    }
+  }
+
   // Get user by ID
   async getUserById(userId: string): Promise<UserProfile> {
     try {

@@ -26,6 +26,7 @@ import {
 } from '../controllers/userController.js';
 import { getUserCourses } from '../controllers/courseController.js';
 import User from '../models/User.js';
+import Friend from '../models/Friend.js';
 import { Op } from 'sequelize';
 import logger from '../utils/logger.js';
 
@@ -66,7 +67,7 @@ router.put('/status', async (req, res) => {
         }
         
         // التحقق من الحالة الحالية قبل التحديث
-        const currentUser = await User.default.findByPk(userId);
+        const currentUser = await User.findByPk(userId);
         if (!currentUser) {
             return res.status(404).json({ 
                 success: false, 
@@ -85,7 +86,7 @@ router.put('/status', async (req, res) => {
         }
         
         // تحديث حالة المستخدم
-        await User.default.update(
+        await User.update(
             { state: status },
             { where: { user_id: userId } }
         );
@@ -95,9 +96,8 @@ router.put('/status', async (req, res) => {
         // إرسال تحديث real-time للأصدقاء فقط إذا تغيرت الحالة
         const io = global.io;
         if (io) {
-                    // البحث عن أصدقاء المستخدم
-        const Friend = await import('../models/Friend.js');
-        const friends = await Friend.default.findAll({
+            // البحث عن أصدقاء المستخدم
+            const friends = await Friend.findAll({
                 where: {
                     [Op.or]: [
                         { user_id: userId },
@@ -134,7 +134,9 @@ router.put('/status', async (req, res) => {
         logger.error('خطأ في تحديث حالة المستخدم:', error);
         res.status(500).json({ 
             success: false, 
-            message: 'خطأ في تحديث الحالة' 
+            message: 'خطأ في تحديث الحالة',
+            error: error.message,
+            stack: error.stack
         });
     }
 });
