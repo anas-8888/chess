@@ -15,6 +15,8 @@ import {
   LogOut
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { userService, UserProfile } from '@/services/userService';
 
 interface GameInvite {
   id: string;
@@ -49,55 +51,64 @@ interface ActiveGame {
 }
 
 const Dashboard = () => {
-  const [user, setUser] = useState({
-    username: 'اللاعب الذكي',
-    avatar: '',
-    rating: 1200,
-    wins: 45,
-    losses: 23,
-    draws: 12
-  });
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
   const [friends, setFriends] = useState<Friend[]>([]);
   const [invites, setInvites] = useState<GameInvite[]>([]);
   const [activeGames, setActiveGames] = useState<ActiveGame[]>([]);
   const { toast } = useToast();
+  const { user: authUser, logout } = useAuth();
 
   useEffect(() => {
-    // REST: GET /api/user/profile -> get current user data
-    // REST: GET /api/friends -> get friends list
-    // REST: GET /api/invites -> get pending invites
-    // REST: GET /api/games/active -> get active games
-    
-    // SOCKET: socket.on('friendStatusChanged', (data) => {
-    //   // Update friend status in real-time
-    // });
-    
-    // SOCKET: socket.on('inviteCreated', (invite) => {
-    //   // Add new invite to list and show notification
-    // });
+    const fetchUserData = async () => {
+      try {
+        setLoading(true);
+        
+        // Fetch user profile from server
+        const userProfile = await userService.getCurrentUserProfile();
+        setUser(userProfile);
+        
+        // TODO: Fetch friends, invites, and active games from server
+        // REST: GET /api/friends -> get friends list
+        // REST: GET /api/invites -> get pending invites
+        // REST: GET /api/games/active -> get active games
+        
+        // Mock data for demo (will be replaced with real API calls)
+        setFriends([
+          { id: '1', username: 'أحمد الشطرنجي', avatar: '', status: 'online', rating: 1450 },
+          { id: '2', username: 'فاطمة الذكية', avatar: '', status: 'in-game', rating: 1320 },
+          { id: '3', username: 'محمد الاستراتيجي', avatar: '', status: 'offline', rating: 1180 }
+        ]);
 
-    // Mock data for demo
-    setFriends([
-      { id: '1', username: 'أحمد الشطرنجي', avatar: '', status: 'online', rating: 1450 },
-      { id: '2', username: 'فاطمة الذكية', avatar: '', status: 'in-game', rating: 1320 },
-      { id: '3', username: 'محمد الاستراتيجي', avatar: '', status: 'offline', rating: 1180 }
-    ]);
-
-    setInvites([
-      {
-        id: '1',
-        from_user: {
-          id: '2',
-          username: 'سارة المفكرة',
-          avatar: '',
-          rating: 1380
-        },
-        game_type: 'standard',
-        time_control: 10,
-        created_at: new Date().toISOString()
+        setInvites([
+          {
+            id: '1',
+            from_user: {
+              id: '2',
+              username: 'سارة المفكرة',
+              avatar: '',
+              rating: 1380
+            },
+            game_type: 'standard',
+            time_control: 10,
+            created_at: new Date().toISOString()
+          }
+        ]);
+        
+      } catch (error: any) {
+        console.error('Error fetching user data:', error);
+        toast({
+          title: "خطأ في جلب البيانات",
+          description: error.message || "فشل في تحميل بيانات المستخدم",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
       }
-    ]);
-  }, []);
+    };
+
+    fetchUserData();
+  }, [toast]);
 
   const handleStartQuickGame = () => {
     // REST: POST /api/games/quick-match
@@ -128,6 +139,14 @@ const Dashboard = () => {
     });
   };
 
+  const handleLogout = () => {
+    logout();
+    toast({
+      title: "تم تسجيل الخروج",
+      description: "تم تسجيل خروجك بنجاح",
+    });
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'online': return 'bg-green-500';
@@ -146,6 +165,33 @@ const Dashboard = () => {
     }
   };
 
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">جاري تحميل البيانات...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state if no user data
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-xl font-bold mb-2">خطأ في تحميل البيانات</h2>
+          <p className="text-muted-foreground mb-4">فشل في جلب بيانات المستخدم</p>
+          <Button onClick={() => window.location.reload()}>
+            إعادة المحاولة
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -161,12 +207,12 @@ const Dashboard = () => {
               </Avatar>
               <div>
                 <h2 className="font-amiri text-xl font-bold">{user.username}</h2>
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary">
-                    <Trophy className="w-3 h-3 ml-1" />
-                    {user.rating}
-                  </Badge>
-                </div>
+                                 <div className="flex items-center gap-2">
+                   <Badge variant="secondary">
+                     <Trophy className="w-3 h-3 ml-1" />
+                     {user.rating || 1200}
+                   </Badge>
+                 </div>
               </div>
             </div>
 
@@ -174,7 +220,7 @@ const Dashboard = () => {
               <Button variant="ghost" size="icon">
                 <Settings className="w-5 h-5" />
               </Button>
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" onClick={handleLogout}>
                 <LogOut className="w-5 h-5" />
               </Button>
             </div>
@@ -329,18 +375,28 @@ const Dashboard = () => {
               <CardHeader>
                 <CardTitle className="font-amiri">إحصائياتك</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+                             <CardContent className="space-y-4">
+                 <div className="flex justify-between">
+                   <span>انتصارات</span>
+                   <Badge variant="secondary">{user.wins || 0}</Badge>
+                 </div>
+                 <div className="flex justify-between">
+                   <span>هزائم</span>
+                   <Badge variant="destructive">{user.losses || 0}</Badge>
+                 </div>
+                 <div className="flex justify-between">
+                   <span>تعادل</span>
+                   <Badge variant="outline">{user.draws || 0}</Badge>
+                 </div>
+                 <div className="flex justify-between">
+                   <span>إجمالي المباريات</span>
+                   <Badge variant="outline">{user.total_games || 0}</Badge>
+                 </div>
                 <div className="flex justify-between">
-                  <span>انتصارات</span>
-                  <Badge variant="secondary">{user.wins}</Badge>
-                </div>
-                <div className="flex justify-between">
-                  <span>هزائم</span>
-                  <Badge variant="destructive">{user.losses}</Badge>
-                </div>
-                <div className="flex justify-between">
-                  <span>تعادل</span>
-                  <Badge variant="outline">{user.draws}</Badge>
+                  <span>نسبة الفوز</span>
+                  <Badge variant="outline">
+                    {user.win_rate ? user.win_rate.toFixed(1) : '0.0'}%
+                  </Badge>
                 </div>
               </CardContent>
             </Card>
