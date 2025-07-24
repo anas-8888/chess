@@ -12,11 +12,16 @@ import { asyncHandler } from '../middlewares/errorHandler.js';
 // TODO: Add proper error handling
 
 export const register = asyncHandler(async (req, res) => {
-  const { username, email, password } = req.body;
+  const { username, email, password, confirmPassword } = req.body;
 
   // Basic validation
-  if (!username || !email || !password) {
+  if (!username || !email || !password || !confirmPassword) {
     return res.status(400).json(formatError('جميع الحقول مطلوبة'));
+  }
+
+  // Validate password confirmation
+  if (password !== confirmPassword) {
+    return res.status(400).json(formatError('كلمتا المرور غير متطابقتان'));
   }
 
   // Get client information
@@ -34,8 +39,16 @@ export const register = asyncHandler(async (req, res) => {
       ...clientData,
     });
 
-    // Return success response
-    res.status(201).json(formatResponse(result, 'تم تسجيل المستخدم بنجاح'));
+    // Return success response in the expected format
+    res.status(201).json({
+      token: result.token,
+      user: {
+        id: result.user.user_id,
+        username: result.user.username,
+        avatar: result.user.thumbnail,
+        rating: result.user.rank
+      }
+    });
   } catch (error) {
     // Handle specific validation errors
     if (error.message.includes('مستخدم بالفعل') || 
@@ -53,16 +66,11 @@ export const register = asyncHandler(async (req, res) => {
 });
 
 export const login = asyncHandler(async (req, res) => {
-  const { username, email, password } = req.body;
+  const { email, password } = req.body;
 
   // Basic validation
-  if (!password) {
-    return res.status(400).json(formatError('كلمة المرور مطلوبة'));
-  }
-
-  // Support both username and email login
-  if (!username && !email) {
-    return res.status(400).json(formatError('اسم المستخدم أو البريد الإلكتروني مطلوب'));
+  if (!email || !password) {
+    return res.status(400).json(formatError('البريد الإلكتروني وكلمة المرور مطلوبان'));
   }
 
   // Get client information
@@ -74,14 +82,21 @@ export const login = asyncHandler(async (req, res) => {
   try {
     // Call service to authenticate user
     const result = await authenticateUser({
-      username,
       email,
       password,
       ...clientData,
     });
 
-    // Return JWT token and user data
-    res.status(200).json(formatResponse(result, 'تم تسجيل الدخول بنجاح'));
+    // Return JWT token and user data in the expected format
+    res.status(200).json({
+      token: result.token,
+      user: {
+        id: result.user.user_id,
+        username: result.user.username,
+        avatar: result.user.thumbnail,
+        rating: result.user.rank
+      }
+    });
   } catch (error) {
     // Handle specific authentication errors
     if (error.message.includes('بيانات الدخول') ||

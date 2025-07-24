@@ -5,6 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
+import { apiClient } from '@/services/api';
+import { testApiConnection, testEnvironment } from '@/utils/test-api';
 
 const Auth = () => {
   const [loginData, setLoginData] = useState({ email: '', password: '' });
@@ -17,14 +19,33 @@ const Auth = () => {
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
+  // Test API connection on component mount
+  React.useEffect(() => {
+    testEnvironment();
+    testApiConnection().then(isConnected => {
+      if (!isConnected) {
+        toast({
+          title: "تحذير",
+          description: "لا يمكن الاتصال بالخادم. تأكد من تشغيل الباك-إند.",
+          variant: "destructive",
+        });
+      }
+    });
+  }, [toast]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      // REST: POST /api/auth/login
-      // Expected: { email, password }
-      // Response: { token, user: { id, username, avatar, rating } }
+      const response = await apiClient.login({
+        email: loginData.email,
+        password: loginData.password,
+      });
+
+      // Store token and user data
+      localStorage.setItem('token', response.token);
+      localStorage.setItem('user', JSON.stringify(response.user));
       
       toast({
         title: "تم تسجيل الدخول بنجاح",
@@ -32,12 +53,12 @@ const Auth = () => {
       });
       
       // Navigate to dashboard after successful login
-      // window.location.href = '/dashboard';
+      window.location.href = '/dashboard';
       
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "خطأ في تسجيل الدخول",
-        description: "يرجى التحقق من البيانات المدخلة",
+        description: error.message || "يرجى التحقق من البيانات المدخلة",
         variant: "destructive",
       });
     } finally {
@@ -60,9 +81,16 @@ const Auth = () => {
     setLoading(true);
 
     try {
-      // REST: POST /api/auth/register
-      // Expected: { username, email, password }
-      // Response: { token, user: { id, username, avatar, rating } }
+      const response = await apiClient.register({
+        username: registerData.username,
+        email: registerData.email,
+        password: registerData.password,
+        confirmPassword: registerData.confirmPassword,
+      });
+
+      // Store token and user data
+      localStorage.setItem('token', response.token);
+      localStorage.setItem('user', JSON.stringify(response.user));
       
       toast({
         title: "تم إنشاء الحساب بنجاح",
@@ -70,12 +98,12 @@ const Auth = () => {
       });
       
       // Navigate to dashboard after successful registration
-      // window.location.href = '/dashboard';
+      window.location.href = '/dashboard';
       
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "خطأ في إنشاء الحساب",
-        description: "يرجى المحاولة مرة أخرى",
+        description: error.message || "يرجى المحاولة مرة أخرى",
         variant: "destructive",
       });
     } finally {

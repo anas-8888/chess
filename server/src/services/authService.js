@@ -145,24 +145,20 @@ export async function registerUser(data) {
 }
 
 export async function authenticateUser(data) {
-  const { username, email, password } = data;
+  const { email, password } = data;
   
   if (!password) {
     throw new Error('كلمة المرور مطلوبة');
   }
 
-  // Support both username and email login
-  if (!username && !email) {
-    throw new Error('اسم المستخدم أو البريد الإلكتروني مطلوب');
+  if (!email) {
+    throw new Error('البريد الإلكتروني مطلوب');
   }
 
   // Build where clause for user lookup
-  const whereClause = {};
-  if (username) {
-    whereClause.username = username; // Keep original case and spaces
-  } else if (email) {
-    whereClause.email = email.toLowerCase();
-  }
+  const whereClause = {
+    email: email.toLowerCase()
+  };
 
   const user = await User.findOne({ where: whereClause });
   
