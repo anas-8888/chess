@@ -134,7 +134,7 @@ export const deleteFriend = asyncHandler(async (req, res) => {
   
   console.log('حذف صديق:', { userId, friendUserId: friendUserIdNumber });
   
-  const result = await friendService.removeFriend(userId, friendUserIdNumber);
+  const result = await friendService.deleteFriend(userId, friendUserIdNumber);
   
   console.log('نتيجة حذف الصديق:', result);
   

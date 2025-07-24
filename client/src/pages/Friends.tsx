@@ -8,16 +8,17 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { userService } from "@/services/userService";
 import { friendService } from "@/services/friendService";
-import { 
-  Home, 
-  Users, 
-  UserPlus, 
-  Search, 
-  Crown, 
-  Clock, 
+import {
+  Home,
+  Users,
+  UserPlus,
+  Search,
+  Crown,
+  Clock,
   MessageCircle,
   Check,
   X,
@@ -38,6 +39,8 @@ const Friends = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
   const [isLoadingIncoming, setIsLoadingIncoming] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [friendToDelete, setFriendToDelete] = useState<any>(null);
 
   // Mock data
   const mockFriends = [
@@ -124,8 +127,10 @@ const Friends = () => {
   const loadFriendsData = async () => {
     try {
       // REST: GET /api/friends -> fetch user's friends list
-      setFriends(mockFriends);
+      const friendsData = await friendService.getFriends();
+      setFriends(friendsData);
     } catch (error) {
+      console.error('Error loading friends:', error);
       toast({
         title: "خطأ",
         description: "لم نتمكن من تحميل قائمة الأصدقاء",
@@ -266,6 +271,40 @@ const Friends = () => {
     }
   };
 
+  const handleDeleteClick = (friend: any) => {
+    setFriendToDelete(friend);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!friendToDelete) return;
+    
+    try {
+      await friendService.removeFriend(friendToDelete.user_id.toString());
+      toast({
+        title: "تم إلغاء الصداقة",
+        description: `تم إلغاء الصداقة مع ${friendToDelete.username} بنجاح`
+      });
+      // Reload friends list
+      loadFriendsData();
+    } catch (error) {
+      console.error('Error removing friend:', error);
+      toast({
+        title: "خطأ",
+        description: "لم نتمكن من إلغاء الصداقة",
+        variant: "destructive"
+      });
+    } finally {
+      setShowDeleteConfirm(false);
+      setFriendToDelete(null);
+    }
+  };
+
+  const cancelDelete = () => {
+    setShowDeleteConfirm(false);
+    setFriendToDelete(null);
+  };
+
   const sendGameInvite = async (friendId: number, timeControl: string) => {
     try {
       // SOCKET: socket.emit('sendInvite', {
@@ -273,7 +312,7 @@ const Friends = () => {
       //   timeControl: timeControl,
       //   gameType: 'standard'
       // });
-      
+
       toast({
         title: "تم إرسال الدعوة",
         description: `تم إرسال دعوة لمباراة ${timeControl} دقائق`
@@ -294,10 +333,10 @@ const Friends = () => {
         title: "تم قبول الدعوة",
         description: "جاري الانتقال إلى المباراة..."
       });
-      
+
       // Remove from invites list
       setInvites(prev => prev.filter(inv => inv.id !== inviteId));
-      
+
       // Navigate to game
       setTimeout(() => {
         navigate("/game?id=invited_game_123");
@@ -338,6 +377,62 @@ const Friends = () => {
     }
   };
 
+  // Function to calculate “time ago” in Arabic, adjusting for UTC‑based DB datetimes and local Syria time
+  const arabicPlural = (value: number, forms: [string, string, string, string]): string => {
+    if (value === 1) return forms[0];
+    if (value === 2) return forms[1];
+    if (value >= 3 && value <= 10) return forms[2];
+    return forms[3];
+  };
+
+  const parseUTCDateString = (dateString: string): Date => {
+    // تحويل "YYYY-MM-DD HH:mm:ss" إلى ISO +Z كي تُعامل كـ UTC
+    let iso = dateString.replace(' ', 'T');
+    if (!/Z$/.test(iso)) {
+      iso += 'Z';
+    }
+    return new Date(iso);
+  };
+
+  const getTimeAgo = (dateString: string): string => {
+    const now = new Date();
+    const date = parseUTCDateString(dateString);
+    const diffMs = now.getTime() - date.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    const diffHrs = Math.floor(diffMin / 60);
+    const diffDays = Math.floor(diffHrs / 24);
+    const diffMonths = Math.floor(diffDays / 30);
+    const diffYears = Math.floor(diffDays / 365);
+
+    const minuteForms: [string, string, string, string] = ['دقيقة', 'دقيقتين', 'دقائق', 'دقيقة'];
+    const hourForms: [string, string, string, string] = ['ساعة', 'ساعتين', 'ساعات', 'ساعة'];
+    const dayForms: [string, string, string, string] = ['يوم', 'يومين', 'أيام', 'يوم'];
+    const monthForms: [string, string, string, string] = ['شهر', 'شهرين', 'أشهر', 'شهر'];
+    const yearForms: [string, string, string, string] = ['سنة', 'سنتين', 'سنوات', 'سنة'];
+
+    if (diffMin < 1) {
+      return 'الآن';
+    }
+    if (diffMin < 60) {
+      return `منذ ${diffMin} ${arabicPlural(diffMin, minuteForms)}`;
+    }
+    if (diffHrs < 24) {
+      const remMin = diffMin % 60;
+      const hrsPart = `منذ ${diffHrs} ${arabicPlural(diffHrs, hourForms)}`;
+      return remMin === 0
+        ? hrsPart
+        : `${hrsPart} و${remMin} ${arabicPlural(remMin, minuteForms)}`;
+    }
+    if (diffDays < 30) {
+      return `منذ ${diffDays} ${arabicPlural(diffDays, dayForms)}`;
+    }
+    if (diffMonths < 12) {
+      return `منذ ${diffMonths} ${arabicPlural(diffMonths, monthForms)}`;
+    }
+    return `منذ ${diffYears} ${arabicPlural(diffYears, yearForms)}`;
+  };
+
+
   const filteredFriends = friends.filter(friend =>
     friend.username.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -365,15 +460,18 @@ const Friends = () => {
 
       <div className="container mx-auto px-4 py-8">
         <Tabs defaultValue="friends" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="friends">إضافة أصدقاء </TabsTrigger>
-            <TabsTrigger value="invites">
-              الدعوات الواردة ({invites.length})
-            </TabsTrigger>
-            <TabsTrigger value="pending">
-              الدعوات المرسلة ({pendingInvites.length})
-            </TabsTrigger>
-          </TabsList>
+                   <TabsList className="grid w-full grid-cols-4">
+           <TabsTrigger value="friends">إضافة أصدقاء </TabsTrigger>
+           <TabsTrigger value="myfriends">
+             أصدقائي ({friends.length})
+           </TabsTrigger>
+           <TabsTrigger value="invites">
+             الدعوات الواردة ({invites.length})
+           </TabsTrigger>
+           <TabsTrigger value="pending">
+             الدعوات المرسلة ({pendingInvites.length})
+           </TabsTrigger>
+         </TabsList>
 
           <TabsContent value="friends" className="space-y-6">
             {/* Add Friend */}
@@ -396,7 +494,7 @@ const Friends = () => {
                     />
                   </div>
                 </div>
-                
+
                 {/* Search Results */}
                 {searchTerm.length >= 2 && (
                   <div className="mt-4 space-y-2">
@@ -423,13 +521,13 @@ const Friends = () => {
                                 </div>
                               </div>
                             </div>
-                                                         <Button 
-                               size="sm" 
-                               variant="outline"
-                               onClick={() => sendFriendRequest(user.user_id.toString())}
-                             >
-                               إرسال طلب صداقة
-                             </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => sendFriendRequest(user.user_id.toString())}
+                            >
+                              إرسال طلب صداقة
+                            </Button>
                           </div>
                         ))}
                       </div>
@@ -469,21 +567,21 @@ const Friends = () => {
                             <h4 className="font-medium">{request.from_user?.username}</h4>
                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
                               <Clock className="h-3 w-3" />
-                              <span>منذ {new Date(request.created_at).toLocaleDateString('ar-EG')}</span>
+                              <span>{getTimeAgo(request.created_at)}</span>
                             </div>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Button 
-                            size="sm" 
+                          <Button
+                            size="sm"
                             variant="chess"
                             onClick={() => acceptFriendRequest(request.id.toString())}
                           >
                             <Check className="h-3 w-3 ml-1" />
                             قبول
                           </Button>
-                          <Button 
-                            size="sm" 
+                          <Button
+                            size="sm"
                             variant="outline"
                             onClick={() => rejectFriendRequest(request.id.toString())}
                           >
@@ -501,11 +599,66 @@ const Friends = () => {
                   </div>
                 )}
               </CardContent>
-            </Card>
-          </TabsContent>
-          
+                         </Card>
+           </TabsContent>
 
-          <TabsContent value="invites" className="space-y-4">
+           <TabsContent value="myfriends" className="space-y-4">
+             {friends.length > 0 ? (
+               friends.map((friend) => (
+                 <Card key={friend.user_id}>
+                   <CardContent className="p-6">
+                     <div className="flex items-center justify-between">
+                       <div className="flex items-center gap-4">
+                         <Avatar className="h-10 w-10">
+                           <AvatarImage src={friend.thumbnail} />
+                           <AvatarFallback>{friend.username[0]}</AvatarFallback>
+                         </Avatar>
+                         <div className="space-y-1">
+                           <h3 className="font-semibold font-cairo">{friend.username}</h3>
+                           <div className="flex items-center gap-2">
+                             {getStatusBadge(friend.state, false)}
+                             <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                               <Crown className="h-3 w-3" />
+                               <span>{friend.rank}</span>
+                             </div>
+                           </div>
+                         </div>
+                       </div>
+
+                       <div className="flex items-center gap-2">
+                         <Button 
+                           variant="chess"
+                           size="sm"
+                           onClick={() => sendGameInvite(friend.user_id, selectedTime)}
+                         >
+                           <MessageCircle className="h-4 w-4 ml-1" />
+                           دعوة إلى اللعب
+                         </Button>
+                         <Button 
+                           variant="outline"
+                           size="sm"
+                           onClick={() => handleDeleteClick(friend)}
+                         >
+                           <X className="h-4 w-4 ml-1" />
+                           إلغاء الصداقة
+                         </Button>
+                       </div>
+                     </div>
+                   </CardContent>
+                 </Card>
+               ))
+             ) : (
+               <Card>
+                 <CardContent className="text-center py-12">
+                   <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                   <h3 className="text-lg font-semibold mb-2 font-cairo">لا توجد أصدقاء</h3>
+                   <p className="text-muted-foreground">لم تقم بإضافة أصدقاء بعد. ابحث عن أصدقاء جدد!</p>
+                 </CardContent>
+               </Card>
+             )}
+           </TabsContent>
+
+           <TabsContent value="invites" className="space-y-4">
             {invites.map((invite) => (
               <Card key={invite.id} className="border-primary/20">
                 <CardContent className="p-6">
@@ -527,7 +680,7 @@ const Friends = () => {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <Button 
+                      <Button
                         onClick={() => acceptInvite(invite.id)}
                         variant="chess"
                         size="sm"
@@ -535,7 +688,7 @@ const Friends = () => {
                         <Check className="h-4 w-4 ml-1" />
                         قبول
                       </Button>
-                      <Button 
+                      <Button
                         onClick={() => declineInvite(invite.id)}
                         variant="outline"
                         size="sm"
@@ -598,11 +751,36 @@ const Friends = () => {
                 </CardContent>
               </Card>
             )}
-          </TabsContent>
-        </Tabs>
-      </div>
-    </div>
-  );
-};
+                     </TabsContent>
+         </Tabs>
+       </div>
+
+       {/* Delete Confirmation Dialog */}
+       <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+         <DialogContent className="sm:max-w-md">
+           <DialogHeader>
+             <DialogTitle className="font-cairo">تأكيد إلغاء الصداقة</DialogTitle>
+             <DialogDescription className="font-cairo">
+               هل أنت متأكد من إلغاء الصداقة مع {friendToDelete?.username}؟
+               <br />
+               <span className="text-sm text-muted-foreground">
+                 لن تتمكن من التراجع عن هذا الإجراء.
+               </span>
+             </DialogDescription>
+           </DialogHeader>
+           <DialogFooter className="flex gap-2">
+             <Button variant="outline" onClick={cancelDelete}>
+               إلغاء
+             </Button>
+             <Button variant="destructive" onClick={confirmDelete}>
+               <X className="h-4 w-4 ml-1" />
+               إلغاء الصداقة
+             </Button>
+           </DialogFooter>
+         </DialogContent>
+       </Dialog>
+     </div>
+   );
+ };
 
 export default Friends;
