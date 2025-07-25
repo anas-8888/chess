@@ -165,6 +165,29 @@ class UserService {
       throw error;
     }
   }
+
+  // Get current user status
+  async getCurrentUserStatus(): Promise<{ user_id: string; state: string }> {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/users/status`, {
+        method: 'GET',
+        headers: {
+          ...this.getAuthHeaders(),
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'فشل في جلب حالة المستخدم');
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error getting current user status:', error);
+      throw error;
+    }
+  }
 }
 
 // Export singleton instance

@@ -437,3 +437,26 @@ export const getProfileWithStats = asyncHandler(async (req, res) => {
     res.status(500).json(formatError('خطأ في جلب إحصائيات المستخدم'));
   }
 });
+
+// Get current user status
+export const getCurrentUserStatus = asyncHandler(async (req, res) => {
+  const userId = req.user.user_id;
+
+  try {
+    const user = await User.findByPk(userId, {
+      attributes: ['user_id', 'state']
+    });
+
+    if (!user) {
+      return res.status(404).json(formatError('User not found'));
+    }
+
+    res.status(200).json({
+      user_id: user.user_id,
+      state: user.state
+    });
+  } catch (error) {
+    logger.error('Error getting current user status:', error);
+    res.status(500).json(formatError('Failed to get user status'));
+  }
+});

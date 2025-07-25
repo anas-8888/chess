@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useContext } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +12,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useToast } from "@/hooks/use-toast";
 import { userService } from "@/services/userService";
 import { friendService } from "@/services/friendService";
+import { inviteService } from "@/services/inviteService";
+import { authService } from "@/services/authService";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Home,
   Users,
@@ -41,69 +44,22 @@ const Friends = () => {
   const [isLoadingIncoming, setIsLoadingIncoming] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [friendToDelete, setFriendToDelete] = useState<any>(null);
+  const { user } = useAuth();
+  // مودال دعوة اللعب
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteTarget, setInviteTarget] = useState<any>(null);
+  const [playMethod, setPlayMethod] = useState<'phone' | 'physical_board' | null>(null);
+  const [selectedBoard, setSelectedBoard] = useState<string | null>(null);
+  const [isSendingInvite, setIsSendingInvite] = useState(false);
 
-  // Mock data
-  const mockFriends = [
-    {
-      id: 1,
-      username: "أحمد محمد",
-      avatar: "/placeholder.svg",
-      status: "online",
-      rating: 1245,
-      lastSeen: "الآن",
-      inGame: false
-    },
-    {
-      id: 2,
-      username: "سارة أحمد",
-      avatar: "/placeholder.svg",
-      status: "in-game",
-      rating: 1156,
-      lastSeen: "منذ 5 دقائق",
-      inGame: true,
-      currentGame: "ضد محمد علي"
-    },
-    {
-      id: 3,
-      username: "عمر خالد",
-      avatar: "/placeholder.svg",
-      status: "offline",
-      rating: 1332,
-      lastSeen: "منذ ساعتين",
-      inGame: false
-    }
+  // بيانات رقع وهمية
+  const fakeBoards = [
+    { id: '1', name: 'رقعة 1' },
+    { id: '2', name: 'رقعة 2' },
+    { id: '3', name: 'رقعة 3' },
   ];
 
-  const mockInvites = [
-    {
-      id: 1,
-      from: "ليلى أحمد",
-      fromAvatar: "/placeholder.svg",
-      timeControl: "10",
-      createdAt: "منذ دقيقتين",
-      expiresAt: "خلال 8 دقائق"
-    },
-    {
-      id: 2,
-      from: "يوسف محمد",
-      fromAvatar: "/placeholder.svg",
-      timeControl: "5",
-      createdAt: "منذ 5 دقائق",
-      expiresAt: "خلال 5 دقائق"
-    }
-  ];
-
-  const mockPendingInvites = [
-    {
-      id: 1,
-      to: "فاطمة سالم",
-      toAvatar: "/placeholder.svg",
-      timeControl: "15",
-      sentAt: "منذ 3 دقائق",
-      status: "pending"
-    }
-  ];
-
+  
   useEffect(() => {
     loadFriendsData();
     loadInvites();
@@ -141,10 +97,11 @@ const Friends = () => {
 
   const loadInvites = async () => {
     try {
-      // REST: GET /api/invites -> fetch pending invitations
-      setInvites(mockInvites);
-      setPendingInvites(mockPendingInvites);
+      const invitesData = await inviteService.getReceivedInvites();
+      setInvites(invitesData);
+      // TODO: Load pending invites from API when available
     } catch (error) {
+      console.error('Error loading invites:', error);
       toast({
         title: "خطأ",
         description: "لم نتمكن من تحميل الدعوات",
@@ -305,30 +262,78 @@ const Friends = () => {
     setFriendToDelete(null);
   };
 
-  const sendGameInvite = async (friendId: number, timeControl: string) => {
+  // دالة فتح المودال مع التحقق من حالة المستخدم الحالي
+  const handleOpenInviteModal = async (friend: any) => {
     try {
-      // SOCKET: socket.emit('sendInvite', {
-      //   toUserId: friendId,
-      //   timeControl: timeControl,
-      //   gameType: 'standard'
-      // });
-
-      toast({
-        title: "تم إرسال الدعوة",
-        description: `تم إرسال دعوة لمباراة ${timeControl} دقائق`
-      });
+      // جلب حالة المستخدم الحالي من الباك اند
+      const userStatus = await userService.getCurrentUserStatus();
+      if (userStatus.state !== 'online') {
+        toast({
+          title: 'يجب أن تكون متصلاً',
+          description: 'لا يمكنك إرسال دعوة وأنت غير متصل',
+          variant: 'destructive',
+        });
+        return;
+      }
+      setInviteTarget(friend);
+      setPlayMethod(null);
+      setSelectedBoard(null);
+      setShowInviteModal(true);
     } catch (error) {
+      console.error('Error checking user status:', error);
       toast({
-        title: "خطأ",
-        description: "لم نتمكن من إرسال الدعوة",
-        variant: "destructive"
+        title: 'خطأ',
+        description: 'فشل في التحقق من حالة الاتصال',
+        variant: 'destructive',
       });
     }
   };
 
-  const acceptInvite = async (inviteId: number) => {
+  // دالة إرسال الدعوة
+  const sendGameInviteToBackend = async () => {
+    if (!inviteTarget || !playMethod) return;
+    setIsSendingInvite(true);
     try {
-      // REST: POST /api/invites/${inviteId}/accept -> accept invitation
+      const body: any = {
+        to_user_id: inviteTarget.user_id.toString(), // تأكد أنه نص
+        game_type: 'friendly',
+        play_method: playMethod,
+        time_control: 10,
+      };
+      if (playMethod === 'physical_board') {
+        body.board_id = selectedBoard || fakeBoards[0].id;
+      }
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/invites/game`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authService.getToken()}`
+        },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'فشل في إرسال الدعوة');
+      }
+      toast({
+        title: 'تم إرسال الدعوة',
+        description: `تم إرسال دعوة لعب إلى ${inviteTarget.username}`,
+      });
+      setShowInviteModal(false);
+    } catch (error: any) {
+      toast({
+        title: 'خطأ',
+        description: error.message || 'فشل في إرسال الدعوة',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSendingInvite(false);
+    }
+  };
+
+  const acceptInvite = async (inviteId: string) => {
+    try {
+      await inviteService.acceptInvite(inviteId);
       toast({
         title: "تم قبول الدعوة",
         description: "جاري الانتقال إلى المباراة..."
@@ -342,6 +347,7 @@ const Friends = () => {
         navigate("/game?id=invited_game_123");
       }, 1000);
     } catch (error) {
+      console.error('Error accepting invite:', error);
       toast({
         title: "خطأ",
         description: "لم نتمكن من قبول الدعوة",
@@ -350,15 +356,16 @@ const Friends = () => {
     }
   };
 
-  const declineInvite = async (inviteId: number) => {
+  const declineInvite = async (inviteId: string) => {
     try {
-      // REST: POST /api/invites/${inviteId}/decline -> decline invitation
+      await inviteService.declineInvite(inviteId);
       setInvites(prev => prev.filter(inv => inv.id !== inviteId));
       toast({
         title: "تم رفض الدعوة",
         description: "تم رفض الدعوة بنجاح"
       });
     } catch (error) {
+      console.error('Error declining invite:', error);
       toast({
         title: "خطأ",
         description: "لم نتمكن من رفض الدعوة",
@@ -626,14 +633,16 @@ const Friends = () => {
                        </div>
 
                        <div className="flex items-center gap-2">
-                         <Button 
-                           variant="chess"
-                           size="sm"
-                           onClick={() => sendGameInvite(friend.user_id, selectedTime)}
-                         >
-                           <MessageCircle className="h-4 w-4 ml-1" />
-                           دعوة إلى اللعب
-                         </Button>
+                         {friend.state === 'online' && (
+                           <Button
+                             variant="chess"
+                             size="sm"
+                             onClick={() => handleOpenInviteModal(friend)}
+                           >
+                             <MessageCircle className="h-4 w-4 ml-1" />
+                             دعوة إلى اللعب
+                           </Button>
+                         )}
                          <Button 
                            variant="outline"
                            size="sm"
@@ -665,18 +674,22 @@ const Friends = () => {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <Avatar className="h-10 w-10">
-                        <AvatarImage src={invite.fromAvatar} />
-                        <AvatarFallback>{invite.from[0]}</AvatarFallback>
+                        <AvatarImage src={invite.fromUser?.thumbnail} />
+                        <AvatarFallback>{invite.fromUser?.username?.[0] || '?'}</AvatarFallback>
                       </Avatar>
-                      <div className="space-y-1">
-                        <h3 className="font-semibold font-cairo">{invite.from}</h3>
-                        <div className="text-sm text-muted-foreground">
-                          يدعوك لمباراة {invite.timeControl} دقائق • {invite.createdAt}
-                        </div>
-                        <div className="text-xs text-red-500">
-                          تنتهي {invite.expiresAt}
-                        </div>
-                      </div>
+                                             <div className="space-y-1">
+                         <h3 className="font-semibold font-cairo">{invite.fromUser?.username || 'مستخدم غير معروف'}</h3>
+                         <div className="flex items-center gap-2">
+                           {getStatusBadge(invite.fromUser?.state, false)}
+                           <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                             <Crown className="h-3 w-3" />
+                             <span>{invite.fromUser?.rank || 1200}</span>
+                           </div>
+                         </div>
+                         <div className="text-sm text-muted-foreground">
+                           {getTimeAgo(invite.date_time)}
+                         </div>
+                       </div>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -775,6 +788,58 @@ const Friends = () => {
              <Button variant="destructive" onClick={confirmDelete}>
                <X className="h-4 w-4 ml-1" />
                إلغاء الصداقة
+             </Button>
+           </DialogFooter>
+         </DialogContent>
+       </Dialog>
+
+       {/* Invite Modal */}
+       <Dialog open={showInviteModal} onOpenChange={setShowInviteModal}>
+         <DialogContent className="sm:max-w-md">
+           <DialogHeader>
+             <DialogTitle className="font-cairo">إرسال دعوة لعب</DialogTitle>
+             <DialogDescription className="font-cairo">
+               اختر طريقة اللعب:
+             </DialogDescription>
+           </DialogHeader>
+           <div className="flex flex-col gap-4">
+             <Button
+               variant={playMethod === 'phone' ? 'chess' : 'outline'}
+               onClick={() => setPlayMethod('phone')}
+             >
+               الهاتف
+             </Button>
+             <Button
+               variant={playMethod === 'physical_board' ? 'chess' : 'outline'}
+               onClick={() => setPlayMethod('physical_board')}
+             >
+               رقعة مادية
+             </Button>
+             {playMethod === 'physical_board' && (
+               <div className="mt-2">
+                 <label className="block mb-1 font-cairo">اختر الرقعة:</label>
+                 <select
+                   className="w-full border rounded p-2"
+                   value={selectedBoard || fakeBoards[0].id}
+                   onChange={e => setSelectedBoard(e.target.value)}
+                 >
+                   {fakeBoards.map(board => (
+                     <option key={board.id} value={board.id}>{board.name}</option>
+                   ))}
+                 </select>
+               </div>
+             )}
+           </div>
+           <DialogFooter className="flex gap-2 mt-4">
+             <Button variant="outline" onClick={() => setShowInviteModal(false)} disabled={isSendingInvite}>
+               إلغاء
+             </Button>
+             <Button
+               variant="chess"
+               onClick={sendGameInviteToBackend}
+               disabled={!playMethod || (playMethod === 'physical_board' && !selectedBoard) || isSendingInvite}
+             >
+               {isSendingInvite ? 'جاري الإرسال...' : 'إرسال الدعوة'}
              </Button>
            </DialogFooter>
          </DialogContent>

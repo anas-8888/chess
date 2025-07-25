@@ -37,12 +37,12 @@ export const listInvites = async (options = {}) => {
       {
         model: User,
         as: 'fromUser',
-        attributes: ['user_id', 'username', 'email'],
+        attributes: ['user_id', 'username', 'email', 'thumbnail', 'rank', 'state'],
       },
       {
         model: User,
         as: 'toUser',
-        attributes: ['user_id', 'username', 'email'],
+        attributes: ['user_id', 'username', 'email', 'thumbnail', 'rank', 'state'],
       },
     ],
     order: [['date_time', 'DESC']],
@@ -76,12 +76,12 @@ export const getInviteById = async id => {
       {
         model: User,
         as: 'fromUser',
-        attributes: ['user_id', 'username', 'email'],
+        attributes: ['user_id', 'username', 'email', 'thumbnail', 'rank', 'state'],
       },
       {
         model: User,
         as: 'toUser',
-        attributes: ['user_id', 'username', 'email'],
+        attributes: ['user_id', 'username', 'email', 'thumbnail', 'rank', 'state'],
       },
     ],
   });
@@ -258,8 +258,8 @@ export const createGameInvite = async (fromUserId, toUserId, gameType, playMetho
   expiresAt.setHours(expiresAt.getHours() + 1);
 
   const invite = await Invite.create({
-    from_user_id,
-    to_user_id,
+    from_user_id: fromUserId,
+    to_user_id: toUserId,
     status: 'pending',
     game_type: gameType,
     play_method: playMethod,

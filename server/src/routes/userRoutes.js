@@ -23,6 +23,7 @@ import {
   getSiteStats,
   updateUserStatus,
   getProfileWithStats,
+  getCurrentUserStatus,
 } from '../controllers/userController.js';
 import { getUserCourses } from '../controllers/courseController.js';
 import User from '../models/User.js';
@@ -47,6 +48,7 @@ router.use(protect);
 // Current user routes (no ID needed)
 router.get('/profile', getProfile);
 router.get('/profile/stats', getProfileWithStats);
+router.get('/status', getCurrentUserStatus);
 router.put('/profile', updateCurrentProfile);
 router.delete('/profile', deleteCurrentAccount);
 router.post('/change-password', changePasswordController);
