@@ -54,14 +54,13 @@ class InviteService {
   // Accept invite
   async acceptInvite(inviteId: string): Promise<void> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/invites/respond`, {
-        method: 'POST',
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/invites/${inviteId}/respond`, {
+        method: 'PUT',
         headers: {
           ...this.getAuthHeaders(),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          inviteId: inviteId,
           response: 'accept'
         }),
       });
@@ -79,14 +78,13 @@ class InviteService {
   // Decline invite
   async declineInvite(inviteId: string): Promise<void> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/invites/respond`, {
-        method: 'POST',
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/invites/${inviteId}/respond`, {
+        method: 'PUT',
         headers: {
           ...this.getAuthHeaders(),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          inviteId: inviteId,
           response: 'reject'
         }),
       });
@@ -97,6 +95,72 @@ class InviteService {
       }
     } catch (error) {
       console.error('Error declining invite:', error);
+      throw error;
+    }
+  }
+
+  // Start game from invite
+  async startGame(inviteId: string, playMethod: string = 'phone'): Promise<any> {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/invites/${inviteId}/start-game`, {
+        method: 'POST',
+        headers: {
+          ...this.getAuthHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          play_method: playMethod
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'فشل في بدء المباراة');
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error starting game:', error);
+      throw error;
+    }
+  }
+
+  // Get sent invites
+  async getSentInvites(): Promise<Invite[]> {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/invites/sent`, {
+        method: 'GET',
+        headers: this.getAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'فشل في جلب الدعوات المرسلة');
+      }
+
+      const data = await response.json();
+      return data.data || [];
+    } catch (error) {
+      console.error('Error fetching sent invites:', error);
+      throw error;
+    }
+  }
+
+  // Cancel sent invite
+  async cancelInvite(inviteId: string): Promise<void> {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/invites/${inviteId}`, {
+        method: 'DELETE',
+        headers: this.getAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'فشل في إلغاء الدعوة');
+      }
+    } catch (error) {
+      console.error('Error canceling invite:', error);
       throw error;
     }
   }

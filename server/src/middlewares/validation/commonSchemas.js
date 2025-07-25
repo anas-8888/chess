@@ -75,7 +75,6 @@ export const createGameInviteSchema = z.object({
 });
 
 export const respondToInviteSchema = z.object({
-  inviteId: z.number().int().positive('معرف الدعوة يجب أن يكون رقم موجب'),
   response: z.enum(['accept', 'reject'], { message: 'الرد غير صحيح' }),
 });
 

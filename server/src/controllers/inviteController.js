@@ -152,12 +152,18 @@ export const getActiveInvites = asyncHandler(async (req, res) => {
 export const respondToInvite = asyncHandler(async (req, res) => {
   const userId = req.user.user_id;
   
+  // تحويل id من string إلى number
+  const inviteId = parseInt(req.params.id);
+  if (isNaN(inviteId) || inviteId < 1) {
+    return res.status(400).json(formatError('معرف الدعوة غير صحيح'));
+  }
+  
   const validation = respondToInviteSchema.safeParse(req.body);
   if (!validation.success) {
     return res.status(400).json(formatError('بيانات الرد غير صحيحة', validation.error.errors));
   }
   
-  const { inviteId, response } = validation.data;
+  const { response } = validation.data;
   
   const result = await inviteService.respondToInvite(inviteId, userId, response);
   

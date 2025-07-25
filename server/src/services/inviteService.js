@@ -315,11 +315,14 @@ export const respondToInvite = async (inviteId, userId, response) => {
     throw new ValidationError('Not authorized to respond to this invite');
   }
   
-  if (!['accepted', 'rejected'].includes(response)) {
-    throw new ValidationError('Invalid response. Must be accepted or rejected');
+  if (!['accept', 'reject'].includes(response)) {
+    throw new ValidationError('Invalid response. Must be accept or reject');
   }
   
-  await invite.update({ status: response });
+  // تحويل accept/reject إلى accepted/rejected
+  const status = response === 'accept' ? 'accepted' : 'rejected';
+  
+  await invite.update({ status });
   
   return invite;
 };

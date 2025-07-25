@@ -99,7 +99,9 @@ const Friends = () => {
     try {
       const invitesData = await inviteService.getReceivedInvites();
       setInvites(invitesData);
-      // TODO: Load pending invites from API when available
+      // تحميل الدعوات المرسلة
+      const sentInvitesData = await inviteService.getSentInvites();
+      setPendingInvites(sentInvitesData);
     } catch (error) {
       console.error('Error loading invites:', error);
       toast({
@@ -374,6 +376,24 @@ const Friends = () => {
     }
   };
 
+  // دالة حذف الدعوة المرسلة
+  const cancelInvite = async (inviteId: string) => {
+    try {
+      await inviteService.cancelInvite(inviteId);
+      toast({
+        title: 'تم إلغاء الدعوة',
+        description: 'تم حذف الدعوة بنجاح',
+      });
+      setPendingInvites(prev => prev.filter(inv => inv.id !== inviteId));
+    } catch (error) {
+      toast({
+        title: 'خطأ',
+        description: error instanceof Error ? error.message : 'فشل في إلغاء الدعوة',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const getStatusBadge = (status: string, inGame?: boolean, currentGame?: string) => {
     if (status === "online" && !inGame) {
       return <Badge className="bg-green-500 text-white">متصل</Badge>;
@@ -439,6 +459,207 @@ const Friends = () => {
     return `منذ ${diffYears} ${arabicPlural(diffYears, yearForms)}`;
   };
 
+  // دالة معالجة أزرار الدعوة بناءً على الحالة
+  const renderInviteButtons = (invite: any) => {
+    const status = invite.status;
+    
+    switch (status) {
+      case 'pending':
+        return (
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => acceptInvite(invite.id)}
+              variant="chess"
+              size="sm"
+            >
+              <Check className="h-4 w-4 ml-1" />
+              قبول
+            </Button>
+            <Button
+              onClick={() => declineInvite(invite.id)}
+              variant="outline"
+              size="sm"
+            >
+              <X className="h-4 w-4 ml-1" />
+              رفض
+            </Button>
+          </div>
+        );
+      
+      case 'accepted':
+        return (
+          <Button
+            onClick={() => startGame(invite.id)}
+            variant="chess"
+            size="sm"
+          >
+            <MessageCircle className="h-4 w-4 ml-1" />
+            الدخول للمباراة
+          </Button>
+        );
+      
+      case 'rejected':
+      case 'expired':
+        return null; // لا توجد أزرار لهذه الحالات
+      
+      case 'game_started':
+        return (
+          <Button
+            onClick={() => joinGame(invite.game_id)}
+            variant="chess"
+            size="sm"
+          >
+            <MessageCircle className="h-4 w-4 ml-1" />
+            دخول المباراة
+          </Button>
+        );
+      
+      default:
+        return null;
+    }
+  };
+
+  // دالة بدء المباراة
+  const startGame = async (inviteId: string) => {
+    try {
+      const result = await inviteService.startGame(inviteId, 'phone');
+      
+      toast({
+        title: 'تم بدء المباراة',
+        description: 'جاري الانتقال إلى المباراة...',
+      });
+
+      // الانتقال إلى صفحة المباراة
+      setTimeout(() => {
+        navigate(`/game?id=${result.data?.gameId || 'new_game'}`);
+      }, 1000);
+
+    } catch (error) {
+      console.error('Error starting game:', error);
+      toast({
+        title: 'خطأ',
+        description: error instanceof Error ? error.message : 'فشل في بدء المباراة',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // دالة دخول المباراة
+  const joinGame = async (gameId: string) => {
+    try {
+      toast({
+        title: 'جاري الانتقال',
+        description: 'جاري الانتقال إلى المباراة...',
+      });
+
+      // الانتقال إلى صفحة المباراة
+      setTimeout(() => {
+        navigate(`/game?id=${gameId}`);
+      }, 1000);
+
+    } catch (error) {
+      console.error('Error joining game:', error);
+      toast({
+        title: 'خطأ',
+        description: 'فشل في دخول المباراة',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // دالة الحصول على نص الحالة
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return 'قيد الانتظار';
+      case 'accepted':
+        return 'مقبولة';
+      case 'rejected':
+        return 'مرفوضة';
+      case 'expired':
+        return 'منتهية';
+      case 'game_started':
+        return 'المباراة جارية';
+      default:
+        return 'غير معروفة';
+    }
+  };
+
+  // دالة الحصول على لون الحالة
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'accepted':
+        return 'bg-green-100 text-green-800';
+      case 'rejected':
+        return 'bg-red-100 text-red-800';
+      case 'expired':
+        return 'bg-gray-100 text-gray-800';
+      case 'game_started':
+        return 'bg-blue-100 text-blue-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  // دالة تصفية الدعوات المرسلة لعرض جميع الحالات
+  const getFilteredSentInvites = () => {
+    return pendingInvites.filter(invite => 
+      invite.status === 'pending' || 
+      invite.status === 'rejected' || 
+      invite.status === 'accepted' || 
+      invite.status === 'expired' || 
+      invite.status === 'game_started'
+    );
+  };
+
+  // دالة معالجة أزرار الدعوات المرسلة
+  const renderSentInviteButtons = (invite: any) => {
+    const status = invite.status;
+    
+    switch (status) {
+      case 'pending':
+        return (
+          <Button variant="ghost" size="sm" onClick={() => cancelInvite(invite.id)}>
+            <X className="h-4 w-4 ml-1" />
+            إلغاء
+          </Button>
+        );
+      
+      case 'accepted':
+        return (
+          <Button
+            onClick={() => startGame(invite.id)}
+            variant="chess"
+            size="sm"
+          >
+            <MessageCircle className="h-4 w-4 ml-1" />
+            الدخول للمباراة
+          </Button>
+        );
+      
+      case 'rejected':
+      case 'expired':
+        return null; // لا توجد أزرار لهذه الحالات
+      
+      case 'game_started':
+        return (
+          <Button
+            onClick={() => joinGame(invite.game_id)}
+            variant="chess"
+            size="sm"
+          >
+            <MessageCircle className="h-4 w-4 ml-1" />
+            دخول المباراة
+          </Button>
+        );
+      
+      default:
+        return null;
+    }
+  };
+
 
   const filteredFriends = friends.filter(friend =>
     friend.username.toLowerCase().includes(searchTerm.toLowerCase())
@@ -476,8 +697,8 @@ const Friends = () => {
              الدعوات الواردة ({invites.length})
            </TabsTrigger>
            <TabsTrigger value="pending">
-             الدعوات المرسلة ({pendingInvites.length})
-           </TabsTrigger>
+              الدعوات المرسلة ({getFilteredSentInvites().length})
+            </TabsTrigger>
          </TabsList>
 
           <TabsContent value="friends" className="space-y-6">
@@ -693,22 +914,10 @@ const Friends = () => {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <Button
-                        onClick={() => acceptInvite(invite.id)}
-                        variant="chess"
-                        size="sm"
-                      >
-                        <Check className="h-4 w-4 ml-1" />
-                        قبول
-                      </Button>
-                      <Button
-                        onClick={() => declineInvite(invite.id)}
-                        variant="outline"
-                        size="sm"
-                      >
-                        <X className="h-4 w-4 ml-1" />
-                        رفض
-                      </Button>
+                      <Badge variant="default" className={getStatusColor(invite.status)}>
+                        {getStatusText(invite.status)}
+                      </Badge>
+                      {renderInviteButtons(invite)}
                     </div>
                   </div>
                 </CardContent>
@@ -727,35 +936,35 @@ const Friends = () => {
           </TabsContent>
 
           <TabsContent value="pending" className="space-y-4">
-            {pendingInvites.map((invite) => (
+            {getFilteredSentInvites().map((invite) => (
               <Card key={invite.id}>
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <Avatar className="h-10 w-10">
-                        <AvatarImage src={invite.toAvatar} />
-                        <AvatarFallback>{invite.to[0]}</AvatarFallback>
+                        <AvatarImage src={invite.toUser?.thumbnail} />
+                        <AvatarFallback>{invite.toUser?.username?.[0]}</AvatarFallback>
                       </Avatar>
                       <div className="space-y-1">
-                        <h3 className="font-semibold font-cairo">{invite.to}</h3>
+                        <h3 className="font-semibold font-cairo">{invite.toUser?.username}</h3>
                         <div className="text-sm text-muted-foreground">
-                          دعوة لمباراة {invite.timeControl} دقائق • {invite.sentAt}
+                          {getTimeAgo(invite.date_time)}
                         </div>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <Badge variant="secondary">في الانتظار</Badge>
-                      <Button variant="ghost" size="sm">
-                        إلغاء
-                      </Button>
+                      <Badge variant="default" className={getStatusColor(invite.status)}>
+                        {getStatusText(invite.status)}
+                      </Badge>
+                      {renderSentInviteButtons(invite)}
                     </div>
                   </div>
                 </CardContent>
               </Card>
             ))}
 
-            {pendingInvites.length === 0 && (
+            {getFilteredSentInvites().length === 0 && (
               <Card>
                 <CardContent className="text-center py-12">
                   <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -764,7 +973,7 @@ const Friends = () => {
                 </CardContent>
               </Card>
             )}
-                     </TabsContent>
+          </TabsContent>
          </Tabs>
        </div>
 
