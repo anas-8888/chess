@@ -9,60 +9,95 @@ const Game = sequelize.define(
       primaryKey: true,
       autoIncrement: true,
     },
-    white_user_id: {
+    // الربط باللاعبين
+    white_player_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      references: {
-        model: 'users',
-        key: 'user_id'
-      }
     },
-    black_user_id: {
+    black_player_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      references: {
-        model: 'users',
-        key: 'user_id'
-      }
     },
+    started_by_user_id: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+    },
+    // نوع اللعبة وبيانات خاصة
+    game_type: {
+      type: DataTypes.ENUM('friend', 'ranked', 'ai', 'puzzle'),
+      allowNull: false,
+    },
+    ai_level: {
+      type: DataTypes.TINYINT,
+      allowNull: true,
+    },
+    puzzle_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    // الوقت (بالثواني)
+    initial_time: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+    },
+    white_time_left: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+    },
+    black_time_left: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+    },
+    // طريقة اللعب لكل لاعب
     white_play_method: {
-      type: DataTypes.ENUM('local', 'board'),
+      type: DataTypes.ENUM('phone', 'physical_board'),
       allowNull: false,
     },
     black_play_method: {
-      type: DataTypes.ENUM('local', 'board'),
+      type: DataTypes.ENUM('phone', 'physical_board'),
       allowNull: false,
     },
-    game_time: {
-      type: DataTypes.ENUM('5', '10', '15'),
-      defaultValue: '5',
+    // حالة الرقعة
+    current_fen: {
+      type: DataTypes.STRING(100),
       allowNull: false,
+      defaultValue: 'startpos',
     },
-    mode: {
-      type: DataTypes.ENUM('friend', 'random', 'ai', 'challenge'),
+    // حالة اللعبة والفائز
+    status: {
+      type: DataTypes.ENUM('waiting', 'active', 'ended'),
       allowNull: false,
+      defaultValue: 'waiting',
     },
-    white_rating_change: {
+    winner_id: {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
-    black_rating_change: {
+    // تغيّر التصنيف لكل طرف
+    white_rank_change: {
       type: DataTypes.INTEGER,
       allowNull: true,
     },
-    date_time: {
+    black_rank_change: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
+    // تتبُّع الأوقات
+    started_at: {
       type: DataTypes.DATE,
+      allowNull: false,
       defaultValue: DataTypes.NOW,
     },
-    deleted_at: {
+    ended_at: {
       type: DataTypes.DATE,
+      allowNull: true,
     },
   },
   {
     tableName: 'game',
-    timestamps: false,
-    paranoid: true,
-    deletedAt: 'deleted_at',
+    timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
   }
 );
 

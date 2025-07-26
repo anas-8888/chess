@@ -7,7 +7,6 @@ import CourseVideo from './CourseVideo.js';
 import Friend from './Friend.js';
 import Game from './Game.js';
 import GameMove from './GameMove.js';
-import GameChat from './GameChat.js';
 import Invite from './Invite.js';
 import Puzzle from './Puzzle.js';
 import UserBoard from './UserBoard.js';
@@ -26,8 +25,26 @@ export function setupAssociations() {
   Friend.belongsTo(User, { foreignKey: 'friend_user_id', as: 'friend' });
 
   // Game associations
-  User.hasMany(Game, { foreignKey: 'player1_id', as: 'player1Games' });
-  User.hasMany(Game, { foreignKey: 'player2_id', as: 'player2Games' });
+  User.hasMany(Game, { foreignKey: 'white_player_id', as: 'whiteGames' });
+  User.hasMany(Game, { foreignKey: 'black_player_id', as: 'blackGames' });
+  User.hasMany(Game, { foreignKey: 'started_by_user_id', as: 'startedGames' });
+  User.hasMany(Game, { foreignKey: 'winner_id', as: 'wonGames' });
+  
+  Game.belongsTo(User, { foreignKey: 'white_player_id', as: 'whitePlayer' });
+  Game.belongsTo(User, { foreignKey: 'black_player_id', as: 'blackPlayer' });
+  Game.belongsTo(User, { foreignKey: 'started_by_user_id', as: 'startedBy' });
+  Game.belongsTo(User, { foreignKey: 'winner_id', as: 'winner' });
+
+  // GameMove associations
+  Game.hasMany(GameMove, { foreignKey: 'game_id', as: 'moves' });
+  GameMove.belongsTo(Game, { foreignKey: 'game_id', as: 'game' });
+  
+  User.hasMany(GameMove, { foreignKey: 'player_id', as: 'moves' });
+  GameMove.belongsTo(User, { foreignKey: 'player_id', as: 'player' });
+
+  // Puzzle associations
+  Puzzle.hasMany(Game, { foreignKey: 'puzzle_id', as: 'games' });
+  Game.belongsTo(Puzzle, { foreignKey: 'puzzle_id', as: 'puzzle' });
 
   // Invite associations
   User.hasMany(Invite, { foreignKey: 'from_user_id', as: 'sentInvites' });
@@ -48,20 +65,6 @@ export function setupAssociations() {
 
   Course.hasMany(UserCourse, { foreignKey: 'course_id', as: 'enrollments' });
   UserCourse.belongsTo(Course, { foreignKey: 'course_id', as: 'course' });
-
-  // Game associations
-  Game.hasMany(GameMove, { foreignKey: 'gameId', as: 'moves' });
-  GameMove.belongsTo(Game, { foreignKey: 'gameId', as: 'game' });
-
-  Game.hasMany(GameChat, { foreignKey: 'gameId', as: 'chatMessages' });
-  GameChat.belongsTo(Game, { foreignKey: 'gameId', as: 'game' });
-
-  Game.belongsTo(User, { foreignKey: 'player1_id', as: 'player1' });
-  Game.belongsTo(User, { foreignKey: 'player2_id', as: 'player2' });
-
-  // GameChat associations
-  GameChat.belongsTo(User, { foreignKey: 'userId', as: 'user' });
-  User.hasMany(GameChat, { foreignKey: 'userId', as: 'chatMessages' });
 }
 
 // Export all models
@@ -74,7 +77,6 @@ export {
   Friend,
   Game,
   GameMove,
-  GameChat,
   Invite,
   Puzzle,
   UserBoard,

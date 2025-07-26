@@ -9,34 +9,45 @@ const GameMove = sequelize.define(
       primaryKey: true,
       autoIncrement: true,
     },
-    gameId: {
+    game_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      field: 'game_id',
+      references: {
+        model: 'game',
+        key: 'id'
+      }
     },
-    moveNum: {
+    move_number: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      field: 'move_num',
     },
-    move: {
-      type: DataTypes.STRING(10),
+    player_id: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: 'users',
+        key: 'user_id'
+      }
+    },
+    uci: {
+      type: DataTypes.STRING(8),
       allowNull: false,
     },
-    movedBy: {
-      type: DataTypes.ENUM('white', 'black'),
-      allowNull: false,
-      field: 'moved_by',
+    san: {
+      type: DataTypes.STRING(16),
+      allowNull: true,
     },
-
-
+    fen_after: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
   },
   {
     tableName: 'game_move',
-    timestamps: false,
-    paranoid: true,
-    deletedAt: 'deleted_at',
+    timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: false,
   }
 );
 
-export default GameMove;
+export default GameMove; 

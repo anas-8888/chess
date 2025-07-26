@@ -13,54 +13,11 @@ import Friend from './Friend.js';
 import Invite from './Invite.js';
 import UserBoard from './UserBoard.js';
 import UserCourse from './UserCourse.js';
+import { setupAssociations } from './associations.js';
 import logger from '../utils/logger.js';
 
-// تعريف العلاقات بين الموديلات
-// Course belongs to Category
-Course.belongsTo(Category, { foreignKey: 'category_id' });
-Category.hasMany(Course, { foreignKey: 'category_id' });
-
-// CourseVideo belongs to Course
-CourseVideo.belongsTo(Course, { foreignKey: 'course_id' });
-Course.hasMany(CourseVideo, { foreignKey: 'course_id' });
-
-// Game relationships
-Game.belongsTo(User, { as: 'whitePlayer', foreignKey: 'white_user_id' });
-Game.belongsTo(User, { as: 'blackPlayer', foreignKey: 'black_user_id' });
-User.hasMany(Game, { as: 'whiteGames', foreignKey: 'white_user_id' });
-User.hasMany(Game, { as: 'blackGames', foreignKey: 'black_user_id' });
-
-// GameMove belongs to Game
-GameMove.belongsTo(Game, { foreignKey: 'gameId' });
-Game.hasMany(GameMove, { foreignKey: 'gameId' });
-
-// Session belongs to User
-Session.belongsTo(User, { foreignKey: 'user_id' });
-User.hasMany(Session, { foreignKey: 'user_id' });
-
-// Friend relationships
-Friend.belongsTo(User, { as: 'user', foreignKey: 'user_id' });
-Friend.belongsTo(User, { as: 'friendUser', foreignKey: 'friend_user_id' });
-User.hasMany(Friend, { as: 'friends', foreignKey: 'user_id' });
-User.hasMany(Friend, { as: 'friendOf', foreignKey: 'friend_user_id' });
-
-// Invite relationships
-Invite.belongsTo(User, { as: 'FromUser', foreignKey: 'from_user_id' });
-Invite.belongsTo(User, { as: 'ToUser', foreignKey: 'to_user_id' });
-Invite.belongsTo(Game, { foreignKey: 'game_id' });
-User.hasMany(Invite, { as: 'SentInvites', foreignKey: 'from_user_id' });
-User.hasMany(Invite, { as: 'ReceivedInvites', foreignKey: 'to_user_id' });
-Game.hasMany(Invite, { foreignKey: 'game_id' });
-
-// UserBoard belongs to User
-UserBoard.belongsTo(User, { foreignKey: 'user_id' });
-User.hasMany(UserBoard, { foreignKey: 'user_id' });
-
-// UserCourse relationships
-UserCourse.belongsTo(User, { foreignKey: 'user_id' });
-UserCourse.belongsTo(Course, { foreignKey: 'course_id' });
-User.hasMany(UserCourse, { foreignKey: 'user_id' });
-Course.hasMany(UserCourse, { foreignKey: 'course_id' });
+// Setup associations
+setupAssociations();
 
 (async () => {
   try {
@@ -80,17 +37,49 @@ Course.hasMany(UserCourse, { foreignKey: 'course_id' });
     await sequelize.authenticate();
     logger.info('Database connection OK');
 
-    // 3) مزامنة الجداول عبر نفس الـ instance الذي تعرفت عليه موديلاتك
+    // 3) حذف الجداول الموجودة بالترتيب الصحيح لتجنب مشاكل foreign key
+    logger.info('Dropping existing tables...');
+    await sequelize.query('SET FOREIGN_KEY_CHECKS = 0;');
+    
+    // حذف الجداول بالترتيب العكسي للتبعيات
+    const tablesToDrop = [
+      'game_move',
+      'game', 
+      'session',
+      'friend',
+      'invite',
+      'user_board',
+      'user_course',
+      'course_video',
+      'course',
+      'puzzle',
+      'category',
+      'users'
+    ];
+    
+    for (const table of tablesToDrop) {
+      try {
+        await sequelize.query(`DROP TABLE IF EXISTS \`${table}\``);
+        logger.info(`Dropped table: ${table}`);
+      } catch (error) {
+        logger.warn(`Could not drop table ${table}:`, error.message);
+      }
+    }
+    
+    await sequelize.query('SET FOREIGN_KEY_CHECKS = 1;');
+    logger.info('All existing tables dropped');
+
+    // 4) مزامنة الجداول عبر نفس الـ instance الذي تعرفت عليه موديلاتك
     logger.info('Creating tables...');
-    await sequelize.sync({ alter: true });
+    await sequelize.sync({ force: true });
     logger.info('All tables created successfully');
 
-    // 4) إضافة البيانات الأولية
+    // 5) إضافة البيانات الأولية
     logger.info('Adding initial data...');
 
-    // إضافة الفئات
+    // إضافة الفئات أولاً
     logger.info('Adding categories...');
-    await Category.bulkCreate([
+    const categories = await Category.bulkCreate([
       { name: 'beginner' },
       { name: 'intermediate' },
       { name: 'pro' },
@@ -99,7 +88,7 @@ Course.hasMany(UserCourse, { foreignKey: 'course_id' });
 
     // إضافة المستخدمين
     logger.info('Adding users...');
-    await User.bulkCreate([
+    const users = await User.bulkCreate([
       {
         username: 'bashar',
         type: 'user',
@@ -135,45 +124,45 @@ Course.hasMany(UserCourse, { foreignKey: 'course_id' });
 
     // إضافة الدورات
     logger.info('Adding courses...');
-    await Course.bulkCreate([
+    const courses = await Course.bulkCreate([
       {
-        category_id: 1,
+        category_id: categories[0].id, // beginner category
         name: 'المبادئ الأساسية للشطرنج',
         details: 'دورة للمبتدئين',
         level: 'beginner',
-        image_url: 'https://i.imgur.com/basic.png',
-        hours: 2.5,
+        image_url: '/img/course1.jpg',
+        hours: 10.5,
       },
       {
-        category_id: 2,
-        name: 'تكنيكات متقدمة',
-        details: 'دورة للمتقدمين',
+        category_id: categories[1].id, // intermediate category
+        name: 'استراتيجيات متقدمة',
+        details: 'دورة للمتوسطين',
         level: 'intermediate',
-        image_url: 'https://i.imgur.com/advanced.png',
-        hours: 5.0,
+        image_url: '/img/course2.jpg',
+        hours: 15.0,
       },
     ]);
     logger.info('Courses added');
 
-    // إضافة فيديوهات الدورات
+    // إضافة الفيديوهات
     logger.info('Adding course videos...');
     await CourseVideo.bulkCreate([
       {
-        course_id: 1,
-        title: 'الدرس الأول: الحركات الأساسية',
-        url: 'https://youtu.be/example1',
+        course_id: courses[0].id,
+        title: 'مقدمة في الشطرنج',
+        url: 'https://example.com/video1.mp4',
         position: 1,
       },
       {
-        course_id: 1,
-        title: 'الدرس الثاني: فتحات بسيطة',
-        url: 'https://youtu.be/example2',
+        course_id: courses[0].id,
+        title: 'حركة القطع',
+        url: 'https://example.com/video2.mp4',
         position: 2,
       },
       {
-        course_id: 2,
-        title: 'الدرس الثالث: تكتيكات',
-        url: 'https://youtu.be/example3',
+        course_id: courses[1].id,
+        title: 'استراتيجيات الافتتاح',
+        url: 'https://example.com/video3.mp4',
         position: 1,
       },
     ]);
@@ -183,109 +172,26 @@ Course.hasMany(UserCourse, { foreignKey: 'course_id' });
     logger.info('Adding puzzles...');
     await Puzzle.bulkCreate([
       {
-        name: 'مفتاح الشعاع',
+        name: 'مات في حركتين',
         level: 'easy',
-        fen: 'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3',
-        details: 'ابدأ بتحريك الحصان للسيطرة على المركز',
-        solution: JSON.stringify(['Nxe5', 'Nxe5', 'd4', 'Nc6']),
+        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        details: 'أول لغز للمبتدئين',
+        solution: { moves: ['e4', 'e5', 'Qh5', 'Nc6', 'Bc4', 'Nf6', 'Qxf7#'] },
       },
       {
-        name: 'هجوم الفيل',
+        name: 'مات في ثلاث حركات',
         level: 'medium',
-        fen: 'rnbqkbnr/pp1ppppp/2p5/8/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 2',
-        details: 'استغل ضعف الملك في الطرف',
-        solution: JSON.stringify(['d4', 'cxd4', 'Nxd4', 'e5']),
+        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        details: 'لغز متوسط',
+        solution: { moves: ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Bxc6', 'dxc6', 'Nxe5'] },
       },
     ]);
     logger.info('Puzzles added');
 
-    // إضافة الأصدقاء
-    logger.info('Adding friends...');
-    await Friend.bulkCreate([
-      { user_id: 1, friend_user_id: 2, status: 'accepted' },
-      { user_id: 1, friend_user_id: 3, status: 'pending' },
-      { user_id: 2, friend_user_id: 3, status: 'accepted' },
-    ]);
-    logger.info('Friends added');
-
-    // إضافة الدعوات
-    logger.info('Adding invites...');
-    await Invite.bulkCreate([
-      { from_user_id: 1, to_user_id: 3, status: 'pending' },
-    ]);
-    logger.info('Invites added');
-
-    // إضافة لوحات المستخدمين
-    logger.info('Adding user boards...');
-    await UserBoard.bulkCreate([
-      {
-        user_id: 1,
-        serial_number: 'ABC123XYZ',
-        name: 'لوحة المكتب',
-        connected: true,
-      },
-      {
-        user_id: 2,
-        serial_number: 'DEF456UVW',
-        name: 'لوحة الغرفة',
-        connected: false,
-      },
-    ]);
-    logger.info('User boards added');
-
-    // إضافة دورات المستخدمين
-    logger.info('Adding user courses...');
-    await UserCourse.bulkCreate([
-      { user_id: 1, course_id: 1 },
-      { user_id: 1, course_id: 2 },
-    ]);
-    logger.info('User courses added');
-
-    // إضافة لعبة
-    logger.info('Adding games...');
-    await Game.bulkCreate([
-      {
-        white_user_id: 1,
-        black_user_id: 2,
-        white_play_method: 'local',
-        black_play_method: 'board',
-        game_time: '5',
-        mode: 'friend',
-      },
-    ]);
-    logger.info('Games added');
-
-    // إضافة حركات اللعبة
-    logger.info('Adding game moves...');
-    await GameMove.bulkCreate([
-      { gameId: 1, moveNum: 1, move: 'e4', movedBy: 'white' },
-      { gameId: 1, moveNum: 1, move: 'e5', movedBy: 'black' },
-      { gameId: 1, moveNum: 2, move: 'Nf3', movedBy: 'white' },
-      { gameId: 1, moveNum: 2, move: 'Nc6', movedBy: 'black' },
-    ]);
-    logger.info('Game moves added');
-
-    // إضافة جلسة
-    logger.info('Adding sessions...');
-    await Session.bulkCreate([
-      {
-        id: 'sess-uuid-1234',
-        user_id: 1,
-        ip_address: '127.0.0.1',
-        user_agent: 'Mozilla/5.0 (Windows NT)',
-        expires_at: new Date('2025-07-01 00:00:00'),
-        last_activity: new Date('2025-06-27 10:00:00'),
-      },
-    ]);
-    logger.info('Sessions added');
-
-
-
-    logger.info('Database initialization completed successfully!');
+    logger.info('Database initialization completed successfully');
     process.exit(0);
-  } catch (err) {
-    logger.error('Error syncing database:', err);
-    logger.error('Error details:', err.message);
+  } catch (error) {
+    logger.error('Database initialization failed:', error);
     process.exit(1);
   }
 })();

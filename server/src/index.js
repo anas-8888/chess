@@ -43,15 +43,10 @@ scheduleSessionCleanup();
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import courseRoutes from './routes/courseRoutes.js';
-import gameRoutes from './routes/gameRoutes.js';
 import puzzleRoutes from './routes/puzzleRoutes.js';
 import inviteRoutes from './routes/inviteRoutes.js';
 import userBoardRoutes from './routes/userBoardRoutes.js';
 import friendRoutes from './routes/friendRoutes.js';
-import matchmakingRoutes from './routes/matchmakingRoutes.js';
-import challengeRoutes from './routes/challengeRoutes.js';
-import leaderboardRoutes from './routes/leaderboardRoutes.js';
-import historyRoutes from './routes/historyRoutes.js';
 
 const app = express();
 
@@ -355,15 +350,10 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/courses', courseRoutes);
-app.use('/api/games', gameRoutes);
 app.use('/api/puzzles', puzzleRoutes);
 app.use('/api/invites', inviteRoutes);
 app.use('/api/boards', userBoardRoutes);
 app.use('/api/friends', friendRoutes);
-app.use('/api/matchmaking', matchmakingRoutes);
-app.use('/api/challenges', challengeRoutes);
-app.use('/api/leaderboard', leaderboardRoutes);
-app.use('/api/history', historyRoutes);
 
 // Stats endpoint
 app.get('/api/stats', async (req, res) => {

@@ -29,19 +29,9 @@ const io = new Server(server, {
 import { setGlobalIO } from './src/index.js';
 setGlobalIO(io);
 
-// Import and initialize game socket namespace
-import { initGameSocket } from './src/socket/gameSocket.js';
-initGameSocket(io);
-
 // Import and initialize friend socket namespace
 import { initFriendSocket } from './src/socket/friendSocket.js';
 initFriendSocket(io);
-
-// Import new cleanup service
-import { startCleanupScheduler } from './src/services/cleanupService.js';
-
-// بدء خدمة التنظيف المحسنة
-startCleanupScheduler();
 
 // اختبار الاتصال بقاعدة البيانات قبل تشغيل السيرفر
 async function startServer() {
