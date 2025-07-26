@@ -52,7 +52,7 @@ class InviteService {
   }
 
   // Accept invite with validation
-  async acceptInvite(inviteId: string): Promise<void> {
+  async acceptInvite(inviteId: string, playMethod: string = 'phone'): Promise<any> {
     try {
       const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/invites/${inviteId}/accept-validated`, {
         method: 'POST',
@@ -60,12 +60,18 @@ class InviteService {
           ...this.getAuthHeaders(),
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          play_method: playMethod
+        }),
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || 'فشل في قبول الدعوة');
       }
+
+      const data = await response.json();
+      return data;
     } catch (error) {
       console.error('Error accepting invite:', error);
       throw error;

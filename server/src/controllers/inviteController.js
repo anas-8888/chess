@@ -316,15 +316,19 @@ export const getPendingInvitesForDashboard = asyncHandler(async (req, res) => {
 export const acceptInvite = asyncHandler(async (req, res) => {
   const userId = req.user.user_id;
   const inviteId = parseInt(req.params.id);
+  const { play_method = 'phone' } = req.body;
   
   if (isNaN(inviteId) || inviteId < 1) {
     return res.status(400).json(formatError('معرف الدعوة غير صحيح'));
   }
   
   try {
-    const result = await inviteService.acceptInvite(inviteId, userId);
+    const result = await inviteService.acceptInvite(inviteId, userId, play_method);
     
-    return res.status(200).json(formatResponse(result, 'تم قبول الدعوة بنجاح'));
+    return res.status(200).json(formatResponse({
+      invite: result.invite,
+      game: result.game
+    }, 'تم قبول الدعوة وإنشاء اللعبة بنجاح'));
   } catch (error) {
     console.error('خطأ في قبول الدعوة:', error);
     
@@ -334,7 +338,8 @@ export const acceptInvite = asyncHandler(async (req, res) => {
         error.message.includes('انتهت صلاحية') ||
         error.message.includes('يجب أن تكون متصلاً') ||
         error.message.includes('يجب أن يكون مرسل الدعوة متصلاً') ||
-        error.message.includes('يجب أن تكون صديقاً')) {
+        error.message.includes('يجب أن تكون صديقاً') ||
+        error.message.includes('طريقة اللعب غير صحيحة')) {
       return res.status(400).json(formatError(error.message));
     }
     

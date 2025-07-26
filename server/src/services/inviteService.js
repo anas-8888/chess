@@ -373,9 +373,10 @@ export const validateInviteAcceptance = async (inviteId, userId) => {
  * Accept invite with validation
  * @param {number} inviteId - Invite ID
  * @param {number} userId - User ID
- * @returns {Object} Updated invite
+ * @param {string} playMethod - Play method chosen by the recipient (phone/physical_board)
+ * @returns {Object} Updated invite and created game
  */
-export const acceptInvite = async (inviteId, userId) => {
+export const acceptInvite = async (inviteId, userId, playMethod = 'phone') => {
   // First validate the invite acceptance conditions
   const validation = await validateInviteAcceptance(inviteId, userId);
   
@@ -383,11 +384,70 @@ export const acceptInvite = async (inviteId, userId) => {
     throw new ValidationError(validation.message);
   }
   
-  // If validation passes, accept the invite
-  const invite = await Invite.findByPk(inviteId);
-  await invite.update({ status: 'accepted' });
+  // Validate play method
+  if (!['phone', 'physical_board'].includes(playMethod)) {
+    throw new ValidationError('طريقة اللعب غير صحيحة');
+  }
   
-  return invite;
+  // Get the invite with sender information
+  const invite = await Invite.findByPk(inviteId, {
+    include: [
+      {
+        model: User,
+        as: 'fromUser',
+        attributes: ['user_id', 'username'],
+      },
+      {
+        model: User,
+        as: 'toUser',
+        attributes: ['user_id', 'username'],
+      },
+    ],
+  });
+  
+  // Create a new game
+  const Game = await import('../models/Game.js');
+  
+  const game = await Game.default.create({
+    white_player_id: invite.from_user_id, // المرسل
+    black_player_id: invite.to_user_id,   // المستقبل
+    started_by_user_id: invite.from_user_id, // المرسل هو من بدأ اللعبة
+    game_type: 'friend',
+    ai_level: null,
+    puzzle_id: null,
+    initial_time: 600, // 10 دقائق = 600 ثانية
+    white_time_left: 600,
+    black_time_left: 600,
+    white_play_method: invite.play_method, // من الدعوة
+    black_play_method: playMethod, // من اختيار المستقبل
+    current_fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+    status: 'waiting',
+    winner_id: null,
+    white_rank_change: null,
+    black_rank_change: null,
+    started_at: new Date(),
+    ended_at: null,
+  });
+  
+  // Update invite status to game_started
+  await invite.update({ 
+    status: 'game_started',
+    game_id: game.id
+  });
+  
+  console.log('تم إنشاء لعبة جديدة من الدعوة:', {
+    gameId: game.id,
+    whitePlayer: invite.fromUser.username,
+    blackPlayer: invite.toUser.username,
+    whitePlayMethod: invite.play_method,
+    blackPlayMethod: playMethod,
+    gameType: 'friend'
+  });
+  
+  return {
+    invite: invite,
+    game: game
+  };
 };
 
 /**

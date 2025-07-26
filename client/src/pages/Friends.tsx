@@ -652,12 +652,15 @@ const Friends = () => {
     
     setIsAcceptingInvite(true);
     try {
-      // تحديث حالة الدعوة إلى مقبولة
-      await inviteService.acceptInvite(selectedInvite.id);
+      // تحديد طريقة اللعب
+      const playMethod = acceptPlayMethod === 'physical_board' ? 'physical_board' : 'phone';
+      
+      // قبول الدعوة وإنشاء اللعبة
+      const result = await inviteService.acceptInvite(selectedInvite.id, playMethod);
       
       toast({
         title: "تم قبول الدعوة",
-        description: "تم قبول الدعوة بنجاح"
+        description: "تم قبول الدعوة وإنشاء اللعبة بنجاح"
       });
 
       // إزالة الدعوة من القائمة

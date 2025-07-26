@@ -52,6 +52,10 @@ export function setupAssociations() {
   Invite.belongsTo(User, { foreignKey: 'from_user_id', as: 'fromUser' });
   Invite.belongsTo(User, { foreignKey: 'to_user_id', as: 'toUser' });
 
+  // Game-Invite association
+  Invite.belongsTo(Game, { foreignKey: 'game_id', as: 'game' });
+  Game.hasOne(Invite, { foreignKey: 'game_id', as: 'invite' });
+
   User.hasMany(UserBoard, { foreignKey: 'user_id', as: 'boards' });
   User.hasMany(UserCourse, { foreignKey: 'user_id', as: 'enrolledCourses' });
 
