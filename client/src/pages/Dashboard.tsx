@@ -12,11 +12,17 @@ import {
   Clock, 
   User,
   Settings,
-  LogOut
+  LogOut,
+  Check,
+  X,
+  MessageCircle,
+  Crown
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { userService, UserProfile } from '@/services/userService';
+import { inviteService } from '@/services/inviteService';
+import { useNavigate } from 'react-router-dom';
 
 
 interface GameInvite {
@@ -48,9 +54,10 @@ interface ActiveGame {
 const Dashboard = () => {
   const { user: authUser, logout } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [user, setUser] = useState<UserProfile | null>(null);
 
-  const [invites, setInvites] = useState<GameInvite[]>([]);
+  const [invites, setInvites] = useState<any[]>([]);
   const [activeGames, setActiveGames] = useState<ActiveGame[]>([]);
   const [loading, setLoading] = useState(true);
   const { updateStatus } = useAuth();
@@ -68,6 +75,14 @@ const Dashboard = () => {
         }
         const userProfile = await userService.getCurrentUserProfile();
         setUser(userProfile);
+        
+        // تحميل الدعوات الواردة
+        try {
+          const invitesData = await inviteService.getReceivedInvites();
+          setInvites(invitesData);
+        } catch (error) {
+          console.error('Error loading invites:', error);
+        }
       } catch (error: any) {
         console.error('Error fetching user data:', error);
         toast({
@@ -109,22 +124,251 @@ const Dashboard = () => {
     window.location.href = '/game';
   };
 
-  const handleAcceptInvite = (inviteId: string) => {
+  const handleAcceptInvite = async (inviteId: string) => {
     // Update status to in-game when accepting invite
     updateStatus('in-game');
-    // TODO: Implement accept invite logic
-    toast({
-      title: "تم قبول الدعوة",
-      description: "جاري الانتقال إلى اللعبة...",
-    });
+    await acceptInvite(inviteId);
   };
 
-  const handleDeclineInvite = (inviteId: string) => {
-    // TODO: Implement decline invite logic
-    toast({
-      title: "تم رفض الدعوة",
-      description: "تم إرسال الرد إلى المرسل",
-    });
+  const handleDeclineInvite = async (inviteId: string) => {
+    try {
+      await inviteService.declineInvite(inviteId);
+      setInvites(prev => prev.filter(inv => inv.id !== inviteId));
+      toast({
+        title: "تم رفض الدعوة",
+        description: "تم رفض الدعوة بنجاح"
+      });
+    } catch (error) {
+      console.error('Error declining invite:', error);
+      toast({
+        title: "خطأ",
+        description: "لم نتمكن من رفض الدعوة",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const acceptInvite = async (inviteId: string) => {
+    try {
+      await inviteService.acceptInvite(inviteId);
+      toast({
+        title: "تم قبول الدعوة",
+        description: "جاري الانتقال إلى المباراة..."
+      });
+
+      // Remove from invites list
+      setInvites(prev => prev.filter(inv => inv.id !== inviteId));
+
+      // Navigate to game
+      setTimeout(() => {
+        navigate("/game?id=invited_game_123");
+      }, 1000);
+    } catch (error) {
+      console.error('Error accepting invite:', error);
+      toast({
+        title: "خطأ",
+        description: "لم نتمكن من قبول الدعوة",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // دالة بدء المباراة
+  const startGame = async (inviteId: string) => {
+    try {
+      const result = await inviteService.startGame(inviteId, 'phone');
+      
+      toast({
+        title: 'تم بدء المباراة',
+        description: 'جاري الانتقال إلى المباراة...',
+      });
+
+      // الانتقال إلى صفحة المباراة
+      setTimeout(() => {
+        navigate(`/game?id=${result.data?.gameId || 'new_game'}`);
+      }, 1000);
+
+    } catch (error) {
+      console.error('Error starting game:', error);
+      toast({
+        title: 'خطأ',
+        description: error instanceof Error ? error.message : 'فشل في بدء المباراة',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // دالة دخول المباراة
+  const joinGame = async (gameId: string) => {
+    try {
+      toast({
+        title: 'جاري الانتقال',
+        description: 'جاري الانتقال إلى المباراة...',
+      });
+
+      // الانتقال إلى صفحة المباراة
+      setTimeout(() => {
+        navigate(`/game?id=${gameId}`);
+      }, 1000);
+
+    } catch (error) {
+      console.error('Error joining game:', error);
+      toast({
+        title: 'خطأ',
+        description: 'فشل في دخول المباراة',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // دالة الحصول على نص الحالة
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return 'قيد الانتظار';
+      case 'accepted':
+        return 'مقبولة';
+      case 'rejected':
+        return 'مرفوضة';
+      case 'expired':
+        return 'منتهية';
+      case 'game_started':
+        return 'المباراة جارية';
+      default:
+        return 'غير معروفة';
+    }
+  };
+
+  // دالة الحصول على لون الحالة
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'accepted':
+        return 'bg-green-100 text-green-800';
+      case 'rejected':
+        return 'bg-red-100 text-red-800';
+      case 'expired':
+        return 'bg-gray-100 text-gray-800';
+      case 'game_started':
+        return 'bg-blue-100 text-blue-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  // دالة معالجة أزرار الدعوة بناءً على الحالة
+  const renderInviteButtons = (invite: any) => {
+    const status = invite.status;
+    
+    switch (status) {
+      case 'pending':
+        return (
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => acceptInvite(invite.id)}
+              variant="chess"
+              size="sm"
+            >
+              <Check className="h-4 w-4 ml-1" />
+              قبول
+            </Button>
+            <Button
+              onClick={() => handleDeclineInvite(invite.id)}
+              variant="outline"
+              size="sm"
+            >
+              <X className="h-4 w-4 ml-1" />
+              رفض
+            </Button>
+          </div>
+        );
+      
+      case 'accepted':
+        return (
+          <Button
+            onClick={() => startGame(invite.id)}
+            variant="chess"
+            size="sm"
+          >
+            <MessageCircle className="h-4 w-4 ml-1" />
+            الدخول للمباراة
+          </Button>
+        );
+      
+      case 'rejected':
+      case 'expired':
+        return null; // لا توجد أزرار لهذه الحالات
+      
+      case 'game_started':
+        return (
+          <Button
+            onClick={() => joinGame(invite.game_id)}
+            variant="chess"
+            size="sm"
+          >
+            <MessageCircle className="h-4 w-4 ml-1" />
+            دخول المباراة
+          </Button>
+        );
+      
+      default:
+        return null;
+    }
+  };
+
+  // Function to calculate "time ago" in Arabic
+  const arabicPlural = (value: number, forms: [string, string, string, string]): string => {
+    if (value === 1) return forms[0];
+    if (value === 2) return forms[1];
+    if (value >= 3 && value <= 10) return forms[2];
+    return forms[3];
+  };
+
+  const parseUTCDateString = (dateString: string): Date => {
+    let iso = dateString.replace(' ', 'T');
+    if (!/Z$/.test(iso)) {
+      iso += 'Z';
+    }
+    return new Date(iso);
+  };
+
+  const getTimeAgo = (dateString: string): string => {
+    const now = new Date();
+    const date = parseUTCDateString(dateString);
+    const diffMs = now.getTime() - date.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    const diffHrs = Math.floor(diffMin / 60);
+    const diffDays = Math.floor(diffHrs / 24);
+    const diffMonths = Math.floor(diffDays / 30);
+    const diffYears = Math.floor(diffDays / 365);
+
+    const minuteForms: [string, string, string, string] = ['دقيقة', 'دقيقتين', 'دقائق', 'دقيقة'];
+    const hourForms: [string, string, string, string] = ['ساعة', 'ساعتين', 'ساعات', 'ساعة'];
+    const dayForms: [string, string, string, string] = ['يوم', 'يومين', 'أيام', 'يوم'];
+    const monthForms: [string, string, string, string] = ['شهر', 'شهرين', 'أشهر', 'شهر'];
+    const yearForms: [string, string, string, string] = ['سنة', 'سنتين', 'سنوات', 'سنة'];
+
+    if (diffMin < 1) {
+      return 'الآن';
+    }
+    if (diffMin < 60) {
+      return `منذ ${diffMin} ${arabicPlural(diffMin, minuteForms)}`;
+    }
+    if (diffHrs < 24) {
+      const remMin = diffMin % 60;
+      const hrsPart = `منذ ${diffHrs} ${arabicPlural(diffHrs, hourForms)}`;
+      return remMin === 0
+        ? hrsPart
+        : `${hrsPart} و${remMin} ${arabicPlural(remMin, minuteForms)}`;
+    }
+    if (diffDays < 30) {
+      return `منذ ${diffDays} ${arabicPlural(diffDays, dayForms)}`;
+    }
+    if (diffMonths < 12) {
+      return `منذ ${diffMonths} ${arabicPlural(diffMonths, monthForms)}`;
+    }
+    return `منذ ${diffYears} ${arabicPlural(diffYears, yearForms)}`;
   };
 
   const handleLogout = async () => {
@@ -274,7 +518,8 @@ const Dashboard = () => {
                     </CardContent>
                   </Card>
 
-                  <Card className="hover:shadow-elegant transition-shadow">
+                  <Card className="hover:shadow-elegant transition-shadow cursor-pointer"
+                        onClick={() => window.location.href = '/connect-board'}>
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <Trophy className="w-5 h-5 text-primary-glow" />
@@ -285,8 +530,8 @@ const Dashboard = () => {
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <Button variant="outline" className="w-full" disabled>
-                        قريباً
+                      <Button variant="outline" className="w-full">
+                        اتصال باللوحة
                       </Button>
                     </CardContent>
                   </Card>
@@ -344,7 +589,7 @@ const Dashboard = () => {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Mail className="w-5 h-5" />
-                    الدعوات
+                    الدعوات الواردة ({invites.length})
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -352,37 +597,44 @@ const Dashboard = () => {
                     <div key={invite.id} className="border rounded-lg p-3">
                       <div className="flex items-center gap-3 mb-3">
                         <Avatar className="h-8 w-8">
-                          <AvatarImage src={invite.from_user.avatar} />
-                          <AvatarFallback>{invite.from_user.username.charAt(0)}</AvatarFallback>
+                          <AvatarImage src={invite.fromUser?.thumbnail} />
+                          <AvatarFallback>{invite.fromUser?.username?.[0] || '?'}</AvatarFallback>
                         </Avatar>
                         <div className="flex-1">
-                          <p className="font-medium text-sm">{invite.from_user.username}</p>
+                          <p className="font-medium text-sm">{invite.fromUser?.username || 'مستخدم غير معروف'}</p>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <Clock className="w-3 h-3" />
-                            {invite.time_control} دقيقة
+                            <Crown className="w-3 h-3" />
+                            <span>{invite.fromUser?.rank || 1200}</span>
+                            <span>•</span>
+                            <span>{getTimeAgo(invite.date_time)}</span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="default" className={getStatusColor(invite.status)}>
+                              {getStatusText(invite.status)}
+                            </Badge>
                           </div>
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        <Button 
-                          size="sm" 
-                          variant="chess"
-                          className="flex-1 text-xs"
-                          onClick={() => handleAcceptInvite(invite.id)}
-                        >
-                          قبول
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          className="flex-1 text-xs"
-                          onClick={() => handleDeclineInvite(invite.id)}
-                        >
-                          رفض
-                        </Button>
+                        {renderInviteButtons(invite)}
                       </div>
                     </div>
                   ))}
+                </CardContent>
+              </Card>
+            )}
+
+            {invites.length === 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Mail className="w-5 h-5" />
+                    الدعوات الواردة
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="text-center py-8">
+                  <Mail className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">لا توجد دعوات جديدة</p>
                 </CardContent>
               </Card>
             )}
