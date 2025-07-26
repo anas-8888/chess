@@ -3,10 +3,13 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Crown, Users, Zap, Trophy, Globe, Puzzle, MessageCircle } from "lucide-react";
+import { Crown, Users, Zap, Trophy, Globe, Puzzle, MessageCircle, User } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 import chessHero from "@/assets/chess-hero.jpg";
 
 const Index = () => {
+  const { isAuthenticated, user } = useAuth();
+
   return (
     <div className="min-h-screen bg-gradient-subtle" dir="rtl">
       {/* Header */}
@@ -18,12 +21,25 @@ const Index = () => {
               <h1 className="text-2xl font-bold text-foreground font-cairo">شطرنج ذكي</h1>
             </div>
             <div className="flex items-center gap-4">
-              <Link to="/auth">
-                <Button variant="ghost">تسجيل دخول</Button>
-              </Link>
-              <Link to="/auth">
-                <Button variant="chess">انضم الآن</Button>
-              </Link>
+              {isAuthenticated ? (
+                // Show dashboard button for authenticated users
+                <Link to="/dashboard">
+                  <Button variant="chess" className="flex items-center gap-2">
+                    <User className="h-4 w-4" />
+                    لوحة التحكم
+                  </Button>
+                </Link>
+              ) : (
+                // Show login and register buttons for non-authenticated users
+                <>
+                  <Link to="/auth?tab=login">
+                    <Button variant="ghost">تسجيل دخول</Button>
+                  </Link>
+                  <Link to="/auth?tab=register">
+                    <Button variant="chess">انضم الآن</Button>
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </div>

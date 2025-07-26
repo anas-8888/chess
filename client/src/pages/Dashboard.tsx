@@ -17,7 +17,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { userService, UserProfile } from '@/services/userService';
-import { friendService, Friend as FriendType } from '@/services/friendService';
+
 
 interface GameInvite {
   id: string;
@@ -49,7 +49,7 @@ const Dashboard = () => {
   const { user: authUser, logout } = useAuth();
   const { toast } = useToast();
   const [user, setUser] = useState<UserProfile | null>(null);
-  const [friends, setFriends] = useState<FriendType[]>([]);
+
   const [invites, setInvites] = useState<GameInvite[]>([]);
   const [activeGames, setActiveGames] = useState<ActiveGame[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,14 +68,6 @@ const Dashboard = () => {
         }
         const userProfile = await userService.getCurrentUserProfile();
         setUser(userProfile);
-        const friendsData = await friendService.getFriends();
-        // تأكد من أن البيانات تأتي بالشكل الصحيح
-        if (Array.isArray(friendsData)) {
-          setFriends(friendsData);
-        } else {
-          console.error('Unexpected friends data format:', friendsData);
-          setFriends([]);
-        }
       } catch (error: any) {
         console.error('Error fetching user data:', error);
         toast({
@@ -147,46 +139,7 @@ const Dashboard = () => {
     await logout();
   };
 
-  const refreshFriends = async () => {
-    try {
-      // Update status to online when refreshing friends
-      updateStatus('online');
-      const friendsData = await friendService.getFriends();
-      console.log('Friends data:', friendsData); // للتصحيح
-      // تأكد من أن البيانات تأتي بالشكل الصحيح
-      if (Array.isArray(friendsData)) {
-        setFriends(friendsData);
-      } else {
-        console.error('Unexpected friends data format:', friendsData);
-        setFriends([]);
-      }
-    } catch (error: any) {
-      console.error('Error refreshing friends:', error);
-      toast({
-        title: "خطأ في تحديث الأصدقاء",
-        description: error.message || "فشل في تحديث قائمة الأصدقاء",
-        variant: "destructive",
-      });
-    }
-  };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'online': return 'bg-green-500';
-      case 'in-game': return 'bg-primary';
-      case 'offline': return 'bg-gray-400';
-      default: return 'bg-gray-400';
-    }
-  };
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'online': return 'متاح';
-      case 'in-game': return 'في مباراة';
-      case 'offline': return 'غير متصل';
-      default: return 'غير معروف';
-    }
-  };
 
   // Show loading state
   if (loading) {
@@ -256,14 +209,10 @@ const Dashboard = () => {
           {/* Main Content */}
           <div className="lg:col-span-2">
             <Tabs defaultValue="play" className="w-full">
-              <TabsList className="grid w-full grid-cols-3 mb-6">
+              <TabsList className="grid w-full grid-cols-2 mb-6">
                 <TabsTrigger value="play" className="flex items-center gap-2">
                   <Play className="w-4 h-4" />
                   ابدأ لعبة
-                </TabsTrigger>
-                <TabsTrigger value="friends" className="flex items-center gap-2">
-                  <Users className="w-4 h-4" />
-                  الأصدقاء
                 </TabsTrigger>
                 <TabsTrigger value="games" className="flex items-center gap-2">
                   <Trophy className="w-4 h-4" />
@@ -344,61 +293,7 @@ const Dashboard = () => {
                 </div>
               </TabsContent>
 
-                             <TabsContent value="friends">
-                 <div className="flex justify-between items-center mb-4">
-                   <h3 className="font-amiri text-lg font-bold">الأصدقاء ({friends.length})</h3>
-                   <Button 
-                     variant="outline" 
-                     size="sm" 
-                     onClick={refreshFriends}
-                     className="text-xs"
-                   >
-                     تحديث
-                   </Button>
-                 </div>
-                 <div className="space-y-4">
-                   {friends.length === 0 ? (
-                     <div className="text-center py-8">
-                       <Users className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-                       <h3 className="font-amiri text-lg font-bold mb-2">لا توجد أصدقاء</h3>
-                       <p className="text-muted-foreground">ابحث عن لاعبين وأضفهم كأصدقاء</p>
-                     </div>
-                   ) : (
-                     friends.map((friend) => (
-                       <Card key={friend.id}>
-                         <CardContent className="p-4">
-                           <div className="flex items-center justify-between">
-                             <div className="flex items-center gap-3">
-                               <div className="relative">
-                                 <Avatar>
-                                   <AvatarImage src={friend.thumbnail} />
-                                   <AvatarFallback>{friend.username.charAt(0)}</AvatarFallback>
-                                 </Avatar>
-                                 <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${getStatusColor(friend.state || 'offline')}`} />
-                               </div>
-                               <div>
-                                 <h3 className="font-cairo font-medium">{friend.username}</h3>
-                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                   <span>{getStatusText(friend.state || 'offline')}</span>
-                                   <Badge variant="outline" className="text-xs">
-                                     {friend.rank || 1200}
-                                   </Badge>
-                                 </div>
-                               </div>
-                             </div>
                              
-                             {(friend.state === 'online' || friend.is_online) && (
-                               <Button size="sm" variant="chess">
-                                 تحدي
-                               </Button>
-                             )}
-                           </div>
-                         </CardContent>
-                       </Card>
-                     ))
-                   )}
-                </div>
-              </TabsContent>
 
               <TabsContent value="games">
                 <div className="text-center py-12">

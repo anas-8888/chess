@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { apiClient } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { testApiConnection, testEnvironment } from '@/utils/test-api';
+import { useSearchParams } from 'react-router-dom';
 
 const Auth = () => {
   const [loginData, setLoginData] = useState({ email: '', password: '' });
@@ -18,8 +19,18 @@ const Auth = () => {
     confirmPassword: '' 
   });
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('login');
   const { toast } = useToast();
   const { login } = useAuth();
+  const [searchParams] = useSearchParams();
+
+  // Set active tab based on URL parameters
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab === 'register' || tab === 'login') {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
 
   // Test API connection on component mount
   React.useEffect(() => {
@@ -138,7 +149,7 @@ const Auth = () => {
           </CardHeader>
           
           <CardContent>
-            <Tabs defaultValue="login" className="w-full">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="grid w-full grid-cols-2 mb-6">
                 <TabsTrigger value="login" className="font-cairo">
                   تسجيل الدخول
