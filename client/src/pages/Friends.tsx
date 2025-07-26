@@ -52,6 +52,13 @@ const Friends = () => {
   const [selectedBoard, setSelectedBoard] = useState<string | null>(null);
   const [isSendingInvite, setIsSendingInvite] = useState(false);
 
+  // متغيرات مودال قبول الدعوة
+  const [showAcceptInviteModal, setShowAcceptInviteModal] = useState(false);
+  const [selectedInvite, setSelectedInvite] = useState<any>(null);
+  const [acceptPlayMethod, setAcceptPlayMethod] = useState<'phone' | 'physical_board' | null>(null);
+  const [acceptSelectedBoard, setAcceptSelectedBoard] = useState<string | null>(null);
+  const [isAcceptingInvite, setIsAcceptingInvite] = useState(false);
+
   // بيانات رقع وهمية
   const fakeBoards = [
     { id: '1', name: 'رقعة 1' },
@@ -335,26 +342,98 @@ const Friends = () => {
 
   const acceptInvite = async (inviteId: string) => {
     try {
-      await inviteService.acceptInvite(inviteId);
-      toast({
-        title: "تم قبول الدعوة",
-        description: "جاري الانتقال إلى المباراة..."
-      });
+      // البحث عن الدعوة في القائمة
+      const invite = invites.find(inv => inv.id === inviteId);
+      if (!invite) {
+        toast({
+          title: "خطأ",
+          description: "لم يتم العثور على الدعوة",
+          variant: "destructive"
+        });
+        return;
+      }
 
-      // Remove from invites list
-      setInvites(prev => prev.filter(inv => inv.id !== inviteId));
+      // التحقق من الشروط
+      const validationResult = await validateInviteAcceptance(invite);
+      if (!validationResult.isValid) {
+        toast({
+          title: "لا يمكن قبول الدعوة",
+          description: validationResult.message,
+          variant: "destructive"
+        });
+        return;
+      }
 
-      // Navigate to game
-      setTimeout(() => {
-        navigate("/game?id=invited_game_123");
-      }, 1000);
+      // فتح مودال اختيار طريقة اللعب
+      setSelectedInvite(invite);
+      setAcceptPlayMethod(null);
+      setAcceptSelectedBoard(null);
+      setShowAcceptInviteModal(true);
+
     } catch (error) {
-      console.error('Error accepting invite:', error);
+      console.error('Error preparing to accept invite:', error);
       toast({
         title: "خطأ",
-        description: "لم نتمكن من قبول الدعوة",
+        description: "لم نتمكن من معالجة الدعوة",
         variant: "destructive"
       });
+    }
+  };
+
+  // دالة التحقق من شروط قبول الدعوة
+  const validateInviteAcceptance = async (invite: any) => {
+    try {
+      // 1. التحقق من أن المستخدم الحالي متصل
+      const currentUserStatus = await userService.getCurrentUserStatus();
+      if (currentUserStatus.state !== 'online') {
+        return {
+          isValid: false,
+          message: 'يجب أن تكون متصلاً لقبول الدعوة'
+        };
+      }
+
+      // 2. التحقق من أن مرسل الدعوة متصل
+      if (invite.fromUser?.state !== 'online') {
+        return {
+          isValid: false,
+          message: 'يجب أن يكون مرسل الدعوة متصلاً'
+        };
+      }
+
+      // 3. التحقق من أن الدعوة لم تنتهي صلاحيتها
+      const now = new Date();
+      const expiresAt = new Date(invite.expires_at);
+      if (now > expiresAt) {
+        return {
+          isValid: false,
+          message: 'انتهت صلاحية الدعوة'
+        };
+      }
+
+      // 4. التحقق من أن الطرفان أصدقاء
+      const friends = await friendService.getFriends();
+      const isFriend = friends.some(friend => 
+        friend.user_id.toString() === invite.fromUser?.user_id?.toString()
+      );
+      
+      if (!isFriend) {
+        return {
+          isValid: false,
+          message: 'يجب أن تكون صديقاً لمرسل الدعوة'
+        };
+      }
+
+      return {
+        isValid: true,
+        message: ''
+      };
+
+    } catch (error) {
+      console.error('Error validating invite acceptance:', error);
+      return {
+        isValid: false,
+        message: 'فشل في التحقق من شروط الدعوة'
+      };
     }
   };
 
@@ -564,6 +643,41 @@ const Friends = () => {
         description: 'فشل في دخول المباراة',
         variant: 'destructive',
       });
+    }
+  };
+
+  // دالة قبول الدعوة بعد اختيار طريقة اللعب
+  const confirmAcceptInvite = async () => {
+    if (!selectedInvite || !acceptPlayMethod) return;
+    
+    setIsAcceptingInvite(true);
+    try {
+      // تحديث حالة الدعوة إلى مقبولة
+      await inviteService.acceptInvite(selectedInvite.id);
+      
+      toast({
+        title: "تم قبول الدعوة",
+        description: "تم قبول الدعوة بنجاح"
+      });
+
+      // إزالة الدعوة من القائمة
+      setInvites(prev => prev.filter(inv => inv.id !== selectedInvite.id));
+      
+      // إغلاق المودال
+      setShowAcceptInviteModal(false);
+      setSelectedInvite(null);
+      setAcceptPlayMethod(null);
+      setAcceptSelectedBoard(null);
+
+    } catch (error) {
+      console.error('Error accepting invite:', error);
+      toast({
+        title: "خطأ",
+        description: "لم نتمكن من قبول الدعوة",
+        variant: "destructive"
+      });
+    } finally {
+      setIsAcceptingInvite(false);
     }
   };
 
@@ -1049,6 +1163,58 @@ const Friends = () => {
                disabled={!playMethod || (playMethod === 'physical_board' && !selectedBoard) || isSendingInvite}
              >
                {isSendingInvite ? 'جاري الإرسال...' : 'إرسال الدعوة'}
+             </Button>
+           </DialogFooter>
+         </DialogContent>
+       </Dialog>
+
+       {/* Accept Invite Modal */}
+       <Dialog open={showAcceptInviteModal} onOpenChange={setShowAcceptInviteModal}>
+         <DialogContent className="sm:max-w-md">
+           <DialogHeader>
+             <DialogTitle className="font-cairo">قبول دعوة اللعب</DialogTitle>
+             <DialogDescription className="font-cairo">
+               اختر طريقة اللعب التي تفضلها:
+             </DialogDescription>
+           </DialogHeader>
+           <div className="flex flex-col gap-4">
+             <Button
+               variant={acceptPlayMethod === 'phone' ? 'chess' : 'outline'}
+               onClick={() => setAcceptPlayMethod('phone')}
+             >
+               الهاتف
+             </Button>
+             <Button
+               variant={acceptPlayMethod === 'physical_board' ? 'chess' : 'outline'}
+               onClick={() => setAcceptPlayMethod('physical_board')}
+             >
+               رقعة مادية
+             </Button>
+             {acceptPlayMethod === 'physical_board' && (
+               <div className="mt-2">
+                 <label className="block mb-1 font-cairo">اختر الرقعة:</label>
+                 <select
+                   className="w-full border rounded p-2"
+                   value={acceptSelectedBoard || fakeBoards[0].id}
+                   onChange={e => setAcceptSelectedBoard(e.target.value)}
+                 >
+                   {fakeBoards.map(board => (
+                     <option key={board.id} value={board.id}>{board.name}</option>
+                   ))}
+                 </select>
+               </div>
+             )}
+           </div>
+           <DialogFooter className="flex gap-2 mt-4">
+             <Button variant="outline" onClick={() => setShowAcceptInviteModal(false)} disabled={isAcceptingInvite}>
+               إلغاء
+             </Button>
+             <Button
+               variant="chess"
+               onClick={confirmAcceptInvite}
+               disabled={!acceptPlayMethod || (acceptPlayMethod === 'physical_board' && !acceptSelectedBoard) || isAcceptingInvite}
+             >
+               {isAcceptingInvite ? 'جاري القبول...' : 'قبول الدعوة'}
              </Button>
            </DialogFooter>
          </DialogContent>

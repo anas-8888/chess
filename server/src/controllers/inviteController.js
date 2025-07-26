@@ -311,6 +311,38 @@ export const getPendingInvitesForDashboard = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Accept game invite with validation
+ */
+export const acceptInvite = asyncHandler(async (req, res) => {
+  const userId = req.user.user_id;
+  const inviteId = parseInt(req.params.id);
+  
+  if (isNaN(inviteId) || inviteId < 1) {
+    return res.status(400).json(formatError('معرف الدعوة غير صحيح'));
+  }
+  
+  try {
+    const result = await inviteService.acceptInvite(inviteId, userId);
+    
+    return res.status(200).json(formatResponse(result, 'تم قبول الدعوة بنجاح'));
+  } catch (error) {
+    console.error('خطأ في قبول الدعوة:', error);
+    
+    if (error.message.includes('الدعوة غير موجودة') || 
+        error.message.includes('غير مصرح') ||
+        error.message.includes('الدعوة غير معلقة') ||
+        error.message.includes('انتهت صلاحية') ||
+        error.message.includes('يجب أن تكون متصلاً') ||
+        error.message.includes('يجب أن يكون مرسل الدعوة متصلاً') ||
+        error.message.includes('يجب أن تكون صديقاً')) {
+      return res.status(400).json(formatError(error.message));
+    }
+    
+    return res.status(500).json(formatError('فشل في قبول الدعوة'));
+  }
+});
+
+/**
  * Accept game invite for dashboard
  */
 export const acceptInviteForDashboard = asyncHandler(async (req, res) => {

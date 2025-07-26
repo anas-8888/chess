@@ -298,6 +298,99 @@ export const getActiveInvites = async (userId) => {
 };
 
 /**
+ * Validate invite acceptance conditions
+ * @param {number} inviteId - Invite ID
+ * @param {number} userId - User ID (recipient)
+ * @returns {Object} Validation result
+ */
+export const validateInviteAcceptance = async (inviteId, userId) => {
+  const invite = await Invite.findByPk(inviteId, {
+    include: [
+      {
+        model: User,
+        as: 'fromUser',
+        attributes: ['user_id', 'username', 'state'],
+      },
+      {
+        model: User,
+        as: 'toUser',
+        attributes: ['user_id', 'username', 'state'],
+      },
+    ],
+  });
+  
+  if (!invite) {
+    return { isValid: false, message: 'الدعوة غير موجودة' };
+  }
+  
+  if (invite.to_user_id !== userId) {
+    return { isValid: false, message: 'غير مصرح لك بقبول هذه الدعوة' };
+  }
+  
+  // Check if invite is still pending
+  if (invite.status !== 'pending') {
+    return { isValid: false, message: 'الدعوة غير معلقة' };
+  }
+  
+  // Check if invite has expired
+  const now = new Date();
+  const expiresAt = new Date(invite.expires_at);
+  if (now > expiresAt) {
+    return { isValid: false, message: 'انتهت صلاحية الدعوة' };
+  }
+  
+  // Check if both users are online
+  if (invite.toUser.state !== 'online') {
+    return { isValid: false, message: 'يجب أن تكون متصلاً لقبول الدعوة' };
+  }
+  
+  if (invite.fromUser.state !== 'online') {
+    return { isValid: false, message: 'يجب أن يكون مرسل الدعوة متصلاً' };
+  }
+  
+  // Check if both users are friends
+  const Friend = await import('../models/Friend.js');
+  const { Op } = await import('sequelize');
+  
+  const friendship = await Friend.default.findOne({
+    where: {
+      [Op.or]: [
+        { user_id: invite.from_user_id, friend_user_id: invite.to_user_id },
+        { user_id: invite.to_user_id, friend_user_id: invite.from_user_id }
+      ],
+      status: 'accepted'
+    }
+  });
+  
+  if (!friendship) {
+    return { isValid: false, message: 'يجب أن تكون صديقاً لمرسل الدعوة' };
+  }
+  
+  return { isValid: true, message: '' };
+};
+
+/**
+ * Accept invite with validation
+ * @param {number} inviteId - Invite ID
+ * @param {number} userId - User ID
+ * @returns {Object} Updated invite
+ */
+export const acceptInvite = async (inviteId, userId) => {
+  // First validate the invite acceptance conditions
+  const validation = await validateInviteAcceptance(inviteId, userId);
+  
+  if (!validation.isValid) {
+    throw new ValidationError(validation.message);
+  }
+  
+  // If validation passes, accept the invite
+  const invite = await Invite.findByPk(inviteId);
+  await invite.update({ status: 'accepted' });
+  
+  return invite;
+};
+
+/**
  * Respond to an invite
  * @param {number} inviteId - Invite ID
  * @param {number} userId - User ID

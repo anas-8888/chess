@@ -51,18 +51,15 @@ class InviteService {
     }
   }
 
-  // Accept invite
+  // Accept invite with validation
   async acceptInvite(inviteId: string): Promise<void> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/invites/${inviteId}/respond`, {
-        method: 'PUT',
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/invites/${inviteId}/accept-validated`, {
+        method: 'POST',
         headers: {
           ...this.getAuthHeaders(),
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          response: 'accept'
-        }),
       });
 
       if (!response.ok) {

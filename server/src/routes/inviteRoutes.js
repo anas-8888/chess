@@ -62,6 +62,9 @@ router.post('/send', inviteController.sendInviteToFriend);
 // POST /api/invites/:id/accept - Accept invite for dashboard
 router.post('/:id/accept', inviteController.acceptInviteForDashboard);
 
+// POST /api/invites/:id/accept-validated - Accept invite with validation
+router.post('/:id/accept-validated', inviteController.acceptInvite);
+
 // POST /api/invites/:id/decline - Decline invite for dashboard
 router.post('/:id/decline', inviteController.declineInviteForDashboard);
 
