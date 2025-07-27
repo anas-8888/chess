@@ -20,7 +20,7 @@ const server = createServer(app);
 import { Server } from 'socket.io';
 const io = new Server(server, {
   cors: {
-    origin: config.cors.allowedOrigins,
+    origin: ['http://localhost:8080', 'http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:8080', 'http://127.0.0.1:3000'],
     credentials: true,
   },
 });

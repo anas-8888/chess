@@ -1,5 +1,6 @@
 import { useState, useEffect, useContext } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { io } from "socket.io-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -71,8 +72,12 @@ const Friends = () => {
     loadFriendsData();
     loadInvites();
     loadIncomingRequests();
-    setupSocketListeners();
-  }, []);
+    
+    if (user?.id) {
+      const cleanup = setupSocketListeners();
+      return cleanup;
+    }
+  }, [user]);
 
   // Search effect
   useEffect(() => {
@@ -137,23 +142,33 @@ const Friends = () => {
   };
 
   const setupSocketListeners = () => {
-    // SOCKET: socket.on('inviteCreated', (invite) => {
-    //   setInvites(prev => [invite, ...prev]);
-    //   toast({
-    //     title: "دعوة جديدة",
-    //     description: `${invite.from} يدعوك للعب`
-    //   });
-    // });
+    const socket = io(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/friends`, {
+      auth: {
+        token: authService.getToken()
+      },
+      query: {
+        userId: user?.id || ''
+      },
+      transports: ['websocket', 'polling'],
+      timeout: 20000,
+      forceNew: true
+    });
 
-    // SOCKET: socket.on('inviteExpired', (inviteId) => {
-    //   setInvites(prev => prev.filter(inv => inv.id !== inviteId));
-    // });
 
-    // SOCKET: socket.on('friendStatusChanged', (friendData) => {
-    //   setFriends(prev => prev.map(friend => 
-    //     friend.id === friendData.id ? { ...friend, ...friendData } : friend
-    //   ));
-    // });
+
+    socket.on('game_created', (gameData) => {
+      window.location.href = `/game?id=${gameData.gameId}`;
+    });
+
+    socket.on('friendStatusChanged', (friendData) => {
+      setFriends(prev => prev.map(friend => 
+        friend.id === friendData.id ? { ...friend, ...friendData } : friend
+      ));
+    });
+
+    return () => {
+      socket.disconnect();
+    };
   };
 
   const searchUsers = async (query: string) => {

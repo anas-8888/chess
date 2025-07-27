@@ -214,7 +214,7 @@ export const getReceivedInvites = async (userId, options = {}) => {
  * @returns {Object} Created game invite
  */
 export const createGameInvite = async (fromUserId, toUserId, gameType, playMethod) => {
-  console.log('createGameInvite called with:', { fromUserId, toUserId, gameType, playMethod });
+
 
   // Check if users exist
   const [fromUser, toUser] = await Promise.all([
@@ -434,15 +434,33 @@ export const acceptInvite = async (inviteId, userId, playMethod = 'phone') => {
     status: 'game_started',
     game_id: game.id
   });
-  
-  console.log('تم إنشاء لعبة جديدة من الدعوة:', {
-    gameId: game.id,
-    whitePlayer: invite.fromUser.username,
-    blackPlayer: invite.toUser.username,
-    whitePlayMethod: invite.play_method,
-    blackPlayMethod: playMethod,
-    gameType: 'friend'
-  });
+
+  // Update game status to active
+  await game.update({ status: 'active' });
+
+  // Update both players' status to in-game
+  const { updateUserStatus } = await import('../socket/socketHelpers.js');
+  await Promise.all([
+    updateUserStatus(invite.from_user_id, 'in-game'),
+    updateUserStatus(invite.to_user_id, 'in-game')
+  ]);
+
+  // Send websocket redirect to both players
+  try {
+    const io = global.io;
+    if (io) {
+      const gameData = {
+        gameId: game.id,
+        redirectUrl: `/game?id=${game.id}`
+      };
+      
+      // Send to both players
+      io.of('/friends').to(`user::${invite.from_user_id}`).emit('game_created', gameData);
+      io.of('/friends').to(`user::${invite.to_user_id}`).emit('game_created', gameData);
+    }
+  } catch (error) {
+    console.error('Error sending game_created websocket event:', error);
+  }
   
   return {
     invite: invite,
@@ -543,14 +561,7 @@ export const startGame = async (inviteId, userId, playMethod) => {
     updateUserStatus(invite.to_user_id, 'in-game')
   ]);
   
-  console.log('Game started from invite:', {
-    gameId: game.id,
-    whiteUserId: whiteUserId,
-    blackUserId: blackUserId,
-    whitePlayMethod: whitePlayMethod,
-    blackPlayMethod: blackPlayMethod,
-    mode: invite.game_type
-  });
+
 
   // إرسال إشعار rejoin_game للاعبين
   try {
@@ -571,7 +582,7 @@ export const startGame = async (inviteId, userId, playMethod) => {
       // إرسال إشعار للاعب الأسود
       io.to(`user_${blackUserId}`).emit('rejoin_game', gameData);
       
-      console.log('تم إرسال إشعارات rejoin_game للاعبين');
+
     }
   } catch (error) {
     console.error('خطأ في إرسال إشعارات rejoin_game:', error);
@@ -671,7 +682,7 @@ export const cancelInvite = async (inviteId, userId) => {
   // تحديث حالة الدعوة إلى مرفوضة
   await invite.update({ status: 'cancelled' });
   
-  console.log(`تم إلغاء الدعوة ${inviteId} من قبل المستخدم ${userId}`);
+
   
   // إرسال إشعار للمستلم عبر Socket.IO
   try {
@@ -683,7 +694,7 @@ export const cancelInvite = async (inviteId, userId) => {
         message: 'تم إلغاء الدعوة من قبل المرسل'
       });
       
-      console.log('تم إرسال إشعار إلغاء الدعوة للمستلم');
+  
     }
   } catch (error) {
     console.error('خطأ في إرسال إشعار إلغاء الدعوة:', error);
