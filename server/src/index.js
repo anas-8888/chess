@@ -47,6 +47,7 @@ import puzzleRoutes from './routes/puzzleRoutes.js';
 import inviteRoutes from './routes/inviteRoutes.js';
 import userBoardRoutes from './routes/userBoardRoutes.js';
 import friendRoutes from './routes/friendRoutes.js';
+import gameRoutes from './routes/gameRoutes.js';
 
 const app = express();
 
@@ -354,6 +355,8 @@ app.use('/api/puzzles', puzzleRoutes);
 app.use('/api/invites', inviteRoutes);
 app.use('/api/boards', userBoardRoutes);
 app.use('/api/friends', friendRoutes);
+app.use('/api/game', gameRoutes);
+app.use('/game', gameRoutes);
 
 // Stats endpoint
 app.get('/api/stats', async (req, res) => {
