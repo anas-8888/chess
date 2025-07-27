@@ -22,13 +22,31 @@ import {
   WifiOff
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { api } from '@/config/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Player {
-  id: string;
-  username: string;
-  avatar: string;
-  rating: number;
+  id: number;
+  name: string;
+  rank: number;
   color: 'white' | 'black';
+}
+
+interface GameData {
+  whitePlayer: Player;
+  blackPlayer: Player;
+  startedByUser: {
+    id: number;
+    name: string;
+  };
+  gameType: string;
+  initialTime: number;
+  whiteTimeLeft: number;
+  blackTimeLeft: number;
+  whitePlayMethod: string;
+  blackPlayMethod: string;
+  currentFen: string;
+  status: string;
 }
 
 interface ChatMessage {
@@ -49,7 +67,12 @@ interface GameMove {
 }
 
 const GameRoom = () => {
+  const { user } = useAuth();
   const [game, setGame] = useState(new Chess());
+  const [gameData, setGameData] = useState<GameData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
   const [gameState, setGameState] = useState({
     id: 'game_123',
     status: 'active', // 'waiting', 'active', 'finished'
@@ -61,24 +84,58 @@ const GameRoom = () => {
   
   const [players, setPlayers] = useState<{ white: Player; black: Player }>({
     white: {
-      id: 'user1',
-      username: 'أحمد الشطرنجي',
-      avatar: '',
-      rating: 1450,
+      id: 0,
+      name: 'جاري التحميل...',
+      rank: 0,
       color: 'white'
     },
     black: {
-      id: 'user2', 
-      username: 'فاطمة الاستراتيجية',
-      avatar: '',
-      rating: 1380,
+      id: 0,
+      name: 'جاري التحميل...',
+      rank: 0,
       color: 'black'
     }
   });
 
-  const [currentPlayer] = useState<'white' | 'black'>('white'); // Which color the current user is playing
+  // تحديد اللاعب الحالي بناءً على معرف المستخدم
+  const [currentPlayer, setCurrentPlayer] = useState<'white' | 'black'>('white');
+  
+  // تحديد اللاعب الحالي بناءً على معرف المستخدم من التوكين
+  useEffect(() => {
+    if (gameData && user) {
+      const currentUserId = parseInt(user.id);
+      
+      if (gameData.whitePlayer.id === currentUserId) {
+        setCurrentPlayer('white');
+        // تحديث ترتيب اللاعبين والوقت للاعب الأبيض
+        setPlayers({
+          white: gameData.whitePlayer,
+          black: gameData.blackPlayer
+        });
+        setTimers(prev => ({
+          white: gameData.whiteTimeLeft,
+          black: gameData.blackTimeLeft,
+          isRunning: prev.isRunning
+        }));
+      } else if (gameData.blackPlayer.id === currentUserId) {
+        setCurrentPlayer('black');
+        // قلب ترتيب اللاعبين للاعب الأسود
+        setPlayers({
+          white: gameData.blackPlayer,
+          black: gameData.whitePlayer
+        });
+        // قلب الوقت للاعب الأسود
+        setTimers(prev => ({
+          white: gameData.blackTimeLeft,
+          black: gameData.whiteTimeLeft,
+          isRunning: prev.isRunning
+        }));
+      }
+    }
+  }, [gameData, user]);
+  
   const [timers, setTimers] = useState({
-    white: 600, // 10 minutes in seconds
+    white: 600,
     black: 600,
     isRunning: true
   });
@@ -102,23 +159,47 @@ const GameRoom = () => {
 
   const { toast } = useToast();
 
-  // Game state recovery on page load
+    // جلب بيانات اللعبة من الـ API
   useEffect(() => {
-    const gameId = new URLSearchParams(window.location.search).get('game_id');
-    if (gameId) {
-      // REST: GET /api/games/:id -> fetch complete game state
-      // Expected response: { 
-      //   game: { id, status, currentTurn, whiteTime, blackTime },
-      //   players: { white: Player, black: Player },
-      //   moves: GameMove[],
-      //   chat: ChatMessage[]
-      // }
-      
-      // SOCKET: socket.emit('rejoin_game', { gameId, userId })
-      // SOCKET: socket.on('game_state', (data) => {
-      //   // Restore complete game state including timers
-      // })
-    }
+    const fetchGameData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // الحصول على معرف اللعبة من الـ URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const gameId = urlParams.get('game_id') || urlParams.get('id') || '1'; // افتراضياً لعبة رقم 1
+        
+        const response = await api.get(`/game/${gameId}`);
+        
+        if (response.data.success) {
+          const data = response.data.data;
+          setGameData(data);
+          
+          // تحديث حالة اللعبة
+          setGameState(prev => ({
+            ...prev,
+            status: data.status
+          }));
+          
+          // تحديث الرقعة باستخدام FEN
+          if (data.currentFen && data.currentFen !== 'startpos') {
+            const newGame = new Chess(data.currentFen);
+            setGame(newGame);
+          }
+          
+        } else {
+          setError('فشل في جلب بيانات اللعبة');
+        }
+      } catch (err) {
+        console.error('خطأ في جلب بيانات اللعبة:', err);
+        setError('حدث خطأ في الاتصال بالخادم');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchGameData();
   }, []);
 
   // Real-time socket events
@@ -354,14 +435,14 @@ const GameRoom = () => {
   const handleSendMessage = () => {
     if (!chatInput.trim()) return;
 
-    const message: ChatMessage = {
-      id: Date.now().toString(),
-      userId: players[currentPlayer].id,
-      username: players[currentPlayer].username,
-      message: chatInput,
-      type: 'text',
-      timestamp: new Date()
-    };
+         const message: ChatMessage = {
+       id: Date.now().toString(),
+       userId: players[currentPlayer].id.toString(),
+       username: players[currentPlayer].name,
+       message: chatInput,
+       type: 'text',
+       timestamp: new Date()
+     };
 
     setChatMessages(prev => [...prev, message]);
     setChatInput('');
@@ -378,6 +459,32 @@ const GameRoom = () => {
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
+
+  // عرض حالة التحميل
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">جاري تحميل بيانات اللعبة...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // عرض الخطأ
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-destructive mb-4">{error}</p>
+          <Button onClick={() => window.location.reload()}>
+            إعادة المحاولة
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   const formatMoveTime = (timestamp: Date) => {
     return timestamp.toLocaleTimeString('ar-SA', { 
@@ -430,16 +537,16 @@ const GameRoom = () => {
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
-                  <Avatar>
-                    <AvatarImage src={players.black.avatar} />
-                    <AvatarFallback className="bg-secondary text-secondary-foreground">
-                      {players.black.username.charAt(0)}
-                    </AvatarFallback>
-                  </Avatar>
+                                     <Avatar>
+                     <AvatarImage src="" />
+                     <AvatarFallback className="bg-secondary text-secondary-foreground">
+                       {players.black.name.charAt(0)}
+                     </AvatarFallback>
+                   </Avatar>
                   <div className="flex-1">
-                    <h3 className="font-cairo font-medium">{players.black.username}</h3>
+                    <h3 className="font-cairo font-medium">{players.black.name}</h3>
                     <Badge variant="outline" className="text-xs">
-                      {players.black.rating}
+                      {players.black.rank}
                     </Badge>
                   </div>
                 </div>
@@ -450,11 +557,11 @@ const GameRoom = () => {
                     <Clock className="w-4 h-4 inline ml-2" />
                     {formatTime(timers.black)}
                   </div>
-                  {gameState.currentTurn === 'black' && (
-                    <Badge variant="default" className="bg-gradient-primary">
-                      دوره
-                    </Badge>
-                  )}
+                                     {gameState.currentTurn === 'black' && (
+                     <Badge variant="default" className="bg-gradient-primary">
+                       {currentPlayer === 'black' ? 'دورك' : 'دوره'}
+                     </Badge>
+                   )}
                 </div>
               </CardContent>
             </Card>
@@ -483,6 +590,24 @@ const GameRoom = () => {
                     {gameState.status === 'active' ? 'نشطة' : 'منتهية'}
                   </Badge>
                 </div>
+
+                {gameData && (
+                  <>
+                    <div className="flex justify-between text-sm">
+                      <span>طريقة اللعب الأبيض:</span>
+                      <Badge variant="outline">
+                        {gameData.whitePlayMethod === 'phone' ? 'هاتف' : 'لوحة مادية'}
+                      </Badge>
+                    </div>
+                    
+                    <div className="flex justify-between text-sm">
+                      <span>طريقة اللعب الأسود:</span>
+                      <Badge variant="outline">
+                        {gameData.blackPlayMethod === 'phone' ? 'هاتف' : 'لوحة مادية'}
+                      </Badge>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
 
@@ -490,16 +615,16 @@ const GameRoom = () => {
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
-                  <Avatar>
-                    <AvatarImage src={players.white.avatar} />
-                    <AvatarFallback className="bg-primary text-primary-foreground">
-                      {players.white.username.charAt(0)}
-                    </AvatarFallback>
-                  </Avatar>
+                                     <Avatar>
+                     <AvatarImage src="" />
+                     <AvatarFallback className="bg-primary text-primary-foreground">
+                       {players.white.name.charAt(0)}
+                     </AvatarFallback>
+                   </Avatar>
                   <div className="flex-1">
-                    <h3 className="font-cairo font-medium">{players.white.username}</h3>
+                    <h3 className="font-cairo font-medium">{players.white.name}</h3>
                     <Badge variant="outline" className="text-xs">
-                      {players.white.rating}
+                      {players.white.rank}
                     </Badge>
                   </div>
                 </div>
@@ -510,11 +635,11 @@ const GameRoom = () => {
                     <Clock className="w-4 h-4 inline ml-2" />
                     {formatTime(timers.white)}
                   </div>
-                  {gameState.currentTurn === 'white' && (
-                    <Badge variant="default" className="bg-gradient-primary">
-                      دوره
-                    </Badge>
-                  )}
+                                     {gameState.currentTurn === 'white' && (
+                     <Badge variant="default" className="bg-gradient-primary">
+                       {currentPlayer === 'white' ? 'دورك' : 'دوره'}
+                     </Badge>
+                   )}
                 </div>
               </CardContent>
             </Card>
@@ -545,6 +670,19 @@ const GameRoom = () => {
           {/* Chess Board */}
           <div className="lg:col-span-2">
             <Card className="p-4">
+              <div className="mb-4 text-center">
+                <Badge variant="outline" className="mb-2">
+                  {gameData?.gameType === 'friend' ? 'لعبة مع صديق' : 
+                   gameData?.gameType === 'ranked' ? 'لعبة مصنفة' :
+                   gameData?.gameType === 'ai' ? 'لعبة ضد الذكاء الاصطناعي' :
+                   gameData?.gameType === 'puzzle' ? 'لغز شطرنج' : 'لعبة شطرنج'}
+                </Badge>
+                {gameData && (
+                  <p className="text-sm text-muted-foreground">
+                    بدأت بواسطة: {gameData.startedByUser.name}
+                  </p>
+                )}
+              </div>
               <ChessBoard
                 game={game}
                 onMove={handleMove}
