@@ -4,6 +4,10 @@ class SocketService {
   private socket: Socket | null = null;
   private isConnected = false;
   private onConnectionChange: ((connected: boolean) => void) | null = null;
+  private clockUpdateCallback: ((data: any) => void) | null = null;
+  private turnUpdateCallback: ((data: any) => void) | null = null;
+  private moveMadeCallback: ((data: any) => void) | null = null;
+  private gameTimeoutCallback: ((data: any) => void) | null = null;
 
   connect(token: string) {
     if (this.socket && this.isConnected) {
@@ -41,64 +45,63 @@ class SocketService {
       console.error('WebSocket error:', error);
     });
 
-            // Add event listeners for debugging
-        this.socket.on('clockUpdate', (data) => {
-          console.log('=== SOCKET SERVICE: Received clockUpdate ===');
-          console.log('SocketService received clockUpdate:', data);
-          console.log('=== SOCKET SERVICE: Data type check ===', {
-            whiteTimeLeft: typeof data.whiteTimeLeft,
-            blackTimeLeft: typeof data.blackTimeLeft,
-            currentTurn: typeof data.currentTurn
-          });
-          console.log('=== SOCKET SERVICE: Socket connection status ===', {
-            connected: this.socket?.connected,
-            id: this.socket?.id,
-            rooms: this.socket?.rooms
-          });
-          if (this.onClockUpdate) {
-            console.log('=== SOCKET SERVICE: Calling onClockUpdate callback ===');
-            this.onClockUpdate(data);
-            console.log('=== SOCKET SERVICE: onClockUpdate callback executed ===');
-          } else {
-            console.log('=== SOCKET SERVICE: No onClockUpdate callback registered ===');
-          }
-        });
+    // Add event listeners for debugging
+    this.socket.on('clockUpdate', (data) => {
+      console.log('=== SOCKET SERVICE: Received clockUpdate ===');
+      console.log('SocketService received clockUpdate:', data);
+      console.log('=== SOCKET SERVICE: Data type check ===', {
+        whiteTimeLeft: typeof data.whiteTimeLeft,
+        blackTimeLeft: typeof data.blackTimeLeft,
+        currentTurn: typeof data.currentTurn
+      });
+      console.log('=== SOCKET SERVICE: Socket connection status ===', {
+        connected: this.socket?.connected,
+        id: this.socket?.id
+      });
+      if (this.clockUpdateCallback) {
+        console.log('=== SOCKET SERVICE: Calling onClockUpdate callback ===');
+        this.clockUpdateCallback(data);
+        console.log('=== SOCKET SERVICE: onClockUpdate callback executed ===');
+      } else {
+        console.log('=== SOCKET SERVICE: No onClockUpdate callback registered ===');
+      }
+    });
 
-            this.socket.on('turnUpdate', (data) => {
-          console.log('=== SOCKET SERVICE: Received turnUpdate ===');
-          console.log('SocketService received turnUpdate:', data);
-          if (this.onTurnUpdate) {
-            console.log('=== SOCKET SERVICE: Calling onTurnUpdate callback ===');
-            this.onTurnUpdate(data);
-            console.log('=== SOCKET SERVICE: onTurnUpdate callback executed ===');
-          } else {
-            console.log('=== SOCKET SERVICE: No onTurnUpdate callback registered ===');
-          }
-        });
+    this.socket.on('turnUpdate', (data) => {
+      console.log('=== SOCKET SERVICE: Received turnUpdate ===');
+      console.log('SocketService received turnUpdate:', data);
+      if (this.turnUpdateCallback) {
+        console.log('=== SOCKET SERVICE: Calling onTurnUpdate callback ===');
+        this.turnUpdateCallback(data);
+        console.log('=== SOCKET SERVICE: onTurnUpdate callback executed ===');
+      } else {
+        console.log('=== SOCKET SERVICE: No onTurnUpdate callback registered ===');
+      }
+    });
 
-        this.socket.on('moveMade', (data) => {
-          console.log('=== SOCKET SERVICE: Received moveMade ===');
-          console.log('SocketService received moveMade:', data);
-          if (this.onMoveMade) {
-            console.log('=== SOCKET SERVICE: Calling onMoveMade callback ===');
-            this.onMoveMade(data);
-            console.log('=== SOCKET SERVICE: onMoveMade callback executed ===');
-          } else {
-            console.log('=== SOCKET SERVICE: No onMoveMade callback registered ===');
-          }
-        });
+    this.socket.on('moveMade', (data) => {
+      console.log('=== SOCKET SERVICE: Received moveMade ===');
+      console.log('SocketService received moveMade:', data);
+      if (this.moveMadeCallback) {
+        console.log('=== SOCKET SERVICE: Calling onMoveMade callback ===');
+        this.moveMadeCallback(data);
+        console.log('=== SOCKET SERVICE: onMoveMade callback executed ===');
+      } else {
+        console.log('=== SOCKET SERVICE: No onMoveMade callback registered ===');
+      }
+    });
 
-        this.socket.on('gameTimeout', (data) => {
-          console.log('=== SOCKET SERVICE: Received gameTimeout ===');
-          console.log('SocketService received gameTimeout:', data);
-          if (this.onGameTimeout) {
-            console.log('=== SOCKET SERVICE: Calling onGameTimeout callback ===');
-            this.onGameTimeout(data);
-            console.log('=== SOCKET SERVICE: onGameTimeout callback executed ===');
-          } else {
-            console.log('=== SOCKET SERVICE: No onGameTimeout callback registered ===');
-          }
-        });
+    this.socket.on('gameTimeout', (data) => {
+      console.log('=== SOCKET SERVICE: Received gameTimeout ===');
+      console.log('SocketService received gameTimeout:', data);
+      if (this.gameTimeoutCallback) {
+        console.log('=== SOCKET SERVICE: Calling onGameTimeout callback ===');
+        this.gameTimeoutCallback(data);
+        console.log('=== SOCKET SERVICE: onGameTimeout callback executed ===');
+      } else {
+        console.log('=== SOCKET SERVICE: No onGameTimeout callback registered ===');
+      }
+    });
 
     return this.socket;
   }
@@ -167,68 +170,44 @@ class SocketService {
 
   // Event listeners
   onClockUpdate(callback: (data: { whiteTimeLeft: number; blackTimeLeft: number; currentTurn: string }) => void) {
-    if (this.socket) {
-      console.log('=== SOCKET SERVICE: Setting up onClockUpdate listener ===');
-      this.socket.on('clockUpdate', callback);
-      console.log('=== SOCKET SERVICE: onClockUpdate listener set up ===');
-    } else {
-      console.error('SocketService: Cannot set up onClockUpdate, socket not connected');
-    }
+    console.log('=== SOCKET SERVICE: Setting up onClockUpdate listener ===');
+    this.clockUpdateCallback = callback;
+    console.log('=== SOCKET SERVICE: onClockUpdate listener set up ===');
   }
 
   onTurnUpdate(callback: (data: { currentTurn: string }) => void) {
-    if (this.socket) {
-      console.log('=== SOCKET SERVICE: Setting up onTurnUpdate listener ===');
-      this.socket.on('turnUpdate', callback);
-      console.log('=== SOCKET SERVICE: onTurnUpdate listener set up ===');
-    } else {
-      console.error('SocketService: Cannot set up onTurnUpdate, socket not connected');
-    }
+    console.log('=== SOCKET SERVICE: Setting up onTurnUpdate listener ===');
+    this.turnUpdateCallback = callback;
+    console.log('=== SOCKET SERVICE: onTurnUpdate listener set up ===');
   }
 
-  onMoveMade(callback: (data: { san: string; fen: string; movedBy: string; isPhysicalMove?: boolean }) => void) {
-    if (this.socket) {
-      console.log('=== SOCKET SERVICE: Setting up onMoveMade listener ===');
-      this.socket.on('moveMade', callback);
-      console.log('=== SOCKET SERVICE: onMoveMade listener set up ===');
-    } else {
-      console.error('SocketService: Cannot set up onMoveMade, socket not connected');
-    }
+  onMoveMade(callback: (data: { san: string; fen: string; movedBy: string; isPhysicalMove?: boolean; from?: string; to?: string; uci?: string }) => void) {
+    console.log('=== SOCKET SERVICE: Setting up onMoveMade listener ===');
+    this.moveMadeCallback = callback;
+    console.log('=== SOCKET SERVICE: onMoveMade listener set up ===');
   }
 
   onGameTimeout(callback: (data: { winner: string; reason?: string }) => void) {
-    if (this.socket) {
-      console.log('=== SOCKET SERVICE: Setting up onGameTimeout listener ===');
-      this.socket.on('gameTimeout', callback);
-      console.log('=== SOCKET SERVICE: onGameTimeout listener set up ===');
-    } else {
-      console.error('SocketService: Cannot set up onGameTimeout, socket not connected');
-    }
+    console.log('=== SOCKET SERVICE: Setting up onGameTimeout listener ===');
+    this.gameTimeoutCallback = callback;
+    console.log('=== SOCKET SERVICE: onGameTimeout listener set up ===');
   }
 
   // Remove event listeners
   offClockUpdate() {
-    if (this.socket) {
-      this.socket.off('clockUpdate');
-    }
+    this.clockUpdateCallback = null;
   }
 
   offTurnUpdate() {
-    if (this.socket) {
-      this.socket.off('turnUpdate');
-    }
+    this.turnUpdateCallback = null;
   }
 
   offMoveMade() {
-    if (this.socket) {
-      this.socket.off('moveMade');
-    }
+    this.moveMadeCallback = null;
   }
 
   offGameTimeout() {
-    if (this.socket) {
-      this.socket.off('gameTimeout');
-    }
+    this.gameTimeoutCallback = null;
   }
 }
 

@@ -31,7 +31,10 @@ setGlobalIO(io);
 
 // Import and initialize friend socket namespace
 import { initFriendSocket } from './src/socket/friendSocket.js';
+import { initGameSocket } from './src/socket/gameSocket.js';
+
 initFriendSocket(io);
+initGameSocket(io);
 
 // اختبار الاتصال بقاعدة البيانات قبل تشغيل السيرفر
 async function startServer() {

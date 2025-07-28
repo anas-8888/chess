@@ -106,4 +106,46 @@ export const updateGameTimeService = async (gameId, { whiteTimeLeft, blackTimeLe
       message: 'خطأ في الخادم'
     };
   }
+};
+
+// جلب حركات اللعبة
+export const getGameMovesService = async (gameId) => {
+  try {
+    // بدون الأقواس المعقوفة:
+const GameMove = (await import('../models/GameMove.js')).default;
+    const { User } = await import('../models/User.js');
+    
+    const moves = await GameMove.findAll({
+      where: { game_id: gameId },
+      include: [
+        {
+          model: User,
+          as: 'player',
+          attributes: ['user_id', 'username']
+        }
+      ],
+      order: [['move_number', 'ASC']]
+    });
+
+    return {
+      success: true,
+      data: moves.map(move => ({
+        id: move.id,
+        moveNumber: move.move_number,
+        playerId: move.player_id,
+        playerName: move.player?.username,
+        uci: move.uci,
+        san: move.san,
+        fenAfter: move.fen_after,
+        createdAt: move.created_at
+      }))
+    };
+
+  } catch (error) {
+    logger.error('خطأ في service جلب حركات اللعبة:', error);
+    return {
+      success: false,
+      message: 'خطأ في الخادم'
+    };
+  }
 }; 

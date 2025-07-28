@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Chess, Square } from 'chess.js';
 import ChessBoard from '@/components/ChessBoard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -101,6 +101,7 @@ const GameRoom = () => {
 
   // تحديد اللاعب الحالي بناءً على معرف المستخدم
   const [currentPlayer, setCurrentPlayer] = useState<'white' | 'black'>('white');
+  const currentPlayerRef = useRef<'white' | 'black'>('white');
   
   // تحديد اللاعب الحالي بناءً على معرف المستخدم من التوكين
   useEffect(() => {
@@ -111,6 +112,7 @@ const GameRoom = () => {
       
       if (gameData.whitePlayer.id === currentUserId) {
         setCurrentPlayer('white');
+        currentPlayerRef.current = 'white';
         // تحديث ترتيب اللاعبين للاعب الأبيض
         setPlayers({
           white: gameData.whitePlayer,
@@ -120,6 +122,7 @@ const GameRoom = () => {
         console.log('Player is white, timers will be updated via clockUpdate only');
       } else if (gameData.blackPlayer.id === currentUserId) {
         setCurrentPlayer('black');
+        currentPlayerRef.current = 'black';
         // قلب ترتيب اللاعبين للاعب الأسود
         setPlayers({
           white: gameData.blackPlayer,
@@ -206,6 +209,71 @@ const GameRoom = () => {
             setGame(newGame);
           }
           
+          // جلب الحركات السابقة
+          try {
+            const movesResponse = await api.get(`/${gameId}/moves`);
+            if (movesResponse.data.success) {
+              const moves = movesResponse.data.data;
+              console.log('Previous moves loaded:', moves);
+              
+              // تحويل الحركات إلى التنسيق المطلوب
+              const formattedMoves: GameMove[] = [];
+              let currentMove: GameMove | null = null;
+              
+              moves.forEach((move: any) => {
+                const playerColor = move.playerId === data.whitePlayer.id ? 'white' : 'black';
+                
+                if (playerColor === 'white') {
+                  if (currentMove && currentMove.white) {
+                    // إنشاء حركة جديدة للأسود
+                    formattedMoves.push({
+                      moveNumber: Math.floor(formattedMoves.length / 2) + 1,
+                      white: currentMove.white,
+                      black: move.san,
+                      san: move.san,
+                      fen: move.fenAfter
+                    });
+                    currentMove = null;
+                  } else {
+                    // بدء حركة جديدة للأبيض
+                    currentMove = {
+                      moveNumber: Math.floor(formattedMoves.length / 2) + 1,
+                      white: move.san,
+                      san: move.san,
+                      fen: move.fenAfter
+                    };
+                  }
+                } else {
+                  if (currentMove && currentMove.white) {
+                    // إكمال الحركة الحالية
+                    currentMove.black = move.san;
+                    formattedMoves.push(currentMove);
+                    currentMove = null;
+                  } else {
+                    // إنشاء حركة جديدة للأبيض والأسود
+                    formattedMoves.push({
+                      moveNumber: Math.floor(formattedMoves.length / 2) + 1,
+                      white: '',
+                      black: move.san,
+                      san: move.san,
+                      fen: move.fenAfter
+                    });
+                  }
+                }
+              });
+              
+              // إضافة الحركة الأخيرة إذا لم تكتمل
+              if (currentMove) {
+                formattedMoves.push(currentMove);
+              }
+              
+              setMoves(formattedMoves);
+              console.log('Formatted moves:', formattedMoves);
+            }
+          } catch (movesError) {
+            console.error('Error loading previous moves:', movesError);
+          }
+          
           console.log('Setting up player data:', { currentUserId: user.id, gameData });
           console.log('Player is white/black, timers set:', { white: data.whiteTimeLeft, black: data.blackTimeLeft });
           
@@ -284,93 +352,109 @@ const GameRoom = () => {
       });
       
       // Set up event listeners FIRST
-                        socketService.onClockUpdate((data) => {
-                    console.log('=== GAME ROOM: Received clockUpdate ===');
-                    console.log('Received clockUpdate:', data);
-                    const { whiteTimeLeft, blackTimeLeft, currentTurn } = data;
-                    console.log('Updating timers:', { whiteTimeLeft, blackTimeLeft, currentTurn });
-                    console.log('=== GAME ROOM: Data validation ===', {
-                      whiteTimeLeft: typeof whiteTimeLeft,
-                      blackTimeLeft: typeof blackTimeLeft,
-                      currentTurn: typeof currentTurn,
-                      whiteTimeLeftValue: whiteTimeLeft,
-                      blackTimeLeftValue: blackTimeLeft,
-                      currentTurnValue: currentTurn
-                    });
-                    
-                    // Validate data
-                    if (typeof whiteTimeLeft !== 'number' || typeof blackTimeLeft !== 'number') {
-                      console.error('Invalid time data received:', data);
-                      return;
-                    }
-                    
-                    console.log('=== GAME ROOM: Setting timers state ===');
-                    console.log('Current timers state before update:', timers);
-                    const newTimers = {
-                      white: whiteTimeLeft,
-                      black: blackTimeLeft,
-                      isRunning: true,
-                      lastUpdate: Date.now()
-                    };
-                    console.log('=== GAME ROOM: New timers state ===', newTimers);
-                    setTimers(newTimers);
-                    console.log('=== GAME ROOM: Timers state updated ===');
-                    
-                    console.log('=== GAME ROOM: Setting game state ===');
-                    console.log('Current game state before update:', gameState);
-                    setGameState(prev => {
-                      const newGameState = {
-                        ...prev,
-                        currentTurn
-                      };
-                      console.log('=== GAME ROOM: New game state ===', newGameState);
-                      return newGameState;
-                    });
-                    console.log('=== GAME ROOM: Game state updated ===');
-                    
-                    console.log('=== GAME ROOM: Timers updated successfully ===');
-                  });
+      socketService.onClockUpdate((data) => {
+        console.log('=== GAME ROOM: Received clockUpdate ===');
+        console.log('Received clockUpdate:', data);
+        const { whiteTimeLeft, blackTimeLeft, currentTurn } = data;
+        console.log('Updating timers:', { whiteTimeLeft, blackTimeLeft, currentTurn });
+        console.log('=== GAME ROOM: Data validation ===', {
+          whiteTimeLeft: typeof whiteTimeLeft,
+          blackTimeLeft: typeof blackTimeLeft,
+          currentTurn: typeof currentTurn,
+          whiteTimeLeftValue: whiteTimeLeft,
+          blackTimeLeftValue: blackTimeLeft,
+          currentTurnValue: currentTurn
+        });
+        
+        // Validate data
+        if (typeof whiteTimeLeft !== 'number' || typeof blackTimeLeft !== 'number') {
+          console.error('Invalid time data received:', data);
+          return;
+        }
+        
+        console.log('=== GAME ROOM: Setting timers state ===');
+        console.log('Current timers state before update:', timers);
+        const newTimers = {
+          white: whiteTimeLeft,
+          black: blackTimeLeft,
+          isRunning: currentTurn === currentPlayerRef.current,
+          lastUpdate: Date.now()
+        };
+        console.log('=== GAME ROOM: New timers state ===', newTimers);
+        setTimers(newTimers);
+        console.log('=== GAME ROOM: Timers state updated ===');
+        
+        console.log('=== GAME ROOM: Setting game state ===');
+        console.log('Current game state before update:', gameState);
+        setGameState(prev => {
+          const newGameState = {
+            ...prev,
+            currentTurn
+          };
+          console.log('=== GAME ROOM: New game state ===', newGameState);
+          return newGameState;
+        });
+        console.log('=== GAME ROOM: Game state updated ===');
+        
+        console.log('=== GAME ROOM: Timers updated successfully ===');
+      });
 
-                        socketService.onTurnUpdate((data) => {
-                    console.log('=== GAME ROOM: Received turnUpdate ===');
-                    console.log('Received turnUpdate:', data);
-                    const { currentTurn } = data;
-                    console.log('Updating currentTurn:', currentTurn);
-                    setGameState(prev => ({
-                      ...prev,
-                      currentTurn
-                    }));
-                    console.log('=== GAME ROOM: Turn updated successfully ===');
-                  });
+      socketService.onTurnUpdate((data) => {
+        console.log('=== GAME ROOM: Received turnUpdate ===');
+        console.log('Received turnUpdate:', data);
+        const { currentTurn } = data;
+        console.log('Updating currentTurn:', currentTurn);
+        
+        // تحديث حالة اللعبة
+        setGameState(prev => ({
+          ...prev,
+          currentTurn
+        }));
+        
+        // تحديث حالة المؤقتات
+        setTimers(prev => ({
+          ...prev,
+          isRunning: currentTurn === currentPlayerRef.current
+        }));
+        
+        console.log('=== GAME ROOM: Turn updated successfully ===');
+      });
 
-                        socketService.onMoveMade((data) => {
-                    console.log('=== GAME ROOM: Received moveMade ===');
-                    console.log('Received moveMade:', data);
-                    const { san, fen, movedBy, isPhysicalMove } = data;
-                    console.log('Handling opponent move:', { san, fen, movedBy, isPhysicalMove });
-                    handleOpponentMove(san, fen, isPhysicalMove);
-                    console.log('=== GAME ROOM: Opponent move handled successfully ===');
-                  });
+      socketService.onMoveMade((data) => {
+        console.log('=== GAME ROOM: Received moveMade ===');
+        console.log('Received moveMade:', data);
+        const { san, fen, movedBy, isPhysicalMove, from, to, uci } = data;
+        console.log('Handling opponent move:', { san, fen, movedBy, isPhysicalMove, from, to, uci });
+        
+        // التحقق من أن الحركة ليست من اللاعب الحالي
+        if (movedBy === currentPlayerRef.current) {
+          console.log('=== GAME ROOM: Move is from current player, ignoring ===');
+          return;
+        }
+        
+        handleOpponentMove(san, fen, isPhysicalMove);
+        console.log('=== GAME ROOM: Opponent move handled successfully ===');
+      });
 
-                        socketService.onGameTimeout((data) => {
-                    console.log('=== GAME ROOM: Received gameTimeout ===');
-                    console.log('Received gameTimeout:', data);
-                    const { winner } = data;
-                    console.log('Handling game timeout, winner:', winner);
-                    handleGameEnd('timeout');
-                    console.log('=== GAME ROOM: Game timeout handled successfully ===');
-                  });
+      socketService.onGameTimeout((data) => {
+        console.log('=== GAME ROOM: Received gameTimeout ===');
+        console.log('Received gameTimeout:', data);
+        const { winner } = data;
+        console.log('Handling game timeout, winner:', winner);
+        handleGameEnd('timeout');
+        console.log('=== GAME ROOM: Game timeout handled successfully ===');
+      });
 
       // THEN join game room
-                        const urlParams = new URLSearchParams(window.location.search);
-                  const gameId = urlParams.get('game_id') || urlParams.get('id') || '1';
-                  console.log('Joining game room:', gameId);
-                  
-                  // Join the game room
-                  console.log('=== GAME ROOM: Joining game room ===');
-                  socketService.joinGameRoom(gameId);
-                  console.log('=== GAME ROOM: Join game room request sent ===');
+      const urlParams = new URLSearchParams(window.location.search);
+      const gameId = urlParams.get('game_id') || urlParams.get('id') || '1';
+      console.log('Joining game room:', gameId);
       
+      // Join the game room
+      console.log('=== GAME ROOM: Joining game room ===');
+      socketService.joinGameRoom(gameId);
+      console.log('=== GAME ROOM: Join game room request sent ===');
+
       // إضافة health check للمؤقتات
       const healthCheckInterval = setInterval(() => {
         console.log('=== GAME ROOM: Health check for timers ===');
@@ -413,7 +497,7 @@ const GameRoom = () => {
       socketService.disconnect();
       console.log('=== GAME ROOM: WebSocket cleanup completed ===');
     };
-  }, [user]);
+  }, [user, currentPlayer]); // إضافة currentPlayer كـ dependency
 
   const handleMove = useCallback((from: Square, to: Square, promotion?: string) => {
     console.log('=== GAME ROOM: Handling move ===');
@@ -439,6 +523,10 @@ const GameRoom = () => {
       });
 
       if (move) {
+        // إيقاف عداد اللاعب الحالي فوراً
+        console.log('=== GAME ROOM: Stopping current player timer ===');
+        setTimers(prev => ({ ...prev, isRunning: false }));
+        
         // Update local game state
         setGame(gameCopy);
         
@@ -518,6 +606,38 @@ const GameRoom = () => {
     const gameCopy = new Chess(fen);
     setGame(gameCopy);
     
+    // تحديث قائمة الحركات
+    const newMove: GameMove = {
+      moveNumber: Math.floor(gameCopy.history().length / 2) + 1,
+      san: san,
+      fen: fen,
+      [currentPlayerRef.current === 'white' ? 'black' : 'white']: san
+    };
+
+    setMoves(prev => {
+      const updated = [...prev];
+      const lastMove = updated[updated.length - 1];
+      
+      if (lastMove && (
+        (currentPlayerRef.current === 'black' && !lastMove.white) ||
+        (currentPlayerRef.current === 'white' && !lastMove.black)
+      )) {
+        updated[updated.length - 1] = { ...lastMove, [currentPlayerRef.current === 'white' ? 'black' : 'white']: san };
+      } else {
+        updated.push(newMove);
+      }
+      return updated;
+    });
+
+    // تحديث حالة اللعبة - تحديث الدور فوراً
+    setGameState(prev => ({
+      ...prev,
+      currentTurn: currentPlayerRef.current, // بعد حركة الخصم يصبح دورك أنت
+      isCheck: gameCopy.inCheck(),
+      isCheckmate: gameCopy.isCheckmate(),
+      isDraw: gameCopy.isDraw()
+    }));
+    
     if (isPhysical) {
       setIsPhysicalMove(true);
       toast({
@@ -527,7 +647,9 @@ const GameRoom = () => {
       setTimeout(() => setIsPhysicalMove(false), 3000);
     }
 
-    // Update moves list and game state...
+    // بدء عداد اللاعب الحالي
+    console.log('=== GAME ROOM: Starting current player timer ===');
+    setTimers(prev => ({ ...prev, isRunning: true }));
   };
 
   const handleGameEnd = (reason: string) => {

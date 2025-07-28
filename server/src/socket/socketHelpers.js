@@ -597,6 +597,14 @@ export async function startClock(nsp, gameId) {
       currentTurn: game.current_turn
     });
     logger.info(`=== IMMEDIATE CLOCK UPDATE EMITTED for game ${gameId} ===`);
+    
+    // إرسال تحديث الدور
+    logger.info(`=== EMITTING TURN UPDATE for game ${gameId} ===`);
+    nsp.to(`game::${gameId}`).emit('turnUpdate', {
+      gameId: gameId,
+      currentTurn: game.current_turn
+    });
+    logger.info(`=== TURN UPDATE EMITTED for game ${gameId} ===`);
 
     // إنشاء المؤقت
     const timer = setInterval(async () => {
@@ -893,11 +901,61 @@ export async function handleGameMove(nsp, gameId, moveData) {
       logger.error(`Game ${gameId} not found when processing move`);
       return;
     }
+
+    // التحقق من صحة الحركة باستخدام Chess.js
+    const { Chess } = await import('chess.js');
+    const chess = new Chess(game.current_fen);
     
-    // تحديث FEN والدور في قاعدة البيانات
+    // التحقق من أن الحركة قانونية
+    const move = chess.move({
+      from: moveData.from,
+      to: moveData.to,
+      promotion: moveData.promotion || 'q'
+    });
+
+    if (!move) {
+      logger.error(`Invalid move for game ${gameId}:`, moveData);
+      return;
+    }
+
+    // التحقق من أن اللاعب يلعب في دوره
+    const currentTurn = chess.turn();
+    const playerColor = moveData.movedBy;
+    
+    if (currentTurn !== playerColor) {
+      logger.error(`Player ${playerColor} tried to move on ${currentTurn}'s turn`);
+      return;
+    }
+
+    // الحصول على UCI notation
+    const uci = moveData.from + moveData.to + (moveData.promotion || '');
+    
+    // حساب رقم الحركة
+    const moveCount = await GameMove.count({ where: { game_id: gameId } });
+    const moveNumber = Math.floor(moveCount / 2) + 1;
+
+    // حفظ الحركة في قاعدة البيانات
+    // بدون الأقواس المعقوفة:
+const GameMove = (await import('../models/GameMove.js')).default;
+    const { User } = await import('../models/User.js');
+    
+    // الحصول على معرف اللاعب
+    const playerId = playerColor === 'white' ? game.white_player_id : game.black_player_id;
+    
+    await GameMove.create({
+      game_id: gameId,
+      move_number: moveNumber,
+      player_id: playerId,
+      uci: uci,
+      san: move.san,
+      fen_after: chess.fen()
+    });
+
+    // تحديث حالة اللعبة في قاعدة البيانات
+    const newTurn = chess.turn();
     await game.update({
-      current_fen: moveData.fen,
-      current_turn: moveData.currentTurn || (game.current_turn === 'white' ? 'black' : 'white')
+      current_fen: chess.fen(),
+      current_turn: newTurn
     });
     
     // تحديث البيانات في الذاكرة
@@ -905,7 +963,7 @@ export async function handleGameMove(nsp, gameId, moveData) {
     if (timerData) {
       gameTimerData.set(gameId, {
         ...timerData,
-        currentTurn: moveData.currentTurn || (game.current_turn === 'white' ? 'black' : 'white')
+        currentTurn: newTurn
       });
     }
     
@@ -913,9 +971,12 @@ export async function handleGameMove(nsp, gameId, moveData) {
     logger.info(`=== HANDLE GAME MOVE: Emitting moveMade for game ${gameId} ===`);
     nsp.to(`game::${gameId}`).emit('moveMade', {
       gameId: gameId,
-      move: moveData.san,
-      fen: moveData.fen,
-      movedBy: moveData.movedBy
+      move: move.san,
+      fen: chess.fen(),
+      movedBy: moveData.movedBy,
+      from: moveData.from,
+      to: moveData.to,
+      uci: uci
     });
     logger.info(`=== HANDLE GAME MOVE: moveMade emitted for game ${gameId} ===`);
     
@@ -923,16 +984,20 @@ export async function handleGameMove(nsp, gameId, moveData) {
     logger.info(`=== HANDLE GAME MOVE: Emitting turnUpdate for game ${gameId} ===`);
     nsp.to(`game::${gameId}`).emit('turnUpdate', {
       gameId: gameId,
-      currentTurn: moveData.currentTurn || (game.current_turn === 'white' ? 'black' : 'white')
+      currentTurn: newTurn
     });
     logger.info(`=== HANDLE GAME MOVE: turnUpdate emitted for game ${gameId} ===`);
     
-    // بدء المؤقت إذا لم يكن يعمل
-    logger.info(`Checking if clock is running for game ${gameId} - gameTimers keys:`, Object.keys(gameTimers));
-    if (!gameTimers[gameId]) {
-      logger.info(`Clock not running for game ${gameId}, starting it`);
-      await startClock(nsp, gameId);
+    // إيقاف المؤقت الحالي وبدء مؤقت اللاعب الجديد
+    logger.info(`Stopping current timer and starting new timer for game ${gameId}`);
+    if (gameTimers[gameId]) {
+      clearInterval(gameTimers[gameId]);
+      delete gameTimers[gameId];
     }
+    
+    // بدء المؤقت للاعب الجديد
+    logger.info(`Starting clock for new player in game ${gameId}`);
+    await startClock(nsp, gameId);
     
     logger.info(`Move processed successfully for game ${gameId}`);
     

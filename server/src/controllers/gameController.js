@@ -1,4 +1,4 @@
-import { getGameDetailsService, updateGameTimeService } from '../services/gameService.js';
+import { getGameDetailsService, updateGameTimeService, getGameMovesService } from '../services/gameService.js';
 import logger from '../utils/logger.js';
 
 // الحصول على تفاصيل اللعبة
@@ -23,6 +23,28 @@ export const getGameDetails = async (req, res) => {
   }
 };
 
+// جلب حركات اللعبة
+export const getGameMoves = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await getGameMovesService(id);
+
+    if (!result.success) {
+      return res.status(404).json(result);
+    }
+
+    res.json(result);
+
+  } catch (error) {
+    logger.error('خطأ في جلب حركات اللعبة:', error);
+    res.status(500).json({
+      success: false,
+      message: 'خطأ في الخادم'
+    });
+  }
+};
+
 // الحصول على قائمة الألعاب
 export const getGamesList = async (req, res) => {
   try {
@@ -30,7 +52,8 @@ export const getGamesList = async (req, res) => {
       success: true,
       message: 'Game API is working. Use /api/game/:id to get game details',
       endpoints: {
-        'GET /api/game/:id': 'Get game details by ID'
+        'GET /api/game/:id': 'Get game details by ID',
+        'GET /api/game/:id/moves': 'Get game moves by ID'
       },
       example: {
         url: '/api/game/1',
