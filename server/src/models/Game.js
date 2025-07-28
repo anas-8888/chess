@@ -69,6 +69,11 @@ const Game = sequelize.define(
       allowNull: false,
       defaultValue: 'waiting',
     },
+    current_turn: {
+      type: DataTypes.ENUM('white', 'black'),
+      allowNull: false,
+      defaultValue: 'white',
+    },
     winner_id: {
       type: DataTypes.INTEGER,
       allowNull: true,

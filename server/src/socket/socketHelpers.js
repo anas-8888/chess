@@ -11,6 +11,9 @@ const activeUsers = new Map(); // userId -> Set of socketIds
 const activeGames = {};
 const gameTimers = {};
 
+// متغير لتخزين بيانات المؤقت في الذاكرة
+const gameTimerData = new Map(); // { gameId: { whiteTimeLeft, blackTimeLeft, currentTurn, game } }
+
 // Store previous stats for comparison
 let previousStats = { totalUsers: 0, totalConnections: 0 };
 
@@ -283,16 +286,20 @@ export async function createGame(invite) {
     const whiteUserId = isWhiteRandom ? invite.from_user_id : invite.to_user_id;
     const blackUserId = isWhiteRandom ? invite.to_user_id : invite.from_user_id;
     
-    // إنشاء المباراة مع الحقول الصحيحة حسب نموذج Game
+    // إنشاء المباراة مع الحقول الصحيحة حسب نموذج Game الجديد
     const game = await Game.create({
-      whiteUserId: whiteUserId,
-      blackUserId: blackUserId,
-      whitePlayMethod: invite.play_method,
-      blackPlayMethod: invite.play_method,
-      gameTime: '10', // القيمة الافتراضية حسب نموذج Game
-      mode: invite.game_type,
-      status: 'in_progress',
-      dateTime: new Date(),
+      white_player_id: whiteUserId,
+      black_player_id: blackUserId,
+      started_by_user_id: invite.from_user_id,
+      game_type: invite.game_type,
+      initial_time: 600, // 10 minutes in seconds
+      white_time_left: 600,
+      black_time_left: 600,
+      white_play_method: invite.play_method,
+      black_play_method: invite.play_method,
+      current_fen: 'startpos',
+      status: 'active',
+      current_turn: 'white'
     });
     
     logger.info('تم إنشاء مباراة جديدة:', {
@@ -300,7 +307,11 @@ export async function createGame(invite) {
       whiteUserId: whiteUserId,
       blackUserId: blackUserId,
       playMethod: invite.play_method,
-      gameType: invite.game_type
+      gameType: invite.game_type,
+      initialTime: game.initial_time,
+      whiteTimeLeft: game.white_time_left,
+      blackTimeLeft: game.black_time_left,
+      currentTurn: game.current_turn
     });
     
     return game;
@@ -321,16 +332,20 @@ export async function createGameWithMethods(invite) {
     const whitePlayMethod = isWhiteRandom ? invite.play_method : invite.play_method;
     const blackPlayMethod = isWhiteRandom ? invite.play_method : invite.play_method;
     
-    // إنشاء المباراة مع الحقول الصحيحة حسب نموذج Game
+    // إنشاء المباراة مع الحقول الصحيحة حسب نموذج Game الجديد
     const game = await Game.create({
-      whiteUserId: whiteUserId,
-      blackUserId: blackUserId,
-      whitePlayMethod: whitePlayMethod,
-      blackPlayMethod: blackPlayMethod,
-      gameTime: '10', // القيمة الافتراضية حسب نموذج Game
-      mode: invite.game_type,
-      status: 'in_progress',
-      dateTime: new Date(),
+      white_player_id: whiteUserId,
+      black_player_id: blackUserId,
+      started_by_user_id: invite.from_user_id,
+      game_type: invite.game_type,
+      initial_time: 600, // 10 minutes in seconds
+      white_time_left: 600,
+      black_time_left: 600,
+      white_play_method: whitePlayMethod,
+      black_play_method: blackPlayMethod,
+      current_fen: 'startpos',
+      status: 'active',
+      current_turn: 'white'
     });
     
     logger.info('تم إنشاء مباراة جديدة مع طريقتي اللعب:', {
@@ -339,7 +354,11 @@ export async function createGameWithMethods(invite) {
       blackUserId: blackUserId,
       whitePlayMethod: whitePlayMethod,
       blackPlayMethod: blackPlayMethod,
-      gameType: invite.game_type
+      gameType: invite.game_type,
+      initialTime: game.initial_time,
+      whiteTimeLeft: game.white_time_left,
+      blackTimeLeft: game.black_time_left,
+      currentTurn: game.current_turn
     });
     
     return game;
@@ -479,9 +498,20 @@ export async function handleInviteResponse(socket, nsp, userId, { inviteId, resp
     if (response === 'accepted') {
       await invite.update({ status: 'accepted' });
       
-      // إرسال إشعار للطرفين بقبول الدعوة
+      // Create the game
+      const game = await createGame(invite);
+      
+      logger.info(`Game created with ID: ${game.id}, starting clock...`);
+      
+      // Start the clock for the game
+      logger.info(`=== HANDLE INVITE RESPONSE: Starting clock for game ${game.id} ===`);
+      await startClock(nsp, game.id);
+      logger.info(`=== HANDLE INVITE RESPONSE: Clock started for game ${game.id} ===`);
+      
+      // إرسال إشعار للطرفين بقبول الدعوة مع معرف اللعبة
       nsp.to(`user::${invite.from_user_id}`).emit('gameInviteAccepted', {
         inviteId: invite.id,
+        gameId: game.id,
         fromUserId: invite.from_user_id,
         toUserId: invite.to_user_id,
         playMethod: invite.play_method,
@@ -490,6 +520,7 @@ export async function handleInviteResponse(socket, nsp, userId, { inviteId, resp
       
       nsp.to(`user::${invite.to_user_id}`).emit('gameInviteAccepted', {
         inviteId: invite.id,
+        gameId: game.id,
         fromUserId: invite.from_user_id,
         toUserId: invite.to_user_id,
         playMethod: invite.play_method,
@@ -522,39 +553,391 @@ export async function handleInviteResponse(socket, nsp, userId, { inviteId, resp
 }
 
 // Game management helpers
-export function startClock(nsp, gameId, game) {
-  if (gameTimers[gameId]) return;
-  
-  let whiteTime = 300000; // 5 minutes in milliseconds
-  let blackTime = 300000;
-  let turn = 'white';
-
-  gameTimers[gameId] = setInterval(() => {
-    if (turn === 'white') {
-      whiteTime -= 1000;
-      if (whiteTime <= 0) {
-        nsp
-          .to(`game::${gameId}`)
-          .emit('gameEnd', { result: 'black_win', reason: 'timeout' });
-        stopClock(gameId);
-      }
-    } else {
-      blackTime -= 1000;
-      if (blackTime <= 0) {
-        nsp
-          .to(`game::${gameId}`)
-          .emit('gameEnd', { result: 'white_win', reason: 'timeout' });
-        stopClock(gameId);
-      }
+export async function startClock(nsp, gameId) {
+  try {
+    logger.info(`=== STARTCLOCK CALLED for game ${gameId} ===`);
+    logger.info(`startClock called for game ${gameId} - checking if already running`);
+    
+    // التحقق من وجود مؤقت نشط بالفعل
+    if (gameTimers[gameId]) {
+      logger.info(`Clock already running for game ${gameId}, not starting again`);
+      return;
     }
-    nsp.to(`game::${gameId}`).emit('clock', { whiteTime, blackTime });
-  }, 1000);
+
+    // قراءة بيانات اللعبة من قاعدة البيانات مرة واحدة فقط
+    const game = await Game.findByPk(gameId);
+    if (!game) {
+      logger.error(`Game ${gameId} not found when starting clock`);
+      return;
+    }
+
+    logger.info(`Game ${gameId} found - status: ${game.status}, white_time_left: ${game.white_time_left}, black_time_left: ${game.black_time_left}, current_turn: ${game.current_turn}`);
+
+    // تخزين بيانات المؤقت في الذاكرة
+    gameTimerData.set(gameId, {
+      whiteTimeLeft: game.white_time_left,
+      blackTimeLeft: game.black_time_left,
+      currentTurn: game.current_turn,
+      game: game
+    });
+
+    logger.info(`Timer data stored in memory for game ${gameId}:`, {
+      whiteTimeLeft: game.white_time_left,
+      blackTimeLeft: game.black_time_left,
+      currentTurn: game.current_turn
+    });
+
+    logger.info(`Setting up setInterval for game ${gameId} - will run every 1000ms`);
+    
+    // إرسال تحديث فوري للمؤقت
+    logger.info(`=== EMITTING IMMEDIATE CLOCK UPDATE for game ${gameId} ===`);
+    nsp.to(`game::${gameId}`).emit('clockUpdate', {
+      whiteTimeLeft: game.white_time_left,
+      blackTimeLeft: game.black_time_left,
+      currentTurn: game.current_turn
+    });
+    logger.info(`=== IMMEDIATE CLOCK UPDATE EMITTED for game ${gameId} ===`);
+
+    // إنشاء المؤقت
+    const timer = setInterval(async () => {
+      try {
+        logger.info(`=== CLOCK TICK STARTED for game ${gameId} ===`);
+        logger.info(`Timer ID: ${timer}, Interval running for game ${gameId}`);
+        
+        // الحصول على بيانات المؤقت من الذاكرة
+        const timerData = gameTimerData.get(gameId);
+        if (!timerData) {
+          logger.error(`Timer data not found for game ${gameId}, stopping clock`);
+          clearInterval(timer);
+          delete gameTimers[gameId];
+          return;
+        }
+
+        const { whiteTimeLeft, blackTimeLeft, currentTurn } = timerData;
+        
+        logger.info(`Clock tick for game ${gameId} - current turn: ${currentTurn}`);
+        logger.info(`Game ${gameId} current state:`, { whiteTimeLeft, blackTimeLeft, currentTurn });
+        logger.info(`Room name: game::${gameId}`);
+        logger.info(`Active timers:`, Object.keys(gameTimers));
+        logger.info(`Timer data keys:`, Array.from(gameTimerData.keys()));
+        
+        // تخفيض وقت اللاعب الحالي
+        let newWhiteTime = whiteTimeLeft;
+        let newBlackTime = blackTimeLeft;
+        let newCurrentTurn = currentTurn;
+        
+        if (currentTurn === 'white') {
+          newWhiteTime = Math.max(0, whiteTimeLeft - 1);
+          logger.info(`Decreased white time from ${whiteTimeLeft} to ${newWhiteTime}`);
+          
+          // التحقق من انتهاء الوقت
+          if (newWhiteTime === 0) {
+            logger.info(`White player ran out of time in game ${gameId}`);
+            await handleGameTimeout(nsp, gameId, 'white');
+            return;
+          }
+        } else if (currentTurn === 'black') {
+          newBlackTime = Math.max(0, blackTimeLeft - 1);
+          logger.info(`Decreased black time from ${blackTimeLeft} to ${newBlackTime}`);
+          
+          // التحقق من انتهاء الوقت
+          if (newBlackTime === 0) {
+            logger.info(`Black player ran out of time in game ${gameId}`);
+            await handleGameTimeout(nsp, gameId, 'black');
+            return;
+          }
+        }
+        
+        // تحديث البيانات في الذاكرة
+        gameTimerData.set(gameId, {
+          ...timerData,
+          whiteTimeLeft: newWhiteTime,
+          blackTimeLeft: newBlackTime
+        });
+        
+        logger.info(`Updated timer data in memory for game ${gameId}:`, {
+          whiteTimeLeft: newWhiteTime,
+          blackTimeLeft: newBlackTime,
+          currentTurn: currentTurn
+        });
+        
+        // تحديث قاعدة البيانات مع retry mechanism
+        let dbUpdateSuccess = false;
+        let retryCount = 0;
+        const maxRetries = 3;
+        
+        while (!dbUpdateSuccess && retryCount < maxRetries) {
+          try {
+            const { updateGameTimeService } = await import('../services/gameService.js');
+            const updateResult = await updateGameTimeService(gameId, {
+              whiteTimeLeft: newWhiteTime,
+              blackTimeLeft: newBlackTime,
+              currentTurn: currentTurn
+            });
+            
+            if (updateResult.success) {
+              logger.info(`Database updated successfully for game ${gameId}:`, {
+                whiteTimeLeft: newWhiteTime,
+                blackTimeLeft: newBlackTime,
+                currentTurn: currentTurn
+              });
+              dbUpdateSuccess = true;
+            } else {
+              logger.error(`Failed to update database for game ${gameId}:`, updateResult.message);
+              retryCount++;
+              if (retryCount < maxRetries) {
+                await new Promise(resolve => setTimeout(resolve, 1000)); // انتظار ثانية قبل المحاولة مرة أخرى
+              }
+            }
+          } catch (dbError) {
+            logger.error(`Error updating database for game ${gameId} (attempt ${retryCount + 1}):`, dbError);
+            retryCount++;
+            if (retryCount < maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, 1000)); // انتظار ثانية قبل المحاولة مرة أخرى
+            }
+          }
+        }
+        
+        // إرسال التحديث للعملاء حتى لو فشل تحديث قاعدة البيانات
+        logger.info(`=== EMITTING CLOCK UPDATE for game ${gameId} ===`);
+        logger.info(`Emitting to room: game::${gameId}`);
+        logger.info(`Data being emitted:`, {
+          whiteTimeLeft: newWhiteTime,
+          blackTimeLeft: newBlackTime,
+          currentTurn: currentTurn
+        });
+        
+        nsp.to(`game::${gameId}`).emit('clockUpdate', {
+          whiteTimeLeft: newWhiteTime,
+          blackTimeLeft: newBlackTime,
+          currentTurn: currentTurn
+        });
+        
+        logger.info(`=== CLOCK UPDATE EMITTED for game ${gameId} ===`);
+        logger.info(`=== CLOCK TICK COMPLETED for game ${gameId} ===`);
+        
+      } catch (error) {
+        logger.error(`Error in clock tick for game ${gameId}:`, error);
+        logger.info(`=== CLOCK TICK FAILED for game ${gameId} ===`);
+        
+        // إعادة تشغيل المؤقت في حالة الخطأ
+        logger.info(`Restarting clock for game ${gameId} due to error`);
+        clearInterval(timer);
+        delete gameTimers[gameId];
+        setTimeout(() => {
+          startClock(nsp, gameId).catch(err => {
+            logger.error(`Failed to restart clock for game ${gameId}:`, err);
+          });
+        }, 5000); // انتظار 5 ثوان قبل إعادة التشغيل
+      }
+    }, 1000);
+    
+    // حفظ المؤقت
+    gameTimers[gameId] = timer;
+    logger.info(`Clock started for game ${gameId} - timer ID: ${timer}`);
+    
+  } catch (error) {
+    logger.error(`Error starting clock for game ${gameId}:`, error);
+  }
 }
 
-export function stopClock(gameId) {
-  if (gameTimers[gameId]) {
-    clearInterval(gameTimers[gameId]);
-    delete gameTimers[gameId];
+export async function stopClock(gameId) {
+  try {
+    logger.info(`stopClock called for game ${gameId} - checking if timer exists`);
+    
+    if (gameTimers[gameId]) {
+      clearInterval(gameTimers[gameId]);
+      delete gameTimers[gameId];
+      logger.info(`Clock stopped for game ${gameId}`);
+    } else {
+      logger.info(`No active timer found for game ${gameId}`);
+    }
+    
+    // إزالة بيانات المؤقت من الذاكرة
+    gameTimerData.delete(gameId);
+    
+  } catch (error) {
+    logger.error(`Error stopping clock for game ${gameId}:`, error);
+  }
+}
+
+export async function handleGameTimeout(nsp, gameId, timeoutPlayer) {
+  try {
+    logger.info(`=== HANDLE GAME TIMEOUT: Handling timeout for game ${gameId} ===`);
+    
+    // الحصول على بيانات اللعبة
+    const game = await Game.findByPk(gameId);
+    if (!game) {
+      logger.error(`Game ${gameId} not found when handling timeout`);
+      return;
+    }
+    
+    // تحديد الفائز
+    const winner = timeoutPlayer === 'white' ? 'black' : 'white';
+    
+    // تحديث حالة اللعبة
+    await game.update({
+      status: 'completed',
+      winner: winner,
+      end_reason: 'timeout'
+    });
+    
+    // تحديث قاعدة البيانات بالوقت النهائي
+    try {
+      const { updateGameTimeService } = await import('../services/gameService.js');
+      const timerData = gameTimerData.get(gameId);
+      if (timerData) {
+        const updateResult = await updateGameTimeService(gameId, {
+          whiteTimeLeft: timerData.whiteTimeLeft,
+          blackTimeLeft: timerData.blackTimeLeft,
+          currentTurn: timerData.currentTurn
+        });
+        
+        if (updateResult.success) {
+          logger.info(`Final time state saved to database for game ${gameId}:`, {
+            whiteTimeLeft: timerData.whiteTimeLeft,
+            blackTimeLeft: timerData.blackTimeLeft,
+            currentTurn: timerData.currentTurn
+          });
+        } else {
+          logger.error(`Failed to save final time state to database for game ${gameId}:`, updateResult.message);
+        }
+      }
+    } catch (dbError) {
+      logger.error(`Error saving final time state to database for game ${gameId}:`, dbError);
+    }
+    
+    // إيقاف المؤقت
+    await stopClock(gameId);
+    
+    // إرسال حدث انتهاء اللعبة
+    nsp.to(`game::${gameId}`).emit('gameTimeout', {
+      gameId: gameId,
+      timeoutPlayer: timeoutPlayer,
+      winner: winner
+    });
+    
+    // تحديث حالة اللاعبين
+    const whiteUser = await User.findByPk(game.white_user_id);
+    const blackUser = await User.findByPk(game.black_user_id);
+    
+    if (whiteUser) await whiteUser.update({ state: 'online' });
+    if (blackUser) await blackUser.update({ state: 'online' });
+    
+    logger.info(`Game ${gameId} ended due to timeout - ${timeoutPlayer} player lost`);
+    
+  } catch (error) {
+    logger.error(`Error handling game timeout for game ${gameId}:`, error);
+  }
+}
+
+// Update current turn when a move is made
+export async function updateGameTurn(nsp, gameId, newTurn) {
+  try {
+    // تحديث الدور في قاعدة البيانات
+    const game = await Game.findByPk(gameId);
+    if (game) {
+      await game.update({ current_turn: newTurn });
+    }
+    
+    // تحديث البيانات في الذاكرة
+    const timerData = gameTimerData.get(gameId);
+    if (timerData) {
+      gameTimerData.set(gameId, {
+        ...timerData,
+        currentTurn: newTurn
+      });
+    }
+    
+    // تحديث قاعدة البيانات عبر updateGameTimeService أيضاً
+    try {
+      const { updateGameTimeService } = await import('../services/gameService.js');
+      const updateResult = await updateGameTimeService(gameId, {
+        whiteTimeLeft: timerData?.whiteTimeLeft || 0,
+        blackTimeLeft: timerData?.blackTimeLeft || 0,
+        currentTurn: newTurn
+      });
+      
+      if (updateResult.success) {
+        logger.info(`Database updated successfully for turn change in game ${gameId}:`, {
+          currentTurn: newTurn
+        });
+      } else {
+        logger.error(`Failed to update database for turn change in game ${gameId}:`, updateResult.message);
+      }
+    } catch (dbError) {
+      logger.error(`Error updating database for turn change in game ${gameId}:`, dbError);
+    }
+    
+    // إرسال حدث تغيير الدور
+    nsp.to(`game::${gameId}`).emit('turnUpdate', {
+      gameId: gameId,
+      currentTurn: newTurn
+    });
+    
+    logger.info(`Turn updated for game ${gameId} to ${newTurn}`);
+    
+  } catch (error) {
+    logger.error(`Error updating game turn for game ${gameId}:`, error);
+  }
+}
+
+// Handle game move and update turn
+export async function handleGameMove(nsp, gameId, moveData) {
+  try {
+    logger.info(`Processing move for game ${gameId}:`, moveData);
+    
+    // الحصول على بيانات اللعبة
+    const game = await Game.findByPk(gameId);
+    if (!game) {
+      logger.error(`Game ${gameId} not found when processing move`);
+      return;
+    }
+    
+    // تحديث FEN والدور في قاعدة البيانات
+    await game.update({
+      current_fen: moveData.fen,
+      current_turn: moveData.currentTurn || (game.current_turn === 'white' ? 'black' : 'white')
+    });
+    
+    // تحديث البيانات في الذاكرة
+    const timerData = gameTimerData.get(gameId);
+    if (timerData) {
+      gameTimerData.set(gameId, {
+        ...timerData,
+        currentTurn: moveData.currentTurn || (game.current_turn === 'white' ? 'black' : 'white')
+      });
+    }
+    
+    // إرسال حدث الحركة
+    logger.info(`=== HANDLE GAME MOVE: Emitting moveMade for game ${gameId} ===`);
+    nsp.to(`game::${gameId}`).emit('moveMade', {
+      gameId: gameId,
+      move: moveData.san,
+      fen: moveData.fen,
+      movedBy: moveData.movedBy
+    });
+    logger.info(`=== HANDLE GAME MOVE: moveMade emitted for game ${gameId} ===`);
+    
+    // إرسال حدث تغيير الدور
+    logger.info(`=== HANDLE GAME MOVE: Emitting turnUpdate for game ${gameId} ===`);
+    nsp.to(`game::${gameId}`).emit('turnUpdate', {
+      gameId: gameId,
+      currentTurn: moveData.currentTurn || (game.current_turn === 'white' ? 'black' : 'white')
+    });
+    logger.info(`=== HANDLE GAME MOVE: turnUpdate emitted for game ${gameId} ===`);
+    
+    // بدء المؤقت إذا لم يكن يعمل
+    logger.info(`Checking if clock is running for game ${gameId} - gameTimers keys:`, Object.keys(gameTimers));
+    if (!gameTimers[gameId]) {
+      logger.info(`Clock not running for game ${gameId}, starting it`);
+      await startClock(nsp, gameId);
+    }
+    
+    logger.info(`Move processed successfully for game ${gameId}`);
+    
+  } catch (error) {
+    logger.error(`Error processing move for game ${gameId}:`, error);
   }
 }
 
@@ -909,6 +1292,41 @@ export function setupPingPong(socket, userId) {
   });
 
   return pingInterval;
+}
+
+// Health check for timers
+export async function checkTimerHealth() {
+  try {
+    logger.info('=== TIMER HEALTH CHECK STARTED ===');
+    logger.info('Active timers:', Object.keys(gameTimers));
+    logger.info('Timer data keys:', Array.from(gameTimerData.keys()));
+    
+    for (const [gameId, timer] of Object.entries(gameTimers)) {
+      const timerData = gameTimerData.get(gameId);
+      if (!timerData) {
+        logger.error(`Timer data missing for game ${gameId}, cleaning up`);
+        clearInterval(timer);
+        delete gameTimers[gameId];
+        continue;
+      }
+      
+      // التحقق من أن اللعبة لا تزال نشطة
+      const game = await Game.findByPk(gameId);
+      if (!game || game.status !== 'active') {
+        logger.info(`Game ${gameId} is no longer active, stopping timer`);
+        clearInterval(timer);
+        delete gameTimers[gameId];
+        gameTimerData.delete(gameId);
+        continue;
+      }
+      
+      logger.info(`Timer for game ${gameId} is healthy`);
+    }
+    
+    logger.info('=== TIMER HEALTH CHECK COMPLETED ===');
+  } catch (error) {
+    logger.error('Error in timer health check:', error);
+  }
 }
 
 // Export shared data

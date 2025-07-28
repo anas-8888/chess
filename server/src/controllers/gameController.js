@@ -1,4 +1,4 @@
-import { getGameDetailsService } from '../services/gameService.js';
+import { getGameDetailsService, updateGameTimeService } from '../services/gameService.js';
 import logger from '../utils/logger.js';
 
 // الحصول على تفاصيل اللعبة
@@ -39,6 +39,29 @@ export const getGamesList = async (req, res) => {
     });
   } catch (error) {
     logger.error('خطأ في جلب قائمة الألعاب:', error);
+    res.status(500).json({
+      success: false,
+      message: 'خطأ في الخادم'
+    });
+  }
+};
+
+// تحديث وقت اللعبة
+export const updateGameTime = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { whiteTimeLeft, blackTimeLeft, currentTurn } = req.body;
+
+    const result = await updateGameTimeService(id, { whiteTimeLeft, blackTimeLeft, currentTurn });
+
+    if (!result.success) {
+      return res.status(404).json(result);
+    }
+
+    res.json(result);
+
+  } catch (error) {
+    logger.error('خطأ في تحديث وقت اللعبة:', error);
     res.status(500).json({
       success: false,
       message: 'خطأ في الخادم'

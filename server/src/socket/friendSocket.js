@@ -13,7 +13,11 @@ import {
   isUserOnline,
   enableMinimalLogging,
   sendFriendsStatusToUser,
-  setupPingPong
+  setupPingPong,
+  handleGameMove,
+  startClock,
+  gameTimers,
+  checkTimerHealth
 } from './socketHelpers.js';
 import logger from '../utils/logger.js';
 
@@ -95,6 +99,13 @@ export function initFriendSocket(io) {
     logConnectionStats();
   }, 5 * 60 * 1000); // 5 minutes
 
+  // Health check للمؤقتات كل 30 ثانية
+  setInterval(() => {
+    checkTimerHealth().catch(error => {
+      logger.error('خطأ في health check للمؤقتات:', error);
+    });
+  }, 30 * 1000); // 30 seconds
+
   nsp.on('connection', async socket => {
     let userId = null;
 
@@ -121,7 +132,7 @@ export function initFriendSocket(io) {
               { whiteUserId: userId },
               { blackUserId: userId }
             ],
-            status: 'in_progress'
+            status: 'active'
           },
           order: [['dateTime', 'DESC']]
         });
@@ -201,6 +212,13 @@ export function initFriendSocket(io) {
 
         // إنشاء المباراة مع طريقتي اللعب
         const game = await createGameWithMethods(invite);
+        
+        logger.info(`Game created with ID: ${game.id}, starting clock...`);
+        
+        // بدء العدادات للمباراة
+        logger.info(`=== START GAME WITH METHOD: Starting clock for game ${game.id} ===`);
+        await startClock(nsp, game.id);
+        logger.info(`=== START GAME WITH METHOD: Clock started for game ${game.id} ===`);
         
         // تحديث الدعوة برقم المباراة
         await invite.update({ 
@@ -289,15 +307,58 @@ export function initFriendSocket(io) {
     // Handle player connection to game room
     socket.on('joinGameRoom', async ({ gameId }) => {
       try {
-        logger.debug('انضمام لاعب لغرفة المباراة:', { userId, gameId });
+        logger.info('=== FRIEND SOCKET: Received joinGameRoom request ===');
+        logger.info('انضمام لاعب لغرفة المباراة:', { userId, gameId });
         
+        // التحقق من أن socket.join يتم تنفيذه بنجاح
+        logger.info(`Attempting to join room game::${gameId} for user ${userId}`);
         socket.join(`game::${gameId}`);
+        logger.info(`Successfully joined room game::${gameId} for user ${userId}`);
+        
+        // التحقق من الغرف التي ينتمي إليها العميل
+        logger.info(`User ${userId} is now in rooms:`, Array.from(socket.rooms));
+        
+        // Check if game exists and is active
+        const game = await Game.findByPk(gameId);
+        logger.info(`Game ${gameId} status: ${game?.status}, active timers:`, Object.keys(gameTimers));
+        logger.info(`gameTimers[${gameId}] exists:`, !!gameTimers[gameId]);
+        
+        if (game && game.status === 'active') {
+          // Start clock if not already running
+          if (!gameTimers[gameId]) {
+            logger.info(`=== JOIN GAME ROOM: Starting clock for game ${gameId} ===`);
+            await startClock(nsp, gameId);
+            logger.info(`=== JOIN GAME ROOM: Clock started for game ${gameId} ===`);
+          } else {
+            logger.info(`Clock already running for game ${gameId}, not starting again`);
+          }
+          
+          // إرسال تحديث المؤقت بعد تأخير للتأكد من جاهزية الفرونت إند
+          setTimeout(() => {
+            logger.info(`=== FRIEND SOCKET: Sending delayed clock update ===`);
+            logger.info(`Sending delayed clock update to player ${userId} for game ${gameId}`);
+            const clockData = {
+              whiteTimeLeft: game.white_time_left,
+              blackTimeLeft: game.black_time_left,
+              currentTurn: game.current_turn
+            };
+            logger.info(`Clock data being sent:`, clockData);
+            socket.emit('clockUpdate', clockData);
+            logger.info(`=== FRIEND SOCKET: Delayed clock update sent ===`);
+          }, 2000); // تأخير ثانيتين للتأكد من جاهزية الفرونت إند
+        } else if (!game) {
+          logger.error(`Game ${gameId} not found when player joined`);
+        } else if (game.status !== 'active') {
+          logger.info(`Game ${gameId} is not active (status: ${game.status})`);
+        }
         
         socket.to(`game::${gameId}`).emit('playerConnected', { 
           userId, 
           gameId,
           timestamp: new Date()
         });
+        
+        logger.info('=== FRIEND SOCKET: joinGameRoom completed successfully ===');
         
       } catch (error) {
         logger.error('خطأ في الانضمام لغرفة المباراة:', error);
@@ -319,6 +380,36 @@ export function initFriendSocket(io) {
         
       } catch (error) {
         logger.error('خطأ في مغادرة غرفة المباراة:', error);
+      }
+    });
+
+    // Handle game moves
+    socket.on('move', async (moveData) => {
+      try {
+        logger.info('=== FRIEND SOCKET: Received move request ===');
+        logger.info('حركة جديدة:', { userId, gameId: moveData.gameId, move: moveData.san });
+        
+        // Validate move data
+        if (!moveData.gameId || !moveData.san || !moveData.fen) {
+          logger.error('بيانات الحركة غير مكتملة:', moveData);
+          return socket.emit('error', { message: 'بيانات الحركة غير مكتملة' });
+        }
+
+        // Add movedBy to moveData
+        moveData.movedBy = userId;
+
+        logger.info(`Processing move for game ${moveData.gameId} by user ${userId}`);
+        
+        // Handle the move
+        logger.info(`=== FRIEND SOCKET: Processing move for game ${moveData.gameId} ===`);
+        await handleGameMove(nsp, moveData.gameId, moveData);
+        logger.info(`=== FRIEND SOCKET: Move processed successfully for game ${moveData.gameId} ===`);
+        
+        logger.info(`Move processed successfully for game ${moveData.gameId}`);
+        
+      } catch (error) {
+        logger.error('خطأ في معالجة الحركة:', error);
+        socket.emit('error', { message: 'خطأ في معالجة الحركة' });
       }
     });
   });

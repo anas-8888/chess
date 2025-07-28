@@ -1,11 +1,14 @@
 import express from 'express';
-import { getGameDetails } from '../controllers/gameController.js';
-import { validateGameId } from '../middlewares/validation/gameValidation.js';
+import { getGameDetails, updateGameTime } from '../controllers/gameController.js';
+import { validateGameId, validateUpdateTime } from '../middlewares/validation/gameValidation.js';
 
 const router = express.Router();
 
 // الحصول على تفاصيل اللعبة
 router.get('/:id', validateGameId, getGameDetails);
+
+// تحديث وقت اللعبة
+router.post('/:id/update-time', validateUpdateTime, updateGameTime);
 
 // Route للـ /api/game/ بدون معرف
 router.get('/', (req, res) => {

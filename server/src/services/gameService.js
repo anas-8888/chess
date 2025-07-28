@@ -56,12 +56,51 @@ export const getGameDetailsService = async (gameId) => {
         whitePlayMethod: game.white_play_method,
         blackPlayMethod: game.black_play_method,
         currentFen: game.current_fen,
-        status: game.status
+        status: game.status,
+        currentTurn: game.current_turn || 'white'
       }
     };
 
   } catch (error) {
     logger.error('خطأ في service جلب تفاصيل اللعبة:', error);
+    return {
+      success: false,
+      message: 'خطأ في الخادم'
+    };
+  }
+};
+
+// تحديث وقت اللعبة
+export const updateGameTimeService = async (gameId, { whiteTimeLeft, blackTimeLeft, currentTurn }) => {
+  try {
+    const game = await Game.findByPk(gameId);
+
+    if (!game) {
+      return {
+        success: false,
+        message: 'اللعبة غير موجودة'
+      };
+    }
+
+    // تحديث الوقت والدور في قاعدة البيانات
+    await game.update({
+      white_time_left: whiteTimeLeft,
+      black_time_left: blackTimeLeft,
+      current_turn: currentTurn
+    });
+
+    return {
+      success: true,
+      message: 'تم تحديث الوقت بنجاح',
+      data: {
+        whiteTimeLeft: game.white_time_left,
+        blackTimeLeft: game.black_time_left,
+        currentTurn: game.current_turn
+      }
+    };
+
+  } catch (error) {
+    logger.error('خطأ في service تحديث وقت اللعبة:', error);
     return {
       success: false,
       message: 'خطأ في الخادم'
