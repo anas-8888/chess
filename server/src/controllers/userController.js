@@ -22,6 +22,8 @@ import User from '../models/User.js';
 import Game from '../models/Game.js';
 import Puzzle from '../models/Puzzle.js';
 import Course from '../models/Course.js';
+import Session from '../models/Session.js';
+import { Op } from 'sequelize';
 
 // Create new user (Admin only)
 export const createNewUser = asyncHandler(async (req, res) => {
@@ -458,5 +460,98 @@ export const getCurrentUserStatus = asyncHandler(async (req, res) => {
   } catch (error) {
     logger.error('Error getting current user status:', error);
     res.status(500).json(formatError('Failed to get user status'));
+  }
+});
+
+// الحصول على توكن المستخدم ورقم آخر لعبة له
+export const getUserTokenAndLastGame = asyncHandler(async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'رقم المستخدم مطلوب'
+      });
+    }
+
+    // التحقق من وجود المستخدم
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'المستخدم غير موجود'
+      });
+    }
+
+    // البحث عن آخر جلسة نشطة للمستخدم
+    const activeSession = await Session.findOne({
+      where: {
+        user_id: userId,
+        deleted_at: null,
+        expires_at: {
+          [Op.gt]: new Date()
+        }
+      },
+      order: [['last_activity', 'DESC']]
+    });
+
+    if (!activeSession) {
+      return res.status(404).json({
+        success: false,
+        message: 'لا توجد جلسة نشطة للمستخدم'
+      });
+    }
+
+    // البحث عن آخر لعبة نشطة للمستخدم مع معلومات طريقة اللعب
+    const lastGame = await Game.findOne({
+      where: {
+        [Op.or]: [
+          { white_player_id: userId },
+          { black_player_id: userId }
+        ],
+        status: {
+          [Op.in]: ['active', 'pending']
+        }
+      },
+      order: [['created_at', 'DESC']]
+    });
+
+    // تحديد طريقة اللعب للاعب
+    let playerPlayMethod = null;
+    let playerColor = null;
+    
+    if (lastGame) {
+      if (lastGame.white_player_id == userId) {
+        playerColor = 'white';
+        playerPlayMethod = lastGame.white_play_method;
+      } else if (lastGame.black_player_id == userId) {
+        playerColor = 'black';
+        playerPlayMethod = lastGame.black_play_method;
+      }
+    }
+
+    // إرجاع النتيجة
+    res.json({
+      success: true,
+      data: {
+        userId: parseInt(userId),
+        username: user.username,
+        token: activeSession.id, // توكن الجلسة
+        lastGameId: lastGame ? lastGame.id : null,
+        lastGameStatus: lastGame ? lastGame.status : null,
+        playerColor: playerColor, // لون اللاعب في اللعبة
+        playerPlayMethod: playerPlayMethod, // طريقة اللعب (physical_board, phone, etc.)
+        sessionExpiresAt: activeSession.expires_at,
+        lastActivity: activeSession.last_activity
+      }
+    });
+
+  } catch (error) {
+    logger.error('خطأ في جلب توكن المستخدم وآخر لعبة:', error);
+    res.status(500).json({
+      success: false,
+      message: 'خطأ في الخادم'
+    });
   }
 });

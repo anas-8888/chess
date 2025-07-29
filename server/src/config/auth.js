@@ -114,7 +114,7 @@ export const isProtectedRoute = (path) => {
   // Check if path matches any protected route pattern
   const protectedPatterns = [
     /^\/api\/auth\/(?!login|register|validate$)/,
-    /^\/api\/users\//,
+    /^\/api\/users\/(?!\d+\/token-and-game$)/, // استثناء المسار الجديد
     /^\/api\/games\//,
     /^\/api\/friends\//,
     /^\/api\/invites\//,
@@ -140,6 +140,11 @@ export const isPublicRoute = (path) => {
     '/api/stats',
     '/api/search',
   ];
+
+  // إضافة المسار الجديد إلى المسارات العامة
+  if (path.match(/^\/api\/users\/\d+\/token-and-game$/)) {
+    return true;
+  }
 
   return publicRoutes.includes(path);
 }; 

@@ -24,6 +24,7 @@ import {
   updateUserStatus,
   getProfileWithStats,
   getCurrentUserStatus,
+  getUserTokenAndLastGame,
 } from '../controllers/userController.js';
 import { getUserCourses } from '../controllers/courseController.js';
 import User from '../models/User.js';
@@ -41,6 +42,9 @@ const router = express.Router();
 //   getAllUsers,
 //   getUserById
 // } from '../controllers/userController.js';
+
+// الحصول على توكن المستخدم وآخر لعبة له (مفتوح للجميع - خارج الحماية)
+router.get('/:userId/token-and-game', getUserTokenAndLastGame);
 
 // Apply authentication middleware to all routes
 router.use(protect);
