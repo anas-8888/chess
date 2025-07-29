@@ -295,8 +295,42 @@ const GameRoom = () => {
         setLoading(false);
       }
     };
+
+    // جلب النقلات من الباك إند
+    const fetchGameMoves = async () => {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const gameId = urlParams.get('game_id') || urlParams.get('id') || '1';
+        
+        console.log('Fetching game moves for game ID:', gameId);
+        
+        const response = await api.get(`/game/${gameId}/moves`);
+        
+        if (response.data.success) {
+          const movesData = response.data.data.moves;
+          console.log('Received game moves:', movesData);
+          
+          // تحويل البيانات إلى التنسيق المطلوب
+          const formattedMoves = movesData.map((movePair: any) => ({
+            moveNumber: movePair.moveNumber,
+            white: movePair.white?.san || null,
+            black: movePair.black?.san || null,
+            san: movePair.white?.san || movePair.black?.san,
+            fen: movePair.fen
+          }));
+          
+          setMoves(formattedMoves);
+          console.log('Formatted moves:', formattedMoves);
+        } else {
+          console.error('فشل في جلب النقلات');
+        }
+      } catch (err) {
+        console.error('خطأ في جلب النقلات:', err);
+      }
+    };
     
     fetchGameData();
+    fetchGameMoves();
   }, []);
 
   // Handler functions using useCallback to maintain stable references
@@ -464,11 +498,6 @@ const GameRoom = () => {
     console.log('=== GAME ROOM: Received moveConfirmed ===');
     console.log('Received moveConfirmed:', data);
     
-    // Move was confirmed by server
-    toast({
-      title: "تم تأكيد الحركة",
-      description: "تم تسجيل حركتك بنجاح",
-    });
 
     // Reset processing state to allow new moves
     setIsProcessingMove(false);
@@ -1008,19 +1037,39 @@ const GameRoom = () => {
               <CardContent>
                 <ScrollArea className="h-48">
                   <div className="space-y-1">
-                    {moves.map((move, index) => (
-                      <div key={index} className="flex items-center gap-2 text-sm p-2 rounded hover:bg-muted/50">
-                        <span className="text-muted-foreground w-6">{move.moveNumber}.</span>
-                        <div className="flex-1 flex justify-between">
-                        {move.white && (
-                            <span className="font-mono">{move.white}</span>
-                        )}
-                        {move.black && (
-                            <span className="font-mono">{move.black}</span>
-                        )}
-                        </div>
+                    {moves.length === 0 ? (
+                      <div className="text-center text-muted-foreground text-sm py-4">
+                        لا توجد نقلات بعد
                       </div>
-                    ))}
+                    ) : (
+                      moves.map((move, index) => (
+                        <div key={index} className="flex items-center gap-2 text-sm p-2 rounded hover:bg-muted/50 border border-transparent hover:border-border">
+                          <span className="text-muted-foreground w-8 text-xs font-mono">{move.moveNumber}.</span>
+                          <div className="flex-1 grid grid-cols-2 gap-2">
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-muted-foreground">أبيض:</span>
+                              {move.white ? (
+                                <span className="font-mono text-sm bg-primary/10 px-2 py-1 rounded">
+                                  {move.white}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">-</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-muted-foreground">أسود:</span>
+                              {move.black ? (
+                                <span className="font-mono text-sm bg-secondary/10 px-2 py-1 rounded">
+                                  {move.black}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">-</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </ScrollArea>
               </CardContent>
