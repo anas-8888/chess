@@ -340,6 +340,12 @@ const GameRoom = () => {
                       ...prev,
                       currentTurn
                     }));
+
+    // Update timers to switch active timer when turn changes
+    setTimers(prev => ({
+      ...prev,
+      lastUpdate: Date.now() // Reset timer to prevent double counting
+    }));
   }, []);
 
   const handleOpponentMove = useCallback((data: any) => {
@@ -384,7 +390,7 @@ const GameRoom = () => {
     // Update game state
     setGameState(prev => ({
       ...prev,
-      currentTurn: currentTurn || prev.currentTurn
+      currentTurn: currentTurn || (movedBy === 'white' ? 'black' : 'white') // Use server's currentTurn or calculate it
     }));
 
     // Update timers to switch active timer
@@ -423,6 +429,9 @@ const GameRoom = () => {
     }
 
     console.log('=== FULL SYNC: Opponent move processed successfully ===');
+    
+    // Reset processing state to allow new moves
+    setIsProcessingMove(false);
   }, [currentPlayer]); // Remove game dependency
 
   const handleGameTimeout = useCallback((data: { winner: string; reason?: string }) => {
@@ -460,6 +469,9 @@ const GameRoom = () => {
       title: "تم تأكيد الحركة",
       description: "تم تسجيل حركتك بنجاح",
     });
+
+    // Reset processing state to allow new moves
+    setIsProcessingMove(false);
   }, []);
 
   // WebSocket events for real-time updates
@@ -596,7 +608,7 @@ const GameRoom = () => {
           san: move.san,
           fen: gameCopy.fen(),
           movedBy: currentPlayer,
-          currentTurn: gameState.currentTurn
+          currentTurn: currentPlayer === 'white' ? 'black' : 'white' // Use new turn value
         };
         
         console.log('=== FULL SYNC: GAME ROOM: Sending move to server ===');
@@ -1000,12 +1012,12 @@ const GameRoom = () => {
                       <div key={index} className="flex items-center gap-2 text-sm p-2 rounded hover:bg-muted/50">
                         <span className="text-muted-foreground w-6">{move.moveNumber}.</span>
                         <div className="flex-1 flex justify-between">
-                          {move.white && (
+                        {move.white && (
                             <span className="font-mono">{move.white}</span>
-                          )}
-                          {move.black && (
+                        )}
+                        {move.black && (
                             <span className="font-mono">{move.black}</span>
-                          )}
+                        )}
                         </div>
                       </div>
                     ))}

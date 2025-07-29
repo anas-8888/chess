@@ -3,6 +3,7 @@ import config from '../../config/index.js';
 import User from '../models/User.js';
 import Invite from '../models/Invite.js';
 import Game from '../models/Game.js';
+import GameMove from '../models/GameMove.js';
 import { Op } from 'sequelize';
 import logger from '../utils/logger.js';
 
@@ -919,6 +920,21 @@ export async function handleGameMove(nsp, gameId, moveData) {
       current_fen: moveData.fen,
       current_turn: newTurn
     });
+
+    // حفظ الحركة في جدول game_move
+    const playerId = moveData.movedBy === 'white' ? game.white_player_id : game.black_player_id;
+    const moveNumber = Math.floor((await GameMove.count({ where: { game_id: gameId } })) / 2) + 1;
+    
+    await GameMove.create({
+      game_id: gameId,
+      move_number: moveNumber,
+      player_id: playerId,
+      uci: `${moveData.from}${moveData.to}${moveData.promotion || ''}`,
+      san: moveData.san,
+      fen_after: moveData.fen
+    });
+
+    logger.info(`Move saved to database: game_id=${gameId}, player_id=${playerId}, move_number=${moveNumber}, san=${moveData.san}`);
     
     // تحديث البيانات في الذاكرة
     const timerData = gameTimerData.get(gameId);
