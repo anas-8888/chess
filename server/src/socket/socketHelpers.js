@@ -713,6 +713,25 @@ export async function startClock(nsp, gameId) {
           currentTurn: currentTurn
         });
         
+        // Also emit to individual players to ensure delivery
+        const game = await Game.findByPk(gameId);
+        if (game && game.white_player_id) {
+          logger.info(`=== EMITTING CLOCK UPDATE to white player ${game.white_player_id} ===`);
+          nsp.to(`user::${game.white_player_id}`).emit('clockUpdate', {
+            whiteTimeLeft: newWhiteTime,
+            blackTimeLeft: newBlackTime,
+            currentTurn: currentTurn
+          });
+        }
+        if (game && game.black_player_id) {
+          logger.info(`=== EMITTING CLOCK UPDATE to black player ${game.black_player_id} ===`);
+          nsp.to(`user::${game.black_player_id}`).emit('clockUpdate', {
+            whiteTimeLeft: newWhiteTime,
+            blackTimeLeft: newBlackTime,
+            currentTurn: currentTurn
+          });
+        }
+        
         logger.info(`=== CLOCK UPDATE EMITTED for game ${gameId} ===`);
         logger.info(`=== CLOCK TICK COMPLETED for game ${gameId} ===`);
         
@@ -818,8 +837,8 @@ export async function handleGameTimeout(nsp, gameId, timeoutPlayer) {
     });
     
     // تحديث حالة اللاعبين
-    const whiteUser = await User.findByPk(game.white_user_id);
-    const blackUser = await User.findByPk(game.black_user_id);
+    const whiteUser = await User.findByPk(game.white_player_id);
+    const blackUser = await User.findByPk(game.black_player_id);
     
     if (whiteUser) await whiteUser.update({ state: 'online' });
     if (blackUser) await blackUser.update({ state: 'online' });
@@ -895,9 +914,10 @@ export async function handleGameMove(nsp, gameId, moveData) {
     }
     
     // تحديث FEN والدور في قاعدة البيانات
+    const newTurn = moveData.currentTurn || (game.current_turn === 'white' ? 'black' : 'white');
     await game.update({
       current_fen: moveData.fen,
-      current_turn: moveData.currentTurn || (game.current_turn === 'white' ? 'black' : 'white')
+      current_turn: newTurn
     });
     
     // تحديث البيانات في الذاكرة
@@ -905,27 +925,75 @@ export async function handleGameMove(nsp, gameId, moveData) {
     if (timerData) {
       gameTimerData.set(gameId, {
         ...timerData,
-        currentTurn: moveData.currentTurn || (game.current_turn === 'white' ? 'black' : 'white')
+        currentTurn: newTurn
       });
     }
     
+    // Get room members before emitting
+    const roomMembers = nsp.adapter.rooms.get(`game::${gameId}`);
+    const memberCount = roomMembers ? roomMembers.size : 0;
+    logger.info(`=== HANDLE GAME MOVE: Room members before emit: ${memberCount}`);
+    logger.info(`=== HANDLE GAME MOVE: Room members details:`, roomMembers ? Array.from(roomMembers) : []);
+    logger.info(`=== HANDLE GAME MOVE: All available rooms:`, Array.from(nsp.adapter.rooms.keys()));
+    
     // إرسال حدث الحركة
     logger.info(`=== HANDLE GAME MOVE: Emitting moveMade for game ${gameId} ===`);
-    nsp.to(`game::${gameId}`).emit('moveMade', {
+    const moveMadeData = {
       gameId: gameId,
       move: moveData.san,
       fen: moveData.fen,
-      movedBy: moveData.movedBy
-    });
+      movedBy: moveData.movedBy,
+      currentTurn: newTurn,
+      timestamp: Date.now()
+    };
+    logger.info(`=== HANDLE GAME MOVE: moveMade data:`, moveMadeData);
+    
+    // Always emit moveMade, even if room seems empty (players might be joining)
+    logger.info(`=== HANDLE GAME MOVE: Emitting moveMade to room game::${gameId} ===`);
+    nsp.to(`game::${gameId}`).emit('moveMade', moveMadeData);
     logger.info(`=== HANDLE GAME MOVE: moveMade emitted for game ${gameId} ===`);
+    
+    // Also emit to individual players to ensure delivery
+    if (game.white_player_id) {
+      logger.info(`=== HANDLE GAME MOVE: Emitting moveMade to white player ${game.white_player_id} ===`);
+      nsp.to(`user::${game.white_player_id}`).emit('moveMade', moveMadeData);
+      logger.info(`=== HANDLE GAME MOVE: moveMade sent to white player ${game.white_player_id} ===`);
+    }
+    if (game.black_player_id) {
+      logger.info(`=== HANDLE GAME MOVE: Emitting moveMade to black player ${game.black_player_id} ===`);
+      nsp.to(`user::${game.black_player_id}`).emit('moveMade', moveMadeData);
+      logger.info(`=== HANDLE GAME MOVE: moveMade sent to black player ${game.black_player_id} ===`);
+    }
     
     // إرسال حدث تغيير الدور
     logger.info(`=== HANDLE GAME MOVE: Emitting turnUpdate for game ${gameId} ===`);
-    nsp.to(`game::${gameId}`).emit('turnUpdate', {
+    const turnUpdateData = {
       gameId: gameId,
-      currentTurn: moveData.currentTurn || (game.current_turn === 'white' ? 'black' : 'white')
-    });
+      currentTurn: newTurn,
+      timestamp: Date.now(),
+      lastMove: moveData.san
+    };
+    logger.info(`=== HANDLE GAME MOVE: turnUpdate data:`, turnUpdateData);
+    nsp.to(`game::${gameId}`).emit('turnUpdate', turnUpdateData);
     logger.info(`=== HANDLE GAME MOVE: turnUpdate emitted for game ${gameId} ===`);
+    
+    // إرسال حدث تأكيد الحركة للاعب الذي قام بالحركة
+    logger.info(`=== HANDLE GAME MOVE: Emitting moveConfirmed for game ${gameId} ===`);
+    const moveConfirmedData = {
+      gameId: gameId,
+      move: moveData.san,
+      timestamp: Date.now()
+    };
+    logger.info(`=== HANDLE GAME MOVE: moveConfirmed data:`, moveConfirmedData);
+    
+    // Send moveConfirmed to the specific user who made the move
+    if (moveData.movedBy === 'white' && game.white_player_id) {
+      nsp.to(`user::${game.white_player_id}`).emit('moveConfirmed', moveConfirmedData);
+      logger.info(`=== HANDLE GAME MOVE: moveConfirmed sent to white player ${game.white_player_id} ===`);
+    } else if (moveData.movedBy === 'black' && game.black_player_id) {
+      nsp.to(`user::${game.black_player_id}`).emit('moveConfirmed', moveConfirmedData);
+      logger.info(`=== HANDLE GAME MOVE: moveConfirmed sent to black player ${game.black_player_id} ===`);
+    }
     
     // بدء المؤقت إذا لم يكن يعمل
     logger.info(`Checking if clock is running for game ${gameId} - gameTimers keys:`, Object.keys(gameTimers));
@@ -1054,15 +1122,15 @@ export async function updateUserStatusAfterResign(gameId, resignedUserId) {
     // التحقق من حالة اللاعبين قبل التحديث
     const [resignedUser, otherUser] = await Promise.all([
       User.findByPk(resignedUserId),
-      User.findByPk(game.whiteUserId === resignedUserId ? game.blackUserId : game.whiteUserId)
+      User.findByPk(game.white_player_id === resignedUserId ? game.black_player_id : game.white_player_id)
     ]);
     
     if (!resignedUser || !otherUser) {
-      logger.error('أحد اللاعبين غير موجود:', { resignedUserId, otherUserId: game.whiteUserId === resignedUserId ? game.blackUserId : game.whiteUserId });
+      logger.error('أحد اللاعبين غير موجود:', { resignedUserId, otherUserId: game.white_player_id === resignedUserId ? game.black_player_id : game.white_player_id });
       return;
     }
     
-    const otherUserId = game.whiteUserId === resignedUserId ? game.blackUserId : game.whiteUserId;
+    const otherUserId = game.white_player_id === resignedUserId ? game.black_player_id : game.white_player_id;
     const updatePromises = [];
     
     // تحديث حالة اللاعب المنسحب إلى online
@@ -1071,8 +1139,8 @@ export async function updateUserStatusAfterResign(gameId, resignedUserId) {
       const activeGame = await Game.findOne({
         where: {
           [Op.or]: [
-            { whiteUserId: resignedUserId },
-            { blackUserId: resignedUserId }
+            { white_player_id: resignedUserId },
+            { black_player_id: resignedUserId }
           ],
           status: {
             [Op.in]: ['in-game', 'in_progress']
@@ -1092,8 +1160,8 @@ export async function updateUserStatusAfterResign(gameId, resignedUserId) {
       const activeGame = await Game.findOne({
         where: {
           [Op.or]: [
-            { whiteUserId: otherUserId },
-            { blackUserId: otherUserId }
+            { white_player_id: otherUserId },
+            { black_player_id: otherUserId }
           ],
           status: {
             [Op.in]: ['in-game', 'in_progress']
@@ -1130,12 +1198,12 @@ export async function updateUserStatusAfterGameEnd(gameId) {
     
     // التحقق من حالة اللاعبين قبل التحديث
     const [whiteUser, blackUser] = await Promise.all([
-      User.findByPk(game.whiteUserId),
-      User.findByPk(game.blackUserId)
+      User.findByPk(game.white_player_id),
+      User.findByPk(game.black_player_id)
     ]);
     
     if (!whiteUser || !blackUser) {
-      logger.error('أحد اللاعبين غير موجود:', { whiteUserId: game.whiteUserId, blackUserId: game.blackUserId });
+      logger.error('أحد اللاعبين غير موجود:', { whiteUserId: game.white_player_id, blackUserId: game.black_player_id });
       return;
     }
     
@@ -1147,8 +1215,8 @@ export async function updateUserStatusAfterGameEnd(gameId) {
       const activeGame = await Game.findOne({
         where: {
           [Op.or]: [
-            { whiteUserId: game.whiteUserId },
-            { blackUserId: game.whiteUserId }
+            { white_player_id: game.white_player_id },
+            { black_player_id: game.white_player_id }
           ],
           status: {
             [Op.in]: ['in-game', 'in_progress']
@@ -1158,7 +1226,7 @@ export async function updateUserStatusAfterGameEnd(gameId) {
       });
       
       if (!activeGame) {
-        updatePromises.push(updateUserStatus(game.whiteUserId, 'online'));
+        updatePromises.push(updateUserStatus(game.white_player_id, 'online'));
       }
     }
     
@@ -1167,8 +1235,8 @@ export async function updateUserStatusAfterGameEnd(gameId) {
       const activeGame = await Game.findOne({
         where: {
           [Op.or]: [
-            { whiteUserId: game.blackUserId },
-            { blackUserId: game.blackUserId }
+            { white_player_id: game.black_player_id },
+            { black_player_id: game.black_player_id }
           ],
           status: {
             [Op.in]: ['in-game', 'in_progress']
@@ -1178,7 +1246,7 @@ export async function updateUserStatusAfterGameEnd(gameId) {
       });
       
       if (!activeGame) {
-        updatePromises.push(updateUserStatus(game.blackUserId, 'online'));
+        updatePromises.push(updateUserStatus(game.black_player_id, 'online'));
       }
     }
     
@@ -1210,8 +1278,8 @@ export async function cleanupOrphanedUserStates() {
       const activeGame = await Game.findOne({
         where: {
           [Op.or]: [
-            { whiteUserId: user.user_id },
-            { blackUserId: user.user_id }
+            { white_player_id: user.user_id },
+            { black_player_id: user.user_id }
           ],
           status: {
             [Op.in]: ['in-game', 'in_progress']
@@ -1330,4 +1398,4 @@ export async function checkTimerHealth() {
 }
 
 // Export shared data
-export { activeUsers, activeGames, gameTimers }; 
+export { activeUsers, activeGames, gameTimers };

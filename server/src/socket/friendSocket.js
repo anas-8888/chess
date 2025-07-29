@@ -129,8 +129,8 @@ export function initFriendSocket(io) {
         const activeGame = await Game.findOne({
           where: {
             [Op.or]: [
-              { whiteUserId: userId },
-              { blackUserId: userId }
+              { white_player_id: userId },
+              { black_player_id: userId }
             ],
             status: 'active'
           },
@@ -141,15 +141,14 @@ export function initFriendSocket(io) {
           logger.debug(`تم العثور على مباراة جارية للمستخدم ${userId}: ${activeGame.id}`);
           socket.emit('rejoin_game', {
             gameId: activeGame.id,
-            whiteUserId: activeGame.whiteUserId,
-            blackUserId: activeGame.blackUserId,
-            whitePlayMethod: activeGame.whitePlayMethod,
-            blackPlayMethod: activeGame.blackPlayMethod,
+            whiteUserId: activeGame.white_player_id,
+            blackUserId: activeGame.black_player_id,
+            whitePlayMethod: activeGame.white_play_method,
+            blackPlayMethod: activeGame.black_play_method,
             mode: activeGame.mode
           });
         }
       } catch (error) {
-        logger.error('Error checking active games:', error);
       }
     })();
 
@@ -249,12 +248,12 @@ export function initFriendSocket(io) {
         const gameData = {
           inviteId: invite.id,
           gameId: game.id,
-          whiteUserId: game.whiteUserId,
-          blackUserId: game.blackUserId,
-          whitePlayMethod: game.whitePlayMethod,
-          blackPlayMethod: game.blackPlayMethod,
+          whiteUserId: game.white_player_id,
+          blackUserId: game.black_player_id,
+          whitePlayMethod: game.white_play_method,
+          blackPlayMethod: game.black_play_method,
           gameType: invite.game_type,
-          gameTime: game.gameTime
+          gameTime: game.initial_time
         };
 
         nsp.to(`user::${invite.from_user_id}`).emit('gameStarted', gameData);
@@ -333,6 +332,21 @@ export function initFriendSocket(io) {
             logger.info(`Clock already running for game ${gameId}, not starting again`);
           }
           
+          // إرسال حدث roomJoined للتأكد
+          const roomMembers = nsp.adapter.rooms.get(`game::${gameId}`);
+          const memberCount = roomMembers ? roomMembers.size : 0;
+          logger.info(`=== FRIEND SOCKET: Emitting roomJoined event ===`);
+          logger.info(`Room members count: ${memberCount}`);
+          logger.info(`Room members:`, roomMembers ? Array.from(roomMembers) : []);
+          
+          socket.emit('roomJoined', {
+            roomName: `game::${gameId}`,
+            memberCount: memberCount,
+            gameId: gameId,
+            timestamp: Date.now()
+          });
+          logger.info(`=== FRIEND SOCKET: roomJoined event emitted ===`);
+          
           // إرسال تحديث المؤقت بعد تأخير للتأكد من جاهزية الفرونت إند
           setTimeout(() => {
             logger.info(`=== FRIEND SOCKET: Sending delayed clock update ===`);
@@ -359,6 +373,16 @@ export function initFriendSocket(io) {
         });
         
         logger.info('=== FRIEND SOCKET: joinGameRoom completed successfully ===');
+        
+        // Add a final verification after a short delay
+        setTimeout(() => {
+          const finalRoomMembers = nsp.adapter.rooms.get(`game::${gameId}`);
+          const finalIsInRoom = socket.rooms.has(`game::${gameId}`);
+          logger.info(`=== FRIEND SOCKET: Final room verification after delay ===`);
+          logger.info(`=== FRIEND SOCKET: Socket still in room: ${finalIsInRoom}`);
+          logger.info(`=== FRIEND SOCKET: Final room members:`, finalRoomMembers?.size || 0);
+          logger.info(`=== FRIEND SOCKET: Final room members details:`, finalRoomMembers ? Array.from(finalRoomMembers) : []);
+        }, 1000);
         
       } catch (error) {
         logger.error('خطأ في الانضمام لغرفة المباراة:', error);
@@ -395,10 +419,29 @@ export function initFriendSocket(io) {
           return socket.emit('error', { message: 'بيانات الحركة غير مكتملة' });
         }
 
-        // Add movedBy to moveData
-        moveData.movedBy = userId;
+        // Get game data to determine player color
+        const game = await Game.findByPk(moveData.gameId);
+        if (!game) {
+          logger.error(`Game ${moveData.gameId} not found when processing move`);
+          return socket.emit('error', { message: 'Game not found' });
+        }
 
-        logger.info(`Processing move for game ${moveData.gameId} by user ${userId}`);
+        // Determine player color based on userId
+        let playerColor = null;
+        if (game.white_player_id === userId) {
+          playerColor = 'white';
+        } else if (game.black_player_id === userId) {
+          playerColor = 'black';
+        } else {
+          logger.error(`User ${userId} is not a player in game ${moveData.gameId}`);
+          logger.error(`Game white_player_id: ${game.white_player_id}, black_player_id: ${game.black_player_id}, userId: ${userId}`);
+          return socket.emit('error', { message: 'User is not a player in this game' });
+        }
+
+        // Add movedBy to moveData with player color
+        moveData.movedBy = playerColor;
+
+        logger.info(`Processing move for game ${moveData.gameId} by user ${userId} (${playerColor})`);
         
         // Handle the move
         logger.info(`=== FRIEND SOCKET: Processing move for game ${moveData.gameId} ===`);
@@ -411,6 +454,38 @@ export function initFriendSocket(io) {
         logger.error('خطأ في معالجة الحركة:', error);
         socket.emit('error', { message: 'خطأ في معالجة الحركة' });
       }
+    });
+
+    // Handle ping for connection testing
+    socket.on('ping', (data) => {
+      logger.info('=== FRIEND SOCKET: Received ping from client ===');
+      logger.info('Ping data:', data);
+      
+      // If this is a room membership test
+      if (data.test === 'room_membership') {
+        logger.info('=== FRIEND SOCKET: Room membership test ===');
+        logger.info(`Game ID from ping: ${data.gameId}`);
+        logger.info(`Socket ID: ${socket.id}`);
+        logger.info(`Socket connected: ${socket.connected}`);
+        logger.info(`Socket rooms:`, Array.from(socket.rooms));
+        
+        const roomName = `game::${data.gameId}`;
+        const isInRoom = socket.rooms.has(roomName);
+        const roomMembers = nsp.adapter.rooms.get(roomName);
+        
+        logger.info(`=== FRIEND SOCKET: Room membership test results ===`);
+        logger.info(`Room name: ${roomName}`);
+        logger.info(`Socket in room: ${isInRoom}`);
+        logger.info(`Room members: ${roomMembers?.size || 0}`);
+        logger.info(`Room members details:`, roomMembers ? Array.from(roomMembers) : []);
+      }
+      
+      socket.emit('pong', { 
+        timestamp: Date.now(),
+        receivedAt: Date.now(),
+        socketId: socket.id,
+        rooms: Array.from(socket.rooms)
+      });
     });
   });
 } 

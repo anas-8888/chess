@@ -18,8 +18,9 @@ const ChessBoard: React.FC<ChessBoardProps> = ({ game, onMove, orientation, allo
   const [possibleMoves, setPossibleMoves] = useState<Square[]>([]);
 
   const board = game.board();
-  const files = orientation === 'white' ? ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] : ['h', 'g', 'f', 'e', 'd', 'c', 'b', 'a'];
-  const ranks = orientation === 'white' ? [8, 7, 6, 5, 4, 3, 2, 1] : [1, 2, 3, 4, 5, 6, 7, 8];
+  // دائماً نستخدم الإحداثيات الحقيقية
+  const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+  const ranks = [8, 7, 6, 5, 4, 3, 2, 1];
 
   const handleSquareClick = useCallback((square: Square) => {
     if (!allowMoves) return;
@@ -90,11 +91,11 @@ const ChessBoard: React.FC<ChessBoardProps> = ({ game, onMove, orientation, allo
 
   return (
     <div className="aspect-square w-full max-w-2xl mx-auto bg-border p-2 rounded-lg shadow-elegant">
-      <div className="grid grid-cols-8 gap-0 rounded overflow-hidden">
+      <div className={`grid grid-cols-8 gap-0 rounded overflow-hidden transform ${orientation === 'black' ? 'rotate-180' : ''}`}>
         {ranks.map((rank, rankIndex) =>
           files.map((file, fileIndex) => {
             const square = (file + rank) as Square;
-            const piece = board[8 - rank][files.indexOf(file)];
+            const piece = game.get(square);
             
             return (
               <div
@@ -102,12 +103,12 @@ const ChessBoard: React.FC<ChessBoardProps> = ({ game, onMove, orientation, allo
                 className={getSquareClasses(square, fileIndex, rankIndex)}
                 onClick={() => handleSquareClick(square)}
               >
-                <span className="drop-shadow-sm">
+                <span className={`drop-shadow-sm transform ${orientation === 'black' ? 'rotate-180' : ''}`}>
                   {piece && getPieceSymbol(piece)}
                 </span>
                 
                 {/* Square label */}
-                <div className="absolute bottom-0 left-0 text-xs font-mono opacity-30 p-1">
+                <div className={`absolute bottom-0 left-0 text-xs font-mono opacity-30 p-1 transform ${orientation === 'black' ? 'rotate-180' : ''}`}>
                   {square}
                 </div>
               </div>
@@ -117,7 +118,7 @@ const ChessBoard: React.FC<ChessBoardProps> = ({ game, onMove, orientation, allo
       </div>
       
       {/* Board coordinates */}
-      <div className="flex justify-between mt-2 px-2 text-sm text-muted-foreground font-mono">
+      <div className={`flex justify-between mt-2 px-2 text-sm text-muted-foreground font-mono transform ${orientation === 'black' ? 'rotate-180' : ''}`}>
         {files.map(file => (
           <span key={file}>{file}</span>
         ))}
