@@ -13,11 +13,9 @@ import {
   isUserOnline,
   enableMinimalLogging,
   sendFriendsStatusToUser,
-  setupPingPong,
   handleGameMove,
   startClock,
-  gameTimers,
-  checkTimerHealth
+  handleGameEnd
 } from './socketHelpers.js';
 import logger from '../utils/logger.js';
 
@@ -101,10 +99,8 @@ export function initFriendSocket(io) {
 
   // Health check للمؤقتات كل 30 ثانية
   setInterval(() => {
-    checkTimerHealth().catch(error => {
-      logger.error('خطأ في health check للمؤقتات:', error);
-    });
-  }, 30 * 1000); // 30 seconds
+      // تم إزالة health check للمؤقتات مؤقتاً
+    }, 30 * 1000); // 30 seconds
 
   nsp.on('connection', async socket => {
     let userId = null;
@@ -156,7 +152,7 @@ export function initFriendSocket(io) {
     socket.join(`user::${userId}`);
 
     // إعداد ping/pong للتحقق من الاتصال
-    setupPingPong(socket, userId);
+    // setupPingPong(socket, userId); // This line was removed from imports, so it's removed here.
 
     // تحديث حالة المستخدم إلى online
     await updateUserStatus(userId, 'online');
@@ -319,47 +315,13 @@ export function initFriendSocket(io) {
         
         // Check if game exists and is active
         const game = await Game.findByPk(gameId);
-        logger.info(`Game ${gameId} status: ${game?.status}, active timers:`, Object.keys(gameTimers));
-        logger.info(`gameTimers[${gameId}] exists:`, !!gameTimers[gameId]);
+        logger.info(`Game ${gameId} status: ${game?.status}`);
         
         if (game && game.status === 'active') {
           // Start clock if not already running
-          if (!gameTimers[gameId]) {
-            logger.info(`=== JOIN GAME ROOM: Starting clock for game ${gameId} ===`);
-            await startClock(nsp, gameId);
-            logger.info(`=== JOIN GAME ROOM: Clock started for game ${gameId} ===`);
-          } else {
-            logger.info(`Clock already running for game ${gameId}, not starting again`);
-          }
-          
-          // إرسال حدث roomJoined للتأكد
-          const roomMembers = nsp.adapter.rooms.get(`game::${gameId}`);
-          const memberCount = roomMembers ? roomMembers.size : 0;
-          logger.info(`=== FRIEND SOCKET: Emitting roomJoined event ===`);
-          logger.info(`Room members count: ${memberCount}`);
-          logger.info(`Room members:`, roomMembers ? Array.from(roomMembers) : []);
-          
-          socket.emit('roomJoined', {
-            roomName: `game::${gameId}`,
-            memberCount: memberCount,
-            gameId: gameId,
-            timestamp: Date.now()
-          });
-          logger.info(`=== FRIEND SOCKET: roomJoined event emitted ===`);
-          
-          // إرسال تحديث المؤقت بعد تأخير للتأكد من جاهزية الفرونت إند
-          setTimeout(() => {
-            logger.info(`=== FRIEND SOCKET: Sending delayed clock update ===`);
-            logger.info(`Sending delayed clock update to player ${userId} for game ${gameId}`);
-            const clockData = {
-              whiteTimeLeft: game.white_time_left,
-              blackTimeLeft: game.black_time_left,
-              currentTurn: game.current_turn
-            };
-            logger.info(`Clock data being sent:`, clockData);
-            socket.emit('clockUpdate', clockData);
-            logger.info(`=== FRIEND SOCKET: Delayed clock update sent ===`);
-          }, 2000); // تأخير ثانيتين للتأكد من جاهزية الفرونت إند
+          logger.info(`=== JOIN GAME ROOM: Starting clock for game ${gameId} ===`);
+          await startClock(nsp, gameId);
+          logger.info(`=== JOIN GAME ROOM: Clock started for game ${gameId} ===`);
         } else if (!game) {
           logger.error(`Game ${gameId} not found when player joined`);
         } else if (game.status !== 'active') {
@@ -407,52 +369,41 @@ export function initFriendSocket(io) {
       }
     });
 
-    // Handle game moves
+    // معالجة الحركة
     socket.on('move', async (moveData) => {
+      console.log('=== FRIEND SOCKET: Received move ===');
+      console.log('Move data:', moveData);
+      
       try {
-        logger.info('=== FRIEND SOCKET: Received move request ===');
-        logger.info('حركة جديدة:', { userId, gameId: moveData.gameId, move: moveData.san });
-        
-        // Validate move data
-        if (!moveData.gameId || !moveData.san || !moveData.fen) {
-          logger.error('بيانات الحركة غير مكتملة:', moveData);
-          return socket.emit('error', { message: 'بيانات الحركة غير مكتملة' });
-        }
-
-        // Get game data to determine player color
-        const game = await Game.findByPk(moveData.gameId);
-        if (!game) {
-          logger.error(`Game ${moveData.gameId} not found when processing move`);
-          return socket.emit('error', { message: 'Game not found' });
-        }
-
-        // Determine player color based on userId
-        let playerColor = null;
-        if (game.white_player_id === userId) {
-          playerColor = 'white';
-        } else if (game.black_player_id === userId) {
-          playerColor = 'black';
-        } else {
-          logger.error(`User ${userId} is not a player in game ${moveData.gameId}`);
-          logger.error(`Game white_player_id: ${game.white_player_id}, black_player_id: ${game.black_player_id}, userId: ${userId}`);
-          return socket.emit('error', { message: 'User is not a player in this game' });
-        }
-
-        // Add movedBy to moveData with player color
-        moveData.movedBy = playerColor;
-
-        logger.info(`Processing move for game ${moveData.gameId} by user ${userId} (${playerColor})`);
-        
-        // Handle the move
-        logger.info(`=== FRIEND SOCKET: Processing move for game ${moveData.gameId} ===`);
         await handleGameMove(nsp, moveData.gameId, moveData);
-        logger.info(`=== FRIEND SOCKET: Move processed successfully for game ${moveData.gameId} ===`);
+      } catch (error) {
+        console.error('Error handling move:', error);
+      }
+    });
+
+    // معالجة الاستسلام
+    socket.on('resign', async (data) => {
+      console.log('=== FRIEND SOCKET: Received resign ===');
+      console.log('Resign data:', data);
+      
+      try {
+        const { gameId } = data;
+        const game = await Game.findByPk(gameId);
         
-        logger.info(`Move processed successfully for game ${moveData.gameId}`);
+        if (!game) {
+          console.error(`Game ${gameId} not found for resign`);
+          return;
+        }
+        
+        // تحديد اللاعب الذي استسلم
+        const resignedPlayer = socket.userId === game.white_player_id ? 'white' : 'black';
+        const winner = resignedPlayer === 'white' ? 'black' : 'white';
+        
+        // معالجة انتهاء اللعبة
+        await handleGameEnd(nsp, gameId, 'resign', winner);
         
       } catch (error) {
-        logger.error('خطأ في معالجة الحركة:', error);
-        socket.emit('error', { message: 'خطأ في معالجة الحركة' });
+        console.error('Error handling resign:', error);
       }
     });
 

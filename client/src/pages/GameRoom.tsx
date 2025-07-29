@@ -49,6 +49,8 @@ interface GameData {
   currentFen: string;
   status: string;
   currentTurn: string;
+  startedAt: string; // Added for game duration
+  duration?: string; // Added for game duration
 }
 
 interface ChatMessage {
@@ -197,7 +199,14 @@ const GameRoom = () => {
         // Check for timeout
         if (newWhiteTime <= 0 || newBlackTime <= 0) {
           const timeoutPlayer = newWhiteTime <= 0 ? 'white' : 'black';
+          const winner = timeoutPlayer === 'white' ? 'black' : 'white';
           console.log(`=== GAME ROOM: Timeout detected for ${timeoutPlayer} ===`);
+          
+          // معالجة انتهاء الوقت
+          handleGameEnd({ 
+            reason: 'timeout', 
+            winner: winner 
+          });
           
           // Stop the timer
           return {
@@ -238,8 +247,21 @@ const GameRoom = () => {
   const [isConnected, setIsConnected] = useState(true);
   const [isPhysicalMove, setIsPhysicalMove] = useState(false);
   const [isProcessingMove, setIsProcessingMove] = useState(false);
+  const [showGameEndModalState, setShowGameEndModalState] = useState(false);
+  const [gameEndData, setGameEndData] = useState<{ reason: string; winner?: string } | null>(null);
 
   const { toast } = useToast();
+
+  // دالة لعرض مودال انتهاء اللعبة
+  const showGameEndModal = useCallback((reason: string, winner?: string) => {
+    setGameEndData({ reason, winner });
+    setShowGameEndModalState(true);
+  }, []);
+
+  // دالة للعودة إلى dashboard
+  const goToDashboard = useCallback(() => {
+    window.location.href = '/dashboard';
+  }, []);
 
     // جلب بيانات اللعبة من الـ API
   useEffect(() => {
@@ -259,6 +281,18 @@ const GameRoom = () => {
         if (response.data.success) {
           const data = response.data.data;
           console.log('Received game data:', data);
+          
+          // جلب مدة اللعبة
+          try {
+            const durationResponse = await api.get(`/game/${gameId}/duration`);
+            if (durationResponse.data.success) {
+              data.duration = durationResponse.data.data.formattedDuration;
+            }
+          } catch (durationErr) {
+            console.error('خطأ في جلب مدة اللعبة:', durationErr);
+            data.duration = 'غير متوفر';
+          }
+          
           setGameData(data);
           
           // تحديث حالة اللعبة والدور
@@ -295,7 +329,7 @@ const GameRoom = () => {
         setLoading(false);
       }
     };
-
+    
     // جلب النقلات من الباك إند
     const fetchGameMoves = async () => {
       try {
@@ -382,6 +416,56 @@ const GameRoom = () => {
     }));
   }, []);
 
+  const handleGameEnd = useCallback((data: { reason: string; winner?: string; winnerId?: number; loserId?: number }) => {
+    console.log('=== GAME ROOM: Received gameEnd ===');
+    console.log('Received gameEnd:', data);
+    
+    const { reason, winner, winnerId, loserId } = data;
+    
+    // Update game state
+    setGameState(prev => ({
+      ...prev,
+      status: 'finished',
+      winner: winner
+    }));
+    
+    // Stop timers
+    setTimers(prev => ({
+      ...prev,
+      isRunning: false
+    }));
+
+    // Show appropriate message
+    let message = '';
+    switch (reason) {
+      case 'checkmate':
+        message = winner === currentPlayer ? 'مبروك! فزت بالمباراة' : 'للأسف، خسرت المباراة';
+        break;
+      case 'timeout':
+        message = `فاز ${winner === currentPlayer ? 'أنت' : 'الخصم'} بالوقت`;
+        break;
+      case 'resign':
+        message = winner === currentPlayer ? 'فزت بالاستسلام' : 'خسرت بالاستسلام';
+        break;
+      case 'draw':
+      case 'stalemate':
+      case 'threefold_repetition':
+      case 'insufficient_material':
+        message = 'انتهت المباراة بالتعادل';
+        break;
+      default:
+        message = 'انتهت المباراة';
+    }
+    
+    toast({
+      title: "انتهت المباراة",
+      description: message,
+    });
+
+    // Show game end modal
+    showGameEndModal(reason, winner);
+  }, [currentPlayer, showGameEndModal]);
+
   const handleOpponentMove = useCallback((data: any) => {
     console.log('=== FULL SYNC: GAME ROOM: Received moveMade ===');
     console.log('Received moveMade data:', data);
@@ -424,49 +508,72 @@ const GameRoom = () => {
     // Update game state
     setGameState(prev => ({
       ...prev,
-      currentTurn: currentTurn || (movedBy === 'white' ? 'black' : 'white') // Use server's currentTurn or calculate it
+      fen: fen,
+      currentTurn: currentTurn || (movedBy === 'white' ? 'black' : 'white')
     }));
 
-    // Update timers to switch active timer
-    setTimers(prev => ({
-      ...prev,
-      lastUpdate: Date.now() // Reset timer to prevent double counting
-    }));
-
-    // Add move to move history
-    if (san) {
-      setMoves(prev => {
-        const newHistory = [...prev];
-        const lastMove = newHistory[newHistory.length - 1];
-        
-        if (lastMove && !lastMove.black && movedBy === 'black') {
-          // Add black move to existing move
-          lastMove.black = san;
-          lastMove.fen = fen;
-        } else if (lastMove && !lastMove.white && movedBy === 'white') {
-          // Add white move to existing move
-          lastMove.white = san;
-          lastMove.fen = fen;
-        } else {
-          // Create new move entry
-          const moveNumber = Math.floor(newHistory.length / 2) + 1;
-          newHistory.push({
-            moveNumber: moveNumber,
-            [movedBy]: san,
-            san: san,
-            fen: fen
-          });
-        }
-        
-        return newHistory;
-      });
+    // Check for game end conditions
+    const gameCopy = new Chess(fen);
+    if (gameCopy.isCheckmate()) {
+      handleGameEnd({ reason: 'checkmate', winner: movedBy === 'white' ? 'black' : 'white' });
+    } else if (gameCopy.isDraw()) {
+      handleGameEnd({ reason: 'draw' });
+    } else if (gameCopy.isStalemate()) {
+      handleGameEnd({ reason: 'stalemate' });
+    } else if (gameCopy.isThreefoldRepetition()) {
+      handleGameEnd({ reason: 'threefold_repetition' });
+    } else if (gameCopy.isInsufficientMaterial()) {
+      handleGameEnd({ reason: 'insufficient_material' });
     }
 
-    console.log('=== FULL SYNC: Opponent move processed successfully ===');
-    
-    // Reset processing state to allow new moves
+    // Update moves list
+    setMoves(prev => {
+      const newMoves = [...prev];
+      const moveNumber = Math.floor(newMoves.length / 2) + 1;
+      
+      if (movedBy === 'white') {
+        // إضافة حركة الأبيض
+        if (newMoves.length % 2 === 0) {
+          // بداية زوج جديد
+          newMoves.push({
+            moveNumber,
+            white: san,
+            black: null,
+            san,
+            fen
+          });
+        } else {
+          // إضافة إلى الزوج الحالي
+          const lastMove = newMoves[newMoves.length - 1];
+          lastMove.white = san;
+          lastMove.san = san;
+          lastMove.fen = fen;
+        }
+      } else {
+        // إضافة حركة الأسود
+        if (newMoves.length % 2 === 0) {
+          // بداية زوج جديد
+          newMoves.push({
+            moveNumber,
+            white: null,
+            black: san,
+            san,
+            fen
+          });
+        } else {
+          // إضافة إلى الزوج الحالي
+          const lastMove = newMoves[newMoves.length - 1];
+          lastMove.black = san;
+          lastMove.san = san;
+          lastMove.fen = fen;
+        }
+      }
+      
+      return newMoves;
+    });
+
     setIsProcessingMove(false);
-  }, [currentPlayer]); // Remove game dependency
+  }, [currentPlayer, handleGameEnd]);
 
   const handleGameTimeout = useCallback((data: { winner: string; reason?: string }) => {
                     console.log('=== GAME ROOM: Received gameTimeout ===');
@@ -492,7 +599,10 @@ const GameRoom = () => {
       ...prev,
       isRunning: false
     }));
-  }, [currentPlayer]);
+
+    // Show game end modal
+    showGameEndModal('timeout', winner);
+  }, [currentPlayer, showGameEndModal]);
 
   const handleMoveConfirmed = useCallback((data: { gameId: string; move: string }) => {
     console.log('=== GAME ROOM: Received moveConfirmed ===');
@@ -519,6 +629,7 @@ const GameRoom = () => {
     socketService.onTurnUpdate(handleTurnUpdate);
     socketService.onMoveMade(handleOpponentMove);
     socketService.onGameTimeout(handleGameTimeout);
+    socketService.onGameEnd(handleGameEnd);
     socketService.onMoveConfirmed(handleMoveConfirmed);
 
     // Join game room
@@ -530,10 +641,11 @@ const GameRoom = () => {
       socketService.offTurnUpdate();
       socketService.offMoveMade();
       socketService.offGameTimeout();
+      socketService.offGameEnd();
       socketService.offMoveConfirmed();
       socketService.disconnect();
     };
-  }, [user, token, handleClockUpdate, handleTurnUpdate, handleOpponentMove, handleGameTimeout, handleMoveConfirmed]);
+  }, [user, token, handleClockUpdate, handleTurnUpdate, handleOpponentMove, handleGameTimeout, handleGameEnd, handleMoveConfirmed]);
 
   const handleMove = useCallback((from: Square, to: Square, promotion?: string) => {
     console.log('=== FULL SYNC: GAME ROOM: Handling move ===');
@@ -649,10 +761,67 @@ const GameRoom = () => {
 
         // Check for game end conditions
         if (gameCopy.isCheckmate()) {
-          handleGameEnd('checkmate');
+          handleGameEnd({ reason: 'checkmate', winner: currentPlayer === 'white' ? 'black' : 'white' });
+          return true;
         } else if (gameCopy.isDraw()) {
-          handleGameEnd('draw');
+          handleGameEnd({ reason: 'draw' });
+          return true;
+        } else if (gameCopy.isStalemate()) {
+          handleGameEnd({ reason: 'stalemate' });
+          return true;
+        } else if (gameCopy.isThreefoldRepetition()) {
+          handleGameEnd({ reason: 'threefold_repetition' });
+          return true;
+        } else if (gameCopy.isInsufficientMaterial()) {
+          handleGameEnd({ reason: 'insufficient_material' });
+          return true;
         }
+
+        // Update moves list
+        setMoves(prev => {
+          const newMoves = [...prev];
+          const moveNumber = Math.floor(newMoves.length / 2) + 1;
+          
+          if (currentPlayer === 'white') {
+            // إضافة حركة الأبيض
+            if (newMoves.length % 2 === 0) {
+              // بداية زوج جديد
+              newMoves.push({
+                moveNumber,
+                white: move.san,
+                black: null,
+                san: move.san,
+                fen: gameCopy.fen()
+              });
+            } else {
+              // إضافة إلى الزوج الحالي
+              const lastMove = newMoves[newMoves.length - 1];
+              lastMove.white = move.san;
+              lastMove.san = move.san;
+              lastMove.fen = gameCopy.fen();
+            }
+          } else {
+            // إضافة حركة الأسود
+            if (newMoves.length % 2 === 0) {
+              // بداية زوج جديد
+              newMoves.push({
+                moveNumber,
+                white: null,
+                black: move.san,
+                san: move.san,
+                fen: gameCopy.fen()
+              });
+            } else {
+              // إضافة إلى الزوج الحالي
+              const lastMove = newMoves[newMoves.length - 1];
+              lastMove.black = move.san;
+              lastMove.san = move.san;
+              lastMove.fen = gameCopy.fen();
+            }
+          }
+          
+          return newMoves;
+        });
 
         return true;
       }
@@ -667,47 +836,21 @@ const GameRoom = () => {
     }
 
     return false;
-  }, [game, gameState.currentTurn, currentPlayer, isProcessingMove]);
-
-  const handleGameEnd = (reason: string) => {
-    console.log('=== GAME ROOM: Handling game end ===');
-    console.log('Game ended with reason:', reason);
-    
-    setTimers(prev => ({ ...prev, isRunning: false }));
-    
-    // REST: POST /api/games/:id/end
-    // Expected: { reason, winner? }
-    
-    let message = '';
-    switch (reason) {
-      case 'checkmate':
-        message = gameState.currentTurn === currentPlayer ? 'للأسف، خسرت المباراة' : 'مبروك! فزت بالمباراة';
-        break;
-      case 'timeout':
-        message = 'انتهى الوقت';
-        break;
-      case 'resign':
-        message = 'استسلم اللاعب';
-        break;
-      case 'draw':
-        message = 'انتهت المباراة بالتعادل';
-        break;
-    }
-
-    toast({
-      title: "انتهت المباراة",
-      description: message,
-    });
-  };
+  }, [game, gameState.currentTurn, currentPlayer, isProcessingMove, handleGameEnd]);
 
   const handleResign = () => {
     if (window.confirm('هل أنت متأكد من الاستسلام؟')) {
       console.log('=== GAME ROOM: Player resigned ===');
       console.log('Player resigned');
-      // REST: POST /api/games/:id/resign
-      // SOCKET: socket.emit('resign', { gameId: gameState.id });
       
-      handleGameEnd('resign');
+      // إرسال الاستسلام عبر socket
+      socketService.sendResign(gameState.id);
+      
+      // معالجة محلية للاستسلام
+      handleGameEnd({ 
+        reason: 'resign', 
+        winner: currentPlayer === 'white' ? 'black' : 'white' 
+      });
     }
   };
 
@@ -730,7 +873,7 @@ const GameRoom = () => {
     // SOCKET: socket.emit('drawResponse', { gameId: gameState.id, accept });
     
     if (accept) {
-      handleGameEnd('draw');
+      handleGameEnd({ reason: 'draw' });
     }
   };
 
@@ -980,19 +1123,10 @@ const GameRoom = () => {
                 variant="destructive" 
                 className="w-full"
                 onClick={handleResign}
-                disabled={gameState.status !== 'active'}
+                disabled={gameState.status !== 'active' ? true : false}
               >
                 <Flag className="w-4 h-4 ml-2" />
                 استسلام
-              </Button>
-              <Button 
-                variant="outline" 
-                className="w-full"
-                onClick={handleOfferDraw}
-                disabled={gameState.status !== 'active'}
-              >
-                <Handshake className="w-4 h-4 ml-2" />
-                طلب تعادل
               </Button>
             </div>
           </div>
@@ -1059,8 +1193,8 @@ const GameRoom = () => {
                                 </span>
                               ) : (
                                 <span className="text-muted-foreground text-xs">-</span>
-                              )}
-                            </div>
+                        )}
+                      </div>
                           </div>
                         </div>
                       ))
@@ -1126,6 +1260,95 @@ const GameRoom = () => {
           </div>
         </div>
       </div>
+
+      {/* Game End Modal */}
+      {showGameEndModalState && gameEndData && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card p-6 rounded-lg shadow-lg max-w-md w-full mx-4">
+            <div className="text-center">
+              <div className="mb-4">
+                {gameEndData.reason === 'checkmate' && (
+                  <div className="text-4xl mb-2">👑</div>
+                )}
+                {gameEndData.reason === 'timeout' && (
+                  <div className="text-4xl mb-2">⏰</div>
+                )}
+                {gameEndData.reason === 'draw' && (
+                  <div className="text-4xl mb-2">🤝</div>
+                )}
+                {gameEndData.reason === 'resign' && (
+                  <div className="text-4xl mb-2">🏳️</div>
+                )}
+              </div>
+              
+              <h2 className="text-2xl font-bold mb-2">
+                {gameEndData.reason === 'checkmate' && 'كش مات!'}
+                {gameEndData.reason === 'timeout' && 'انتهى الوقت!'}
+                {gameEndData.reason === 'draw' && 'تعادل!'}
+                {gameEndData.reason === 'resign' && 'استسلام!'}
+                {gameEndData.reason === 'stalemate' && 'تعادل!'}
+                {gameEndData.reason === 'threefold_repetition' && 'تعادل!'}
+                {gameEndData.reason === 'insufficient_material' && 'تعادل!'}
+              </h2>
+              
+              <p className="text-muted-foreground mb-6">
+                {gameEndData.reason === 'checkmate' && (gameEndData.winner === currentPlayer ? 'مبروك! فزت بالمباراة' : 'للأسف، خسرت المباراة')}
+                {gameEndData.reason === 'timeout' && `فاز ${gameEndData.winner === currentPlayer ? 'أنت' : 'الخصم'} بالوقت`}
+                {gameEndData.reason === 'draw' && 'انتهت المباراة بالتعادل'}
+                {gameEndData.reason === 'resign' && (gameEndData.winner === currentPlayer ? 'فزت بالاستسلام' : 'خسرت بالاستسلام')}
+                {gameEndData.reason === 'stalemate' && 'انتهت المباراة بالتعادل (جمود)'}
+                {gameEndData.reason === 'threefold_repetition' && 'انتهت المباراة بالتعادل (تكرار الحركة)'}
+                {gameEndData.reason === 'insufficient_material' && 'انتهت المباراة بالتعادل (قطع غير كافية)'}
+              </p>
+              
+              {/* معلومات إضافية عن اللعبة */}
+              <div className="bg-muted/50 p-4 rounded-lg mb-6 text-sm">
+                <div className="grid grid-cols-2 gap-4 text-center">
+                  <div>
+                    <p className="font-semibold text-primary">عدد النقلات</p>
+                    <p className="text-2xl font-bold">{moves.length}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-primary">مدة اللعبة</p>
+                    <p className="text-2xl font-bold">
+                      {gameData?.duration || 'جاري التحميل...'}
+                    </p>
+                  </div>
+                </div>
+                
+                {gameData && (
+                  <div className="mt-4 pt-4 border-t border-border">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm">اللاعب الأبيض:</span>
+                      <span className="font-semibold">{gameData.whitePlayer?.name || 'غير معروف'}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm">اللاعب الأسود:</span>
+                      <span className="font-semibold">{gameData.blackPlayer?.name || 'غير معروف'}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex gap-2">
+                <Button 
+                  onClick={goToDashboard}
+                  className="flex-1"
+                >
+                  العودة إلى لوحة التحكم
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => setShowGameEndModalState(false)}
+                  className="flex-1"
+                >
+                  إغلاق
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

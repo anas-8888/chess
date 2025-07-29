@@ -6,6 +6,7 @@ import Game from '../models/Game.js';
 import GameMove from '../models/GameMove.js';
 import { Op } from 'sequelize';
 import logger from '../utils/logger.js';
+import { Chess } from 'chess.js';
 
 // Store active user connections - تحسين لتتبع جميع الاتصالات لكل مستخدم
 const activeUsers = new Map(); // userId -> Set of socketIds
@@ -300,7 +301,8 @@ export async function createGame(invite) {
       black_play_method: invite.play_method,
       current_fen: 'startpos',
       status: 'active',
-      current_turn: 'white'
+      current_turn: 'white',
+      started_at: new Date()
     });
     
     logger.info('تم إنشاء مباراة جديدة:', {
@@ -346,7 +348,8 @@ export async function createGameWithMethods(invite) {
       black_play_method: blackPlayMethod,
       current_fen: 'startpos',
       status: 'active',
-      current_turn: 'white'
+      current_turn: 'white',
+      started_at: new Date()
     });
     
     logger.info('تم إنشاء مباراة جديدة مع طريقتي اللعب:', {
@@ -785,57 +788,75 @@ export async function handleGameTimeout(nsp, gameId, timeoutPlayer) {
   try {
     logger.info(`=== HANDLE GAME TIMEOUT: Handling timeout for game ${gameId} ===`);
     
-    // الحصول على بيانات اللعبة
-    const game = await Game.findByPk(gameId);
-    if (!game) {
-      logger.error(`Game ${gameId} not found when handling timeout`);
-      return;
-    }
-    
     // تحديد الفائز
     const winner = timeoutPlayer === 'white' ? 'black' : 'white';
     
+    // استخدام handleGameEnd لمعالجة انتهاء اللعبة
+    await handleGameEnd(nsp, gameId, 'timeout', winner);
+    
+  } catch (error) {
+    logger.error(`Error handling game timeout for game ${gameId}:`, error);
+  }
+}
+
+// دالة شاملة لمعالجة انتهاء اللعبة
+export async function handleGameEnd(nsp, gameId, reason, winner = null, loser = null) {
+  try {
+    logger.info(`=== HANDLE GAME END: Handling game end for game ${gameId} ===`);
+    logger.info(`Reason: ${reason}, Winner: ${winner}, Loser: ${loser}`);
+    
+    // الحصول على بيانات اللعبة
+    const game = await Game.findByPk(gameId);
+    if (!game) {
+      logger.error(`Game ${gameId} not found when handling game end`);
+      return;
+    }
+    
+    // تحديد الفائز والخاسر
+    let winnerId = null;
+    let loserId = null;
+    
+    if (reason === 'timeout') {
+      winnerId = winner === 'white' ? game.white_player_id : game.black_player_id;
+      loserId = winner === 'white' ? game.black_player_id : game.white_player_id;
+    } else if (reason === 'checkmate' || reason === 'resign') {
+      winnerId = winner === 'white' ? game.white_player_id : game.black_player_id;
+      loserId = winner === 'white' ? game.black_player_id : game.white_player_id;
+    } else if (reason === 'draw') {
+      // في حالة التعادل، لا يوجد فائز
+      winnerId = null;
+      loserId = null;
+    }
+    
     // تحديث حالة اللعبة
     await game.update({
-      status: 'completed',
-      winner: winner,
-      end_reason: 'timeout'
+      status: 'ended',
+      winner_id: winnerId,
+      ended_at: new Date()
     });
-    
-    // تحديث قاعدة البيانات بالوقت النهائي
-    try {
-      const { updateGameTimeService } = await import('../services/gameService.js');
-      const timerData = gameTimerData.get(gameId);
-      if (timerData) {
-        const updateResult = await updateGameTimeService(gameId, {
-          whiteTimeLeft: timerData.whiteTimeLeft,
-          blackTimeLeft: timerData.blackTimeLeft,
-          currentTurn: timerData.currentTurn
-        });
-        
-        if (updateResult.success) {
-          logger.info(`Final time state saved to database for game ${gameId}:`, {
-            whiteTimeLeft: timerData.whiteTimeLeft,
-            blackTimeLeft: timerData.blackTimeLeft,
-            currentTurn: timerData.currentTurn
-          });
-        } else {
-          logger.error(`Failed to save final time state to database for game ${gameId}:`, updateResult.message);
-        }
-      }
-    } catch (dbError) {
-      logger.error(`Error saving final time state to database for game ${gameId}:`, dbError);
-    }
     
     // إيقاف المؤقت
     await stopClock(gameId);
     
     // إرسال حدث انتهاء اللعبة
-    nsp.to(`game::${gameId}`).emit('gameTimeout', {
+    nsp.to(`game::${gameId}`).emit('gameEnd', {
       gameId: gameId,
-      timeoutPlayer: timeoutPlayer,
-      winner: winner
+      reason: reason,
+      winner: winner,
+      winnerId: winnerId,
+      loserId: loserId
     });
+    
+    // إرسال حدث gameTimeout إذا كان السبب هو انتهاء الوقت
+    if (reason === 'timeout') {
+      nsp.to(`game::${gameId}`).emit('gameTimeout', {
+        gameId: gameId,
+        timeoutPlayer: winner === 'white' ? 'black' : 'white',
+        winner: winner,
+        winnerId: winnerId,
+        reason: 'timeout'
+      });
+    }
     
     // تحديث حالة اللاعبين
     const whiteUser = await User.findByPk(game.white_player_id);
@@ -844,10 +865,10 @@ export async function handleGameTimeout(nsp, gameId, timeoutPlayer) {
     if (whiteUser) await whiteUser.update({ state: 'online' });
     if (blackUser) await blackUser.update({ state: 'online' });
     
-    logger.info(`Game ${gameId} ended due to timeout - ${timeoutPlayer} player lost`);
+    logger.info(`Game ${gameId} ended - Reason: ${reason}, Winner: ${winner}`);
     
   } catch (error) {
-    logger.error(`Error handling game timeout for game ${gameId}:`, error);
+    logger.error(`Error handling game end for game ${gameId}:`, error);
   }
 }
 
@@ -1016,6 +1037,32 @@ export async function handleGameMove(nsp, gameId, moveData) {
     if (!gameTimers[gameId]) {
       logger.info(`Clock not running for game ${gameId}, starting it`);
       await startClock(nsp, gameId);
+    }
+    
+    // فحص حالات انتهاء اللعبة
+    const chess = new Chess(moveData.fen);
+    
+    if (chess.isCheckmate()) {
+      logger.info(`Checkmate detected in game ${gameId}`);
+      const winner = moveData.movedBy === 'white' ? 'black' : 'white';
+      await handleGameEnd(nsp, gameId, 'checkmate', winner);
+      return; // توقف معالجة الحركة لأن اللعبة انتهت
+    } else if (chess.isDraw()) {
+      logger.info(`Draw detected in game ${gameId}`);
+      await handleGameEnd(nsp, gameId, 'draw');
+      return; // توقف معالجة الحركة لأن اللعبة انتهت
+    } else if (chess.isStalemate()) {
+      logger.info(`Stalemate detected in game ${gameId}`);
+      await handleGameEnd(nsp, gameId, 'stalemate');
+      return; // توقف معالجة الحركة لأن اللعبة انتهت
+    } else if (chess.isThreefoldRepetition()) {
+      logger.info(`Threefold repetition detected in game ${gameId}`);
+      await handleGameEnd(nsp, gameId, 'threefold_repetition');
+      return; // توقف معالجة الحركة لأن اللعبة انتهت
+    } else if (chess.isInsufficientMaterial()) {
+      logger.info(`Insufficient material detected in game ${gameId}`);
+      await handleGameEnd(nsp, gameId, 'insufficient_material');
+      return; // توقف معالجة الحركة لأن اللعبة انتهت
     }
     
     logger.info(`Move processed successfully for game ${gameId}`);
@@ -1276,142 +1323,3 @@ export async function updateUserStatusAfterGameEnd(gameId) {
     logger.error('خطأ في تحديث حالة المستخدمين بعد انتهاء المباراة:', error);
   }
 }
-
-// دالة لتنظيف حالات المستخدمين المتروكة
-export async function cleanupOrphanedUserStates() {
-  try {
-    logger.info('🔍 بدء تنظيف حالات المستخدمين المتروكة...');
-    
-    // البحث عن المستخدمين الذين حالتهم in-game
-    const inGameUsers = await User.findAll({
-      where: { state: 'in-game' }
-    });
-    
-    let cleanedCount = 0;
-    
-    for (const user of inGameUsers) {
-      // البحث عن مباراة نشطة للمستخدم
-      const activeGame = await Game.findOne({
-        where: {
-          [Op.or]: [
-            { white_player_id: user.user_id },
-            { black_player_id: user.user_id }
-          ],
-          status: {
-            [Op.in]: ['in-game', 'in_progress']
-          }
-        }
-      });
-      
-      // إذا لم توجد مباراة نشطة، تحديث الحالة إلى online
-      if (!activeGame) {
-        await User.update(
-          { state: 'online' },
-          { where: { user_id: user.user_id } }
-        );
-        logger.info(`🧹 تم تنظيف حالة المستخدم ${user.user_id} من in-game إلى online`);
-        cleanedCount++;
-      }
-    }
-    
-    logger.info(`✅ تم تنظيف ${cleanedCount} حالة مستخدم متروكة`);
-    return cleanedCount;
-  } catch (error) {
-    logger.error('خطأ في تنظيف حالات المستخدمين المتروكة:', error);
-    return 0;
-  }
-}
-
-// دالة لتنظيف حالات المستخدمين الذين لديهم حالة online ولكنهم غير متصلين
-export async function cleanupOrphanedOnlineStates() {
-  try {
-    logger.info('🔍 بدء تنظيف حالات المستخدمين المتصلين المتروكة...');
-    
-    // البحث عن المستخدمين الذين حالتهم online
-    const onlineUsers = await User.findAll({
-      where: { state: 'online' }
-    });
-    
-    let cleanedCount = 0;
-    
-    for (const user of onlineUsers) {
-      // التحقق من وجود اتصال socket فعلي
-      if (!isUserOnline(user.user_id)) {
-        await User.update(
-          { state: 'offline' },
-          { where: { user_id: user.user_id } }
-        );
-        logger.info(`🧹 تم تنظيف حالة المستخدم ${user.user_id} من online إلى offline`);
-        cleanedCount++;
-      }
-    }
-    
-    logger.info(`✅ تم تنظيف ${cleanedCount} حالة مستخدم متصل متروكة`);
-    return cleanedCount;
-  } catch (error) {
-    logger.error('خطأ في تنظيف حالات المستخدمين المتصلين المتروكة:', error);
-    return 0;
-  }
-}
-
-// دالة لإعداد ping/pong للتحقق من الاتصال
-export function setupPingPong(socket, userId) {
-  // إرسال ping كل 30 ثانية
-  const pingInterval = setInterval(() => {
-    if (socket.connected) {
-      socket.emit('ping');
-    } else {
-      clearInterval(pingInterval);
-    }
-  }, 30000);
-
-  // الاستماع للـ pong
-  socket.on('pong', () => {
-    // الاتصال نشط - لا حاجة لطباعة أي شيء
-  });
-
-  // تنظيف عند الانفصال
-  socket.on('disconnect', () => {
-    clearInterval(pingInterval);
-  });
-
-  return pingInterval;
-}
-
-// Health check for timers
-export async function checkTimerHealth() {
-  try {
-    logger.info('=== TIMER HEALTH CHECK STARTED ===');
-    logger.info('Active timers:', Object.keys(gameTimers));
-    logger.info('Timer data keys:', Array.from(gameTimerData.keys()));
-    
-    for (const [gameId, timer] of Object.entries(gameTimers)) {
-      const timerData = gameTimerData.get(gameId);
-      if (!timerData) {
-        logger.error(`Timer data missing for game ${gameId}, cleaning up`);
-        clearInterval(timer);
-        delete gameTimers[gameId];
-        continue;
-      }
-      
-      // التحقق من أن اللعبة لا تزال نشطة
-      const game = await Game.findByPk(gameId);
-      if (!game || game.status !== 'active') {
-        logger.info(`Game ${gameId} is no longer active, stopping timer`);
-        clearInterval(timer);
-        delete gameTimers[gameId];
-        gameTimerData.delete(gameId);
-        continue;
-      }
-      
-      logger.info(`Timer for game ${gameId} is healthy`);
-    }
-    
-    logger.info('=== TIMER HEALTH CHECK COMPLETED ===');
-  } catch (error) {
-    logger.error('Error in timer health check:', error);
-  }
-}
-
-// Export shared data
-export { activeUsers, activeGames, gameTimers };

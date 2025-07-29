@@ -57,7 +57,8 @@ export const getGameDetailsService = async (gameId) => {
         blackPlayMethod: game.black_play_method,
         currentFen: game.current_fen,
         status: game.status,
-        currentTurn: game.current_turn || 'white'
+        currentTurn: game.current_turn || 'white',
+        startedAt: game.started_at
       }
     };
 
@@ -101,6 +102,50 @@ export const updateGameTimeService = async (gameId, { whiteTimeLeft, blackTimeLe
 
   } catch (error) {
     logger.error('خطأ في service تحديث وقت اللعبة:', error);
+    return {
+      success: false,
+      message: 'خطأ في الخادم'
+    };
+  }
+};
+
+// جلب مدة اللعبة
+export const getGameDurationService = async (gameId) => {
+  try {
+    const game = await Game.findByPk(gameId);
+
+    if (!game) {
+      return {
+        success: false,
+        message: 'اللعبة غير موجودة'
+      };
+    }
+
+    // حساب مدة اللعبة
+    let durationMs = 0;
+    
+    if (game.started_at) {
+      const endTime = game.ended_at || new Date();
+      durationMs = endTime.getTime() - game.started_at.getTime();
+    }
+
+    const durationMinutes = Math.floor(durationMs / 60000);
+    const durationSeconds = Math.floor((durationMs % 60000) / 1000);
+
+    return {
+      success: true,
+      data: {
+        durationMs: durationMs,
+        durationMinutes: durationMinutes,
+        durationSeconds: durationSeconds,
+        formattedDuration: durationMinutes > 0 
+          ? `${durationMinutes}:${durationSeconds.toString().padStart(2, '0')}`
+          : `${durationSeconds} ث`
+      }
+    };
+
+  } catch (error) {
+    logger.error('خطأ في service جلب مدة اللعبة:', error);
     return {
       success: false,
       message: 'خطأ في الخادم'

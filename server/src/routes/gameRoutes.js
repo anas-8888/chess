@@ -1,5 +1,5 @@
 import express from 'express';
-import { getGameDetails, updateGameTime, getGameMoves } from '../controllers/gameController.js';
+import { getGameDetails, updateGameTime, getGameMoves, getGameDuration } from '../controllers/gameController.js';
 import { validateGameId, validateUpdateTime } from '../middlewares/validation/gameValidation.js';
 
 const router = express.Router();
@@ -9,6 +9,9 @@ router.get('/:id', validateGameId, getGameDetails);
 
 // الحصول على نقلات اللعبة
 router.get('/:id/moves', validateGameId, getGameMoves);
+
+// الحصول على مدة اللعبة
+router.get('/:id/duration', validateGameId, getGameDuration);
 
 // تحديث وقت اللعبة
 router.post('/:id/update-time', validateUpdateTime, updateGameTime);

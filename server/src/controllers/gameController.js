@@ -1,4 +1,4 @@
-import { getGameDetailsService, updateGameTimeService } from '../services/gameService.js';
+import { getGameDetailsService, updateGameTimeService, getGameDurationService } from '../services/gameService.js';
 import GameMove from '../models/GameMove.js';
 import User from '../models/User.js';
 import Game from '../models/Game.js'; // Added import for Game model
@@ -156,6 +156,28 @@ export const getGameMoves = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'خطأ في جلب النقلات'
+    });
+  }
+};
+
+// الحصول على مدة اللعبة
+export const getGameDuration = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await getGameDurationService(id);
+
+    if (!result.success) {
+      return res.status(404).json(result);
+    }
+
+    res.json(result);
+
+  } catch (error) {
+    logger.error('خطأ في جلب مدة اللعبة:', error);
+    res.status(500).json({
+      success: false,
+      message: 'خطأ في الخادم'
     });
   }
 };

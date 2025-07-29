@@ -10,6 +10,7 @@ class SocketService {
   private turnUpdateCallback: ((data: { currentTurn: string }) => void) | null = null;
   private moveMadeCallback: ((data: any) => void) | null = null;
   private gameTimeoutCallback: ((data: { winner: string; reason?: string }) => void) | null = null;
+  private gameEndCallback: ((data: { reason: string; winner?: string; winnerId?: number; loserId?: number }) => void) | null = null;
   private moveConfirmedCallback: ((data: { gameId: string; move: string; timestamp: number }) => void) | null = null;
 
   connect(token: string) {
@@ -97,6 +98,16 @@ class SocketService {
       }
     });
 
+    this.socket.on('gameEnd', (data) => {
+      console.log('=== SOCKET SERVICE: Received gameEnd ===');
+      console.log('SocketService received gameEnd:', data);
+      if (this.gameEndCallback) {
+        console.log('=== SOCKET SERVICE: Calling onGameEnd callback ===');
+        this.gameEndCallback(data);
+        console.log('=== SOCKET SERVICE: onGameEnd callback executed ===');
+      }
+    });
+
     this.socket.on('moveConfirmed', (data) => {
       console.log('=== FULL SYNC: SocketService received moveConfirmed ===');
       console.log('SocketService received moveConfirmed:', data);
@@ -176,11 +187,22 @@ class SocketService {
   }) {
     if (this.socket) {
       console.log('=== SOCKET SERVICE: Sending move ===');
-      console.log('SocketService: Sending move:', moveData);
+      console.log('SocketService sending move:', moveData);
       this.socket.emit('move', moveData);
       console.log('=== SOCKET SERVICE: Move sent ===');
     } else {
       console.error('SocketService: Cannot send move, socket not connected');
+    }
+  }
+
+  sendResign(gameId: string) {
+    if (this.socket) {
+      console.log('=== SOCKET SERVICE: Sending resign ===');
+      console.log('SocketService sending resign for game:', gameId);
+      this.socket.emit('resign', { gameId });
+      console.log('=== SOCKET SERVICE: Resign sent ===');
+    } else {
+      console.error('SocketService: Cannot send resign, socket not connected');
     }
   }
 
@@ -228,6 +250,17 @@ class SocketService {
     }
   }
 
+  onGameEnd(callback: (data: { reason: string; winner?: string; winnerId?: number; loserId?: number }) => void) {
+    if (this.socket) {
+      console.log('=== SOCKET SERVICE: Setting up onGameEnd listener ===');
+      this.gameEndCallback = callback; // Store the callback
+      this.socket.on('gameEnd', callback); // Set up the listener
+      console.log('=== SOCKET SERVICE: onGameEnd listener set up ===');
+    } else {
+      console.error('SocketService: Cannot set up onGameEnd, socket not connected');
+    }
+  }
+
   onMoveConfirmed(callback: (data: { gameId: string; move: string; timestamp: number }) => void) {
     if (this.socket) {
       console.log('=== FULL SYNC: Setting up onMoveConfirmed listener ===');
@@ -265,6 +298,13 @@ class SocketService {
     if (this.socket) {
       this.socket.off('gameTimeout');
       this.gameTimeoutCallback = null; // Clear the stored callback
+    }
+  }
+
+  offGameEnd() {
+    if (this.socket) {
+      this.socket.off('gameEnd');
+      this.gameEndCallback = null; // Clear the stored callback
     }
   }
 
