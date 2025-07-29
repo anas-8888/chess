@@ -548,46 +548,32 @@ const GameRoom = () => {
     // Update moves list
     setMoves(prev => {
       const newMoves = [...prev];
-      const moveNumber = Math.floor(newMoves.length / 2) + 1;
+      console.log('=== GAME ROOM: Adding opponent move ===');
+      console.log('Current moves length:', newMoves.length);
+      console.log('Moved by:', movedBy);
+      console.log('Move:', san);
       
       if (movedBy === 'white') {
-        // إضافة حركة الأبيض
-        if (newMoves.length % 2 === 0) {
-          // بداية زوج جديد
-          newMoves.push({
-            moveNumber,
-            white: san,
-            black: null,
-            san,
-            fen
-          });
-        } else {
-          // إضافة إلى الزوج الحالي
-          const lastMove = newMoves[newMoves.length - 1];
-          lastMove.white = san;
-          lastMove.san = san;
-          lastMove.fen = fen;
-        }
+        // إضافة حركة الأبيض - دائماً تبدأ زوج جديد
+        const moveNumber = newMoves.length + 1;
+        console.log('Creating new pair, moveNumber:', moveNumber);
+        newMoves.push({
+          moveNumber,
+          white: san,
+          black: null,
+          san,
+          fen
+        });
       } else {
-        // إضافة حركة الأسود
-        if (newMoves.length % 2 === 0) {
-          // بداية زوج جديد
-          newMoves.push({
-            moveNumber,
-            white: null,
-            black: san,
-            san,
-            fen
-          });
-        } else {
-          // إضافة إلى الزوج الحالي
-          const lastMove = newMoves[newMoves.length - 1];
-          lastMove.black = san;
-          lastMove.san = san;
-          lastMove.fen = fen;
-        }
+        // إضافة حركة الأسود - دائماً تكمل الزوج الحالي
+        console.log('Adding to existing pair');
+        const lastMove = newMoves[newMoves.length - 1];
+        lastMove.black = san;
+        lastMove.san = san;
+        lastMove.fen = fen;
       }
       
+      console.log('Final moves:', newMoves);
       return newMoves;
     });
 
@@ -727,24 +713,34 @@ const GameRoom = () => {
         };
 
         setMoves(prev => {
-          const updated = [...prev];
-          const lastMove = updated[updated.length - 1];
+          const newMoves = [...prev];
+          console.log('=== GAME ROOM: Adding move ===');
+          console.log('Current moves length:', newMoves.length);
+          console.log('Current player:', currentPlayer);
+          console.log('Move:', move.san);
           
-          if (lastMove && (
-            (currentPlayer === 'white' && !lastMove.white) ||
-            (currentPlayer === 'black' && !lastMove.black)
-          )) {
-            // Add move to existing entry
-            updated[updated.length - 1] = { 
-              ...lastMove, 
-              [currentPlayer]: move.san,
+          if (currentPlayer === 'white') {
+            // إضافة حركة الأبيض - دائماً تبدأ زوج جديد
+            const moveNumber = newMoves.length + 1;
+            console.log('Creating new pair, moveNumber:', moveNumber);
+            newMoves.push({
+              moveNumber,
+              white: move.san,
+              black: null,
+              san: move.san,
               fen: gameCopy.fen()
-            };
+            });
           } else {
-            // Create new move entry
-            updated.push(newMove);
+            // إضافة حركة الأسود - دائماً تكمل الزوج الحالي
+            console.log('Adding to existing pair');
+            const lastMove = newMoves[newMoves.length - 1];
+            lastMove.black = move.san;
+            lastMove.san = move.san;
+            lastMove.fen = gameCopy.fen();
           }
-          return updated;
+          
+          console.log('Final moves:', newMoves);
+          return newMoves;
         });
 
         // Update local game state (turn will be updated by server)
@@ -795,52 +791,6 @@ const GameRoom = () => {
           handleGameEnd({ reason: 'insufficient_material' });
           return true;
         }
-
-        // Update moves list
-        setMoves(prev => {
-          const newMoves = [...prev];
-          const moveNumber = Math.floor(newMoves.length / 2) + 1;
-          
-          if (currentPlayer === 'white') {
-            // إضافة حركة الأبيض
-            if (newMoves.length % 2 === 0) {
-              // بداية زوج جديد
-              newMoves.push({
-                moveNumber,
-                white: move.san,
-                black: null,
-                san: move.san,
-                fen: gameCopy.fen()
-              });
-            } else {
-              // إضافة إلى الزوج الحالي
-              const lastMove = newMoves[newMoves.length - 1];
-              lastMove.white = move.san;
-              lastMove.san = move.san;
-              lastMove.fen = gameCopy.fen();
-            }
-          } else {
-            // إضافة حركة الأسود
-            if (newMoves.length % 2 === 0) {
-              // بداية زوج جديد
-              newMoves.push({
-                moveNumber,
-                white: null,
-                black: move.san,
-                san: move.san,
-                fen: gameCopy.fen()
-              });
-            } else {
-              // إضافة إلى الزوج الحالي
-              const lastMove = newMoves[newMoves.length - 1];
-              lastMove.black = move.san;
-              lastMove.san = move.san;
-              lastMove.fen = gameCopy.fen();
-            }
-          }
-          
-          return newMoves;
-        });
 
         return true;
       }
