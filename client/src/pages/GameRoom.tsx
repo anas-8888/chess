@@ -849,11 +849,6 @@ const GameRoom = () => {
                 {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
                 {isConnected ? 'متصل' : 'منقطع'}
               </Badge>
-              {process.env.NODE_ENV === 'development' && (
-                <Badge variant="outline" className="text-xs">
-                  Debug: {gameState.currentTurn} | {timers.white}s/{timers.black}s
-                </Badge>
-              )}
               {isPhysicalMove && (
                 <Badge variant="outline" className="bg-primary/10 text-primary animate-pulse">
                   <Crown className="w-3 h-3 ml-1" />
