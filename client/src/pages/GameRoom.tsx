@@ -78,7 +78,7 @@ const GameRoom = () => {
   const [error, setError] = useState<string | null>(null);
   
   const [gameState, setGameState] = useState({
-    id: 'game_123',
+    id: '',
     status: 'active', // 'waiting', 'active', 'finished'
     currentTurn: 'white',
     isCheck: false,
@@ -111,7 +111,7 @@ const GameRoom = () => {
     const currentUserId = user.id;
       console.log('Setting up player data:', { currentUserId, gameData });
       
-      if (gameData.whitePlayer.id === currentUserId) {
+      if (gameData.whitePlayer.id === parseInt(currentUserId)) {
         setCurrentPlayer('white');
         // تحديث ترتيب اللاعبين للاعب الأبيض
         setPlayers({
@@ -131,7 +131,7 @@ const GameRoom = () => {
         currentTurn: gameData.currentTurn || 'white'
       }));
       console.log('Player is white, timers updated from game data');
-      } else if (gameData.blackPlayer.id === currentUserId) {
+      } else if (gameData.blackPlayer.id === parseInt(currentUserId)) {
         setCurrentPlayer('black');
         // قلب ترتيب اللاعبين للاعب الأسود
         setPlayers({
@@ -249,6 +249,7 @@ const GameRoom = () => {
   const [isProcessingMove, setIsProcessingMove] = useState(false);
   const [showGameEndModalState, setShowGameEndModalState] = useState(false);
   const [gameEndData, setGameEndData] = useState<{ reason: string; winner?: string } | null>(null);
+  const [showResignConfirmModal, setShowResignConfirmModal] = useState(false);
 
   const { toast } = useToast();
 
@@ -294,6 +295,12 @@ const GameRoom = () => {
           }
           
           setGameData(data);
+          
+          // تحديث معرف اللعبة في gameState
+          setGameState(prev => ({
+            ...prev,
+            id: gameId
+          }));
           
           // تحديث حالة اللعبة والدور
           setGameState(prev => ({
@@ -418,9 +425,12 @@ const GameRoom = () => {
 
   const handleGameEnd = useCallback((data: { reason: string; winner?: string; winnerId?: number; loserId?: number }) => {
     console.log('=== GAME ROOM: Received gameEnd ===');
-    console.log('Received gameEnd:', data);
+    console.log('Received gameEnd data:', data);
+    console.log('Current player:', currentPlayer);
     
     const { reason, winner, winnerId, loserId } = data;
+    
+    console.log('Processing game end:', { reason, winner, winnerId, loserId });
     
     // Update game state
     setGameState(prev => ({
@@ -429,11 +439,15 @@ const GameRoom = () => {
       winner: winner
     }));
     
+    console.log('Game state updated to finished');
+    
     // Stop timers
     setTimers(prev => ({
       ...prev,
       isRunning: false
     }));
+
+    console.log('Timers stopped');
 
     // Show appropriate message
     let message = '';
@@ -457,13 +471,18 @@ const GameRoom = () => {
         message = 'انتهت المباراة';
     }
     
+    console.log('Showing toast with message:', message);
+    
     toast({
       title: "انتهت المباراة",
       description: message,
     });
 
+    console.log('Showing game end modal');
     // Show game end modal
     showGameEndModal(reason, winner);
+    
+    console.log('=== GAME ROOM: Game end handled successfully ===');
   }, [currentPlayer, showGameEndModal]);
 
   const handleOpponentMove = useCallback((data: any) => {
@@ -839,19 +858,33 @@ const GameRoom = () => {
   }, [game, gameState.currentTurn, currentPlayer, isProcessingMove, handleGameEnd]);
 
   const handleResign = () => {
-    if (window.confirm('هل أنت متأكد من الاستسلام؟')) {
-      console.log('=== GAME ROOM: Player resigned ===');
-      console.log('Player resigned');
-      
-      // إرسال الاستسلام عبر socket
-      socketService.sendResign(gameState.id);
-      
-      // معالجة محلية للاستسلام
-      handleGameEnd({ 
-        reason: 'resign', 
-        winner: currentPlayer === 'white' ? 'black' : 'white' 
-      });
-    }
+    setShowResignConfirmModal(true);
+  };
+
+  const confirmResign = () => {
+    console.log('=== GAME ROOM: Player confirmed resignation ===');
+    console.log('Player confirmed resignation');
+    console.log('Game state ID:', gameState.id);
+    console.log('Current player:', currentPlayer);
+    
+    // إرسال الاستسلام عبر socket
+    socketService.sendResign(gameState.id);
+    
+    // معالجة محلية للاستسلام
+    const winner = currentPlayer === 'white' ? 'black' : 'white';
+    console.log('Local winner calculation:', winner);
+    
+    handleGameEnd({ 
+      reason: 'resign', 
+      winner: winner 
+    });
+    
+    // إغلاق مودال التأكيد
+    setShowResignConfirmModal(false);
+  };
+
+  const cancelResign = () => {
+    setShowResignConfirmModal(false);
   };
 
   const handleOfferDraw = () => {
@@ -878,15 +911,15 @@ const GameRoom = () => {
   };
 
   const handleSendMessage = () => {
-    if (!chatInput.trim()) return;
+    if (!chatInput.trim() || !players[currentPlayer]) return;
 
     console.log('=== GAME ROOM: Sending chat message ===');
     console.log('Sending chat message:', chatInput);
 
     const message: ChatMessage = {
       id: Date.now().toString(),
-      userId: players[currentPlayer].id.toString(),
-      username: players[currentPlayer].name,
+      userId: players[currentPlayer]?.id?.toString() || 'unknown',
+      username: players[currentPlayer]?.name || 'Unknown',
       message: chatInput,
       type: 'text',
       timestamp: new Date()
@@ -1343,6 +1376,31 @@ const GameRoom = () => {
                   className="flex-1"
                 >
                   إغلاق
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Resign Confirmation Modal */}
+      {showResignConfirmModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card p-6 rounded-lg shadow-lg max-w-md w-full mx-4">
+            <div className="text-center">
+              <div className="mb-4">
+                <Flag className="w-12 h-12 text-destructive" />
+              </div>
+              <h2 className="text-2xl font-bold mb-2">تأكيد الاستسلام</h2>
+              <p className="text-muted-foreground mb-6">
+                هل أنت متأكد من الاستسلام؟ سيتم إعلام الخصم وإغلاق المباراة.
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={cancelResign}>
+                  إلغاء
+                </Button>
+                <Button variant="destructive" onClick={confirmResign}>
+                  تأكيد الاستسلام
                 </Button>
               </div>
             </div>

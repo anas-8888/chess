@@ -385,6 +385,7 @@ export function initFriendSocket(io) {
     socket.on('resign', async (data) => {
       console.log('=== FRIEND SOCKET: Received resign ===');
       console.log('Resign data:', data);
+      console.log('Socket userId:', socket.userId);
       
       try {
         const { gameId } = data;
@@ -395,12 +396,29 @@ export function initFriendSocket(io) {
           return;
         }
         
+        console.log('Game found:', {
+          gameId: game.id,
+          whitePlayerId: game.white_player_id,
+          blackPlayerId: game.black_player_id,
+          socketUserId: socket.userId
+        });
+        
         // تحديد اللاعب الذي استسلم
         const resignedPlayer = socket.userId === game.white_player_id ? 'white' : 'black';
         const winner = resignedPlayer === 'white' ? 'black' : 'white';
         
+        console.log('Resign analysis:', {
+          resignedPlayer,
+          winner,
+          socketUserId: socket.userId,
+          whitePlayerId: game.white_player_id,
+          blackPlayerId: game.black_player_id
+        });
+        
         // معالجة انتهاء اللعبة
         await handleGameEnd(nsp, gameId, 'resign', winner);
+        
+        console.log('=== FRIEND SOCKET: Resign handled successfully ===');
         
       } catch (error) {
         console.error('Error handling resign:', error);
