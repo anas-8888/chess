@@ -50,22 +50,13 @@ const Friends = () => {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteTarget, setInviteTarget] = useState<any>(null);
   const [playMethod, setPlayMethod] = useState<'phone' | 'physical_board' | null>(null);
-  const [selectedBoard, setSelectedBoard] = useState<string | null>(null);
   const [isSendingInvite, setIsSendingInvite] = useState(false);
 
   // متغيرات مودال قبول الدعوة
   const [showAcceptInviteModal, setShowAcceptInviteModal] = useState(false);
   const [selectedInvite, setSelectedInvite] = useState<any>(null);
   const [acceptPlayMethod, setAcceptPlayMethod] = useState<'phone' | 'physical_board' | null>(null);
-  const [acceptSelectedBoard, setAcceptSelectedBoard] = useState<string | null>(null);
   const [isAcceptingInvite, setIsAcceptingInvite] = useState(false);
-
-  // بيانات رقع وهمية
-  const fakeBoards = [
-    { id: '1', name: 'رقعة 1' },
-    { id: '2', name: 'رقعة 2' },
-    { id: '3', name: 'رقعة 3' },
-  ];
 
   
   useEffect(() => {
@@ -301,7 +292,6 @@ const Friends = () => {
       }
       setInviteTarget(friend);
       setPlayMethod(null);
-      setSelectedBoard(null);
       setShowInviteModal(true);
     } catch (error) {
       console.error('Error checking user status:', error);
@@ -321,12 +311,9 @@ const Friends = () => {
       const body: any = {
         to_user_id: inviteTarget.user_id.toString(), // تأكد أنه نص
         game_type: 'friendly',
-        play_method: playMethod,
+        play_method: playMethod === 'physical_board' ? 'physical_board' : 'phone',
         time_control: 10,
       };
-      if (playMethod === 'physical_board') {
-        body.board_id = selectedBoard || fakeBoards[0].id;
-      }
       const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/invites/game`, {
         method: 'POST',
         headers: {
@@ -382,7 +369,6 @@ const Friends = () => {
       // فتح مودال اختيار طريقة اللعب
       setSelectedInvite(invite);
       setAcceptPlayMethod(null);
-      setAcceptSelectedBoard(null);
       setShowAcceptInviteModal(true);
 
     } catch (error) {
@@ -667,7 +653,7 @@ const Friends = () => {
     
     setIsAcceptingInvite(true);
     try {
-      // تحديد طريقة اللعب
+      // تحديد طريقة اللعب - دائماً إرسال physical_board إذا تم اختيار الرقعة المادية
       const playMethod = acceptPlayMethod === 'physical_board' ? 'physical_board' : 'phone';
       
       // قبول الدعوة وإنشاء اللعبة
@@ -685,7 +671,6 @@ const Friends = () => {
       setShowAcceptInviteModal(false);
       setSelectedInvite(null);
       setAcceptPlayMethod(null);
-      setAcceptSelectedBoard(null);
 
     } catch (error) {
       console.error('Error accepting invite:', error);
@@ -1156,20 +1141,6 @@ const Friends = () => {
              >
                رقعة مادية
              </Button>
-             {playMethod === 'physical_board' && (
-               <div className="mt-2">
-                 <label className="block mb-1 font-cairo">اختر الرقعة:</label>
-                 <select
-                   className="w-full border rounded p-2"
-                   value={selectedBoard || fakeBoards[0].id}
-                   onChange={e => setSelectedBoard(e.target.value)}
-                 >
-                   {fakeBoards.map(board => (
-                     <option key={board.id} value={board.id}>{board.name}</option>
-                   ))}
-                 </select>
-               </div>
-             )}
            </div>
            <DialogFooter className="flex gap-2 mt-4">
              <Button variant="outline" onClick={() => setShowInviteModal(false)} disabled={isSendingInvite}>
@@ -1178,7 +1149,7 @@ const Friends = () => {
              <Button
                variant="chess"
                onClick={sendGameInviteToBackend}
-               disabled={!playMethod || (playMethod === 'physical_board' && !selectedBoard) || isSendingInvite}
+               disabled={!playMethod || isSendingInvite}
              >
                {isSendingInvite ? 'جاري الإرسال...' : 'إرسال الدعوة'}
              </Button>
@@ -1208,20 +1179,6 @@ const Friends = () => {
              >
                رقعة مادية
              </Button>
-             {acceptPlayMethod === 'physical_board' && (
-               <div className="mt-2">
-                 <label className="block mb-1 font-cairo">اختر الرقعة:</label>
-                 <select
-                   className="w-full border rounded p-2"
-                   value={acceptSelectedBoard || fakeBoards[0].id}
-                   onChange={e => setAcceptSelectedBoard(e.target.value)}
-                 >
-                   {fakeBoards.map(board => (
-                     <option key={board.id} value={board.id}>{board.name}</option>
-                   ))}
-                 </select>
-               </div>
-             )}
            </div>
            <DialogFooter className="flex gap-2 mt-4">
              <Button variant="outline" onClick={() => setShowAcceptInviteModal(false)} disabled={isAcceptingInvite}>
@@ -1230,7 +1187,7 @@ const Friends = () => {
              <Button
                variant="chess"
                onClick={confirmAcceptInvite}
-               disabled={!acceptPlayMethod || (acceptPlayMethod === 'physical_board' && !acceptSelectedBoard) || isAcceptingInvite}
+               disabled={!acceptPlayMethod || isAcceptingInvite}
              >
                {isAcceptingInvite ? 'جاري القبول...' : 'قبول الدعوة'}
              </Button>
