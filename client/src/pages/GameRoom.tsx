@@ -567,10 +567,25 @@ const GameRoom = () => {
       } else {
         // إضافة حركة الأسود - دائماً تكمل الزوج الحالي
         console.log('Adding to existing pair');
-        const lastMove = newMoves[newMoves.length - 1];
-        lastMove.black = san;
-        lastMove.san = san;
-        lastMove.fen = fen;
+        
+        // التحقق من وجود حركة سابقة
+        if (newMoves.length === 0) {
+          // إذا لم تكن هناك حركة سابقة، أنشئ زوج جديد
+          console.log('No previous move found, creating new pair');
+          newMoves.push({
+            moveNumber: 1,
+            white: null,
+            black: san,
+            san,
+            fen
+          });
+        } else {
+          // إضافة إلى الحركة السابقة
+          const lastMove = newMoves[newMoves.length - 1];
+          lastMove.black = san;
+          lastMove.san = san;
+          lastMove.fen = fen;
+        }
       }
       
       console.log('Final moves:', newMoves);
