@@ -44,6 +44,286 @@ struct MoveResult {
     String fromSq, toSq, san, newFen;
 };
 
+// --- Chess Validation Functions ---
+// دالة لتحويل FEN إلى مصفوفة القطع
+void fenToBoard(const String &fen, char board[8][8]) {
+    Serial.println("🔍 fenToBoard - Input FEN: " + fen);
+    
+    String parts[6];
+    int idx = 0, start = 0;
+    for (int i = 0; i <= fen.length() && idx < 6; i++) {
+        if (i == fen.length() || fen[i] == ' ') {
+            parts[idx++] = fen.substring(start, i);
+            start = i + 1;
+        }
+    }
+    
+    Serial.println("🔍 FEN parts[0]: " + parts[0]);
+    
+    String fenRanks[8];
+    {
+        int ri = 0, si = 0;
+        for (int i = 0; i <= parts[0].length(); i++) {
+            if (i == parts[0].length() || parts[0][i] == '/') {
+                fenRanks[ri++] = parts[0].substring(si, i);
+                si = i + 1;
+            }
+        }
+    }
+    
+    Serial.println("🔍 FEN Ranks:");
+    for (int i = 0; i < 8; i++) {
+        Serial.println("  Rank " + String(i) + ": " + fenRanks[i]);
+    }
+    
+    for (int r = 0; r < 8; r++) {
+        String rowFen = fenRanks[7 - r];
+        Serial.println("🔍 Processing row " + String(r) + " (FEN rank " + String(7-r) + "): " + rowFen);
+        int c = 0;
+        for (char ch : rowFen) {
+            if (isdigit(ch)) {
+                int n = ch - '0';
+                Serial.println("  Adding " + String(n) + " empty squares");
+                while (n--) board[r][c++] = '.';
+            } else {
+                Serial.println("  Adding piece: " + String(ch));
+                board[r][c++] = ch;
+            }
+        }
+    }
+    
+    Serial.println("🔍 Final board:");
+    for (int r = 7; r >= 0; r--) {
+        String row = "";
+        for (int c = 0; c < 8; c++) {
+            row += String(board[r][c]) + " ";
+        }
+        Serial.println("  Row " + String(r) + ": " + row);
+    }
+}
+
+// دالة للتحقق من أن المربع داخل الرقعة
+bool isValidSquare(int row, int col) {
+    return row >= 0 && row < 8 && col >= 0 && col < 8;
+}
+
+// دالة للتحقق من لون القطعة
+bool isWhitePiece(char piece) {
+    return piece >= 'A' && piece <= 'Z';
+}
+
+bool isBlackPiece(char piece) {
+    return piece >= 'a' && piece <= 'z';
+}
+
+// دالة للتحقق من أن القطعة تنتمي للاعب الحالي
+bool isCurrentPlayerPiece(char piece, const String &currentTurn) {
+    if (piece == '.') return false;
+    if (currentTurn == "white") return (piece >= 'A' && piece <= 'Z');
+    else return (piece >= 'a' && piece <= 'z');
+}
+
+// دالة للتحقق من حركة البيدق
+bool isValidPawnMove(char board[8][8], int fromRow, int fromCol, int toRow, int toCol, const String &currentTurn) {
+    int direction = (currentTurn == "white") ? 1 : -1; // الأبيض يتحرك للأعلى، الأسود للأسفل
+    
+    Serial.println("🔍 Pawn validation - Direction: " + String(direction));
+    Serial.println("🔍 From: (" + String(fromRow) + "," + String(fromCol) + ") To: (" + String(toRow) + "," + String(toCol) + ")");
+    
+    // التحقق من الاتجاه الصحيح
+    if (currentTurn == "white" && toRow <= fromRow) {
+        Serial.println("❌ White pawn moving in wrong direction");
+        return false;
+    }
+    if (currentTurn == "black" && toRow >= fromRow) {
+        Serial.println("❌ Black pawn moving in wrong direction");
+        return false;
+    }
+    
+    int rowDiff = toRow - fromRow;
+    int colDiff = abs(toCol - fromCol);
+    
+    Serial.println("🔍 RowDiff: " + String(rowDiff) + ", ColDiff: " + String(colDiff));
+    
+    // حركة أمامية
+    if (colDiff == 0) {
+        Serial.println("🔍 Forward pawn move");
+        // حركة واحدة للأمام
+        if (rowDiff == direction && board[toRow][toCol] == '.') {
+            Serial.println("✅ Single pawn move is valid");
+            return true;
+        } else {
+            Serial.println("❌ Single pawn move invalid - RowDiff: " + String(rowDiff) + ", Direction: " + String(direction) + ", Target: " + String(board[toRow][toCol]));
+        }
+        // حركة مزدوجة من المربع الأولي
+        if (rowDiff == 2 * direction) {
+            Serial.println("🔍 Double pawn move detected");
+            Serial.println("🔍 Checking initial position - White fromRow==6: " + String(fromRow == 6) + ", Black fromRow==1: " + String(fromRow == 1));
+            if ((currentTurn == "white" && fromRow == 6) || (currentTurn == "black" && fromRow == 1)) {
+                Serial.println("🔍 Initial position check passed");
+                Serial.println("🔍 Checking path - Middle square: " + String(board[fromRow + direction][fromCol]) + ", Target square: " + String(board[toRow][toCol]));
+                if (board[fromRow + direction][fromCol] == '.' && board[toRow][toCol] == '.') {
+                    Serial.println("✅ Double pawn move is valid");
+                    return true;
+                } else {
+                    Serial.println("❌ Path blocked for double pawn move");
+                }
+            } else {
+                Serial.println("❌ Not initial position for double pawn move");
+            }
+        }
+    }
+    // حركة قطرية (أكل)
+    else if (colDiff == 1 && rowDiff == direction) {
+        if (board[toRow][toCol] != '.' && !isCurrentPlayerPiece(board[toRow][toCol], currentTurn)) {
+            return true;
+        }
+    }
+    
+    Serial.println("❌ No valid pawn move pattern found");
+    return false;
+}
+
+// دالة للتحقق من حركة الحصان
+bool isValidKnightMove(int fromRow, int fromCol, int toRow, int toCol) {
+    int rowDiff = abs(toRow - fromRow);
+    int colDiff = abs(toCol - fromCol);
+    return (rowDiff == 2 && colDiff == 1) || (rowDiff == 1 && colDiff == 2);
+}
+
+// دالة للتحقق من حركة الفيل
+bool isValidBishopMove(char board[8][8], int fromRow, int fromCol, int toRow, int toCol) {
+    int rowDiff = toRow - fromRow;
+    int colDiff = toCol - fromCol;
+    
+    if (abs(rowDiff) != abs(colDiff)) return false;
+    
+    int rowStep = (rowDiff > 0) ? 1 : -1;
+    int colStep = (colDiff > 0) ? 1 : -1;
+    
+    // التحقق من عدم وجود قطع في الطريق
+    int r = fromRow + rowStep;
+    int c = fromCol + colStep;
+    while (r != toRow && c != toCol) {
+        if (board[r][c] != '.') return false;
+        r += rowStep;
+        c += colStep;
+    }
+    
+    return true;
+}
+
+// دالة للتحقق من حركة الطابية
+bool isValidRookMove(char board[8][8], int fromRow, int fromCol, int toRow, int toCol) {
+    if (fromRow != toRow && fromCol != toCol) return false;
+    
+    int rowStep = (fromRow == toRow) ? 0 : ((toRow > fromRow) ? 1 : -1);
+    int colStep = (fromCol == toCol) ? 0 : ((toCol > fromCol) ? 1 : -1);
+    
+    // التحقق من عدم وجود قطع في الطريق
+    int r = fromRow + rowStep;
+    int c = fromCol + colStep;
+    while (r != toRow || c != toCol) {
+        if (board[r][c] != '.') return false;
+        r += rowStep;
+        c += colStep;
+    }
+    
+    return true;
+}
+
+// دالة للتحقق من حركة الوزير
+bool isValidQueenMove(char board[8][8], int fromRow, int fromCol, int toRow, int toCol) {
+    return isValidBishopMove(board, fromRow, fromCol, toRow, toCol) ||
+           isValidRookMove(board, fromRow, fromCol, toRow, toCol);
+}
+
+// دالة للتحقق من حركة الملك
+bool isValidKingMove(int fromRow, int fromCol, int toRow, int toCol) {
+    int rowDiff = abs(toRow - fromRow);
+    int colDiff = abs(toCol - fromCol);
+    return rowDiff <= 1 && colDiff <= 1;
+}
+
+// دالة للتحقق من صحة الحركة لأي قطعة
+bool isValidMove(char board[8][8], int fromRow, int fromCol, int toRow, int toCol, const String &currentTurn) {
+    if (!isValidSquare(fromRow, fromCol) || !isValidSquare(toRow, toCol)) return false;
+    char piece = board[fromRow][fromCol];
+    char target = board[toRow][toCol];
+    if (piece == '.') return false;
+    if (!isCurrentPlayerPiece(piece, currentTurn)) return false;
+    if (target != '.' && isCurrentPlayerPiece(target, currentTurn)) return false;
+    char p = (piece >= 'a' && piece <= 'z') ? piece - 32 : piece; // حولها لحرف كبير
+    switch (p) {
+        case 'P': {
+            int dir = (currentTurn == "white") ? 1 : -1;
+            int startRow = (currentTurn == "white") ? 1 : 6;
+            // خطوة واحدة للأمام
+            if (fromCol == toCol && toRow - fromRow == dir && board[toRow][toCol] == '.') return true;
+            // خطوتين من الصف الأول
+            if (fromCol == toCol && fromRow == startRow && toRow - fromRow == 2*dir && board[fromRow+dir][fromCol] == '.' && board[toRow][toCol] == '.') return true;
+            // أكل قطري
+            if (abs(toCol - fromCol) == 1 && toRow - fromRow == dir && board[toRow][toCol] != '.' && !isCurrentPlayerPiece(board[toRow][toCol], currentTurn)) return true;
+            return false;
+        }
+        case 'N': {
+            int dr = abs(toRow - fromRow), dc = abs(toCol - fromCol);
+            return (dr == 2 && dc == 1) || (dr == 1 && dc == 2);
+        }
+        case 'B': {
+            int dr = toRow - fromRow, dc = toCol - fromCol;
+            if (abs(dr) != abs(dc)) return false;
+            int rStep = (dr > 0) ? 1 : -1, cStep = (dc > 0) ? 1 : -1;
+            for (int r = fromRow + rStep, c = fromCol + cStep; r != toRow; r += rStep, c += cStep)
+                if (board[r][c] != '.') return false;
+            return true;
+        }
+        case 'R': {
+            if (fromRow != toRow && fromCol != toCol) return false;
+            int rStep = (toRow == fromRow) ? 0 : ((toRow > fromRow) ? 1 : -1);
+            int cStep = (toCol == fromCol) ? 0 : ((toCol > fromCol) ? 1 : -1);
+            for (int r = fromRow + rStep, c = fromCol + cStep; r != toRow || c != toCol; r += rStep, c += cStep)
+                if (board[r][c] != '.') return false;
+            return true;
+        }
+        case 'Q': {
+            // ملكة = فيل أو طابية
+            int dr = toRow - fromRow, dc = toCol - fromCol;
+            if (abs(dr) == abs(dc)) {
+                int rStep = (dr > 0) ? 1 : -1, cStep = (dc > 0) ? 1 : -1;
+                for (int r = fromRow + rStep, c = fromCol + cStep; r != toRow; r += rStep, c += cStep)
+                    if (board[r][c] != '.') return false;
+                return true;
+            } else if (fromRow == toRow || fromCol == toCol) {
+                int rStep = (toRow == fromRow) ? 0 : ((toRow > fromRow) ? 1 : -1);
+                int cStep = (toCol == fromCol) ? 0 : ((toCol > fromCol) ? 1 : -1);
+                for (int r = fromRow + rStep, c = fromCol + cStep; r != toRow || c != toCol; r += rStep, c += cStep)
+                    if (board[r][c] != '.') return false;
+                return true;
+            }
+            return false;
+        }
+        case 'K': {
+            int dr = abs(toRow - fromRow), dc = abs(toCol - fromCol);
+            return dr <= 1 && dc <= 1;
+        }
+        default:
+            return false;
+    }
+}
+
+// دالة التحقق الشاملة
+bool validateChessMove(const String &fen, const String &fromSq, const String &toSq, const String &currentTurn) {
+    char board[8][8];
+    fenToBoard(fen, board);
+    // تحويل الإحداثيات: الصف 0 هو الأسفل (1 في الشطرنج)، الصف 7 هو الأعلى (8 في الشطرنج)
+    int fromCol = fromSq.charAt(0) - 'a';
+    int fromRow = fromSq.charAt(1) - '1';
+    int toCol = toSq.charAt(0) - 'a';
+    int toRow = toSq.charAt(1) - '1';
+    return isValidMove(board, fromRow, fromCol, toRow, toCol, currentTurn);
+}
+
 // --- Helpers ---
 void printBoardArray(bool arr[8][8], const char* name) {
     Serial.printf("=== %s ===\n", name);
@@ -130,9 +410,11 @@ MoveResult computeMove(bool oldB[8][8], bool newB[8][8], const String &oldFen) {
         for (int c=0; c<8; c++) {
             if (oldB[r][c] && !newB[r][c]) {
                 fR=r; fC=c;
+                Serial.println("🔍 Found removed piece at: (" + String(r) + "," + String(c) + ")");
             }
             if (!oldB[r][c] && newB[r][c]) {
                 tR=r; tC=c;
+                Serial.println("🔍 Found added piece at: (" + String(r) + "," + String(c) + ")");
             }
         }
     
@@ -161,8 +443,13 @@ MoveResult computeMove(bool oldB[8][8], bool newB[8][8], const String &oldFen) {
     // هذا مهم جداً لضمان تزامن FEN مع الدور الصحيح
     String newTurn = (parts[1] == "w") ? "b" : "w";
     String newFen = np + " " + newTurn + " " + parts[2] + " " + parts[3] + " " + parts[4] + " " + parts[5];
-    String fromSq = String(char('a'+fC)) + char('1'+fR);
-    String toSq = String(char('a'+tC)) + char('1'+tR);
+    // تصحيح تحويل الإحداثيات - الصف 0 في المصفوفة = الصف 1 في الشطرنج
+    String fromSq = String(char('a'+fC)) + String(fR+1);
+    String toSq = String(char('a'+tC)) + String(tR+1);
+    
+    // إضافة تشخيص مفصل
+    Serial.println("🔍 computeMove - fR: " + String(fR) + ", fC: " + String(fC) + " -> fromSq: " + fromSq);
+    Serial.println("🔍 computeMove - tR: " + String(tR) + ", tC: " + String(tC) + " -> toSq: " + toSq);
     String san = (pc>='A'&&pc<='Z'&&pc!='P') ? String(pc)+toSq : toSq;
     
     return {fromSq,toSq,san,newFen};
@@ -531,39 +818,57 @@ void loop() {
                     Serial.println("🛡️ Restored oldBoard - not your turn");
                     
                 } else {
-                    // تحديث حالة الرقعة المحلية - فقط عند الحركة الصحيحة
-                    currentFen = mv.newFen;
-                    memcpy(lastBoard, boardState, sizeof(boardState));
+                    // فحص صحة الحركة قبل الإرسال
+                    bool isMoveValid = validateChessMove(currentFen, mv.fromSq, mv.toSq, currentTurn);
                     
-                    // تحديث النسخ المحمية عند الحركة الصحيحة
-                    memcpy(protectedOldBoard, lastBoard, sizeof(lastBoard));
-                    protectedOldFen = currentFen;
-                    
-                    // تحديث الدور للدور التالي
-                    String nextTurn = (currentTurn == "white") ? "black" : "white";
-                    
-                    // إرسال الحركة مع جميع البيانات المطلوبة
-                    String p = "{\"gameId\":\""+gameId+"\","+
-                               "\"from\":\"" + mv.fromSq +"\","+
-                               "\"to\":\""   + mv.toSq   +"\","+
-                               "\"san\":\""  + mv.san    +"\","+
-                               "\"fen\":\""  + mv.newFen +"\","+
-                               "\"movedBy\":\"" + playerColor +"\","+
-                               "\"currentTurn\":\"" + nextTurn +"\"}";
-                    
-                    String frame="42/friends,[\"move\","+p+"]";
-                    webSocket.sendTXT(frame);
-                    Serial.println("➡️ " + frame);
-                    
-                    // تحديث الدور المحلي
-                    currentTurn = nextTurn;
-                    
-                    Serial.println("✅ Valid move - updated protected state");
-                    
-                    // تنبيه ضوئي للحركة الناجحة
-                    digitalWrite(LED_PIN, HIGH);
-                    delay(500);
-                    digitalWrite(LED_PIN, LOW);
+                    if (isMoveValid) {
+                        // تحديث حالة الرقعة المحلية - فقط عند الحركة الصحيحة
+                        currentFen = mv.newFen;
+                        memcpy(lastBoard, boardState, sizeof(boardState));
+                        
+                        // تحديث النسخ المحمية عند الحركة الصحيحة
+                        memcpy(protectedOldBoard, lastBoard, sizeof(lastBoard));
+                        protectedOldFen = currentFen;
+                        
+                        // تحديث الدور للدور التالي
+                        String nextTurn = (currentTurn == "white") ? "black" : "white";
+                        
+                        // إرسال الحركة مع جميع البيانات المطلوبة
+                        String p = "{\"gameId\":\""+gameId+"\","+
+                                   "\"from\":\"" + mv.fromSq +"\","+
+                                   "\"to\":\""   + mv.toSq   +"\","+
+                                   "\"san\":\""  + mv.san    +"\","+
+                                   "\"fen\":\""  + mv.newFen +"\","+
+                                   "\"movedBy\":\"" + playerColor +"\","+
+                                   "\"currentTurn\":\"" + nextTurn +"\"}";
+                        
+                        String frame="42/friends,[\"move\","+p+"]";
+                        webSocket.sendTXT(frame);
+                        Serial.println("➡️ " + frame);
+                        
+                        // تحديث الدور المحلي
+                        currentTurn = nextTurn;
+                        
+                        Serial.println("✅ Valid chess move - sent to server");
+                        
+                        // تنبيه ضوئي للحركة الناجحة
+                        digitalWrite(LED_PIN, HIGH);
+                        delay(500);
+                        digitalWrite(LED_PIN, LOW);
+                    } else {
+                        // الحركة غير صحيحة - استعادة الحالة المحمية
+                        Serial.println("❌ Invalid chess move - restoring protected state");
+                        memcpy(lastBoard, protectedOldBoard, sizeof(protectedOldBoard));
+                        currentFen = protectedOldFen;
+                        
+                        // تنبيه ضوئي للحركة غير الصحيحة
+                        for (int i=0; i<3; i++) {
+                            digitalWrite(LED_PIN, HIGH);
+                            delay(200);
+                            digitalWrite(LED_PIN, LOW);
+                            delay(200);
+                        }
+                    }
                 }
             } else {
                 Serial.println("⚠️ لم يتم الكشف عن حركة صالحة");
