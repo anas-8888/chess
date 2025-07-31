@@ -491,7 +491,7 @@ void loop() {
         int rem, add;
         countDiffs(lastBoard, boardState, rem, add);
         
-        // التحقق من أن الحركة صحيحة
+        // التحقق من أن الحركة صحيحة (فقط قطعة واحدة تم تحريكها)
         if (rem > 1 || add > 1) {
             // تنبيه ضوئي للحركة غير الصحيحة
             for (int i=0; i<3; i++) {
@@ -508,11 +508,8 @@ void loop() {
             currentFen = protectedOldFen;
             Serial.println("🔄 Restored oldBoard from protected state");
             
-        } else if ((rem == 1 && add == 1) || (rem == 1 && add == 0)) {
-            // حركة صحيحة - إما نقل قطعة أو قتل قطعة
-            String moveType = (add == 0) ? "CAPTURE" : "MOVE";
-            Serial.println("🎯 " + moveType + " detected - rem: " + String(rem) + ", add: " + String(add));
-            
+        } else if (rem == 1 && add == 1) {
+            // حركة صحيحة - قطعة واحدة تم تحريكها
             MoveResult mv = computeMove(lastBoard, boardState, currentFen);
             Serial.println("New FEN: " + mv.newFen);
             
@@ -561,7 +558,7 @@ void loop() {
                     // تحديث الدور المحلي
                     currentTurn = nextTurn;
                     
-                    Serial.println("✅ Valid " + moveType + " - updated protected state");
+                    Serial.println("✅ Valid move - updated protected state");
                     
                     // تنبيه ضوئي للحركة الناجحة
                     digitalWrite(LED_PIN, HIGH);
@@ -578,7 +575,6 @@ void loop() {
             }
         } else {
             Serial.println("⚠️ No valid move detected - no pieces moved or invalid pattern");
-            Serial.println("📊 Move stats - rem: " + String(rem) + ", add: " + String(add));
             
             // استعادة oldBoard من النسخة المحمية
             memcpy(lastBoard, protectedOldBoard, sizeof(protectedOldBoard));
