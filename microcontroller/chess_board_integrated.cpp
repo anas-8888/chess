@@ -14,6 +14,7 @@ const int S0 = 25, S1 = 33, S2 = 32, S3 = 13;
 const int E0 = 26, E1 = 27, E2 = 14, E3 = 12;
 const int BTN_PIN = 4;
 const int LED_PIN = 2;
+const int RESIGN_PIN = 15; // زر الاستسلام - يمكن تغييره حسب الحاجة
 
 #define STEP_PIN_A   5
 #define DIR_PIN_A    2
@@ -38,6 +39,11 @@ unsigned long lastServerUpdate = 0;
 const unsigned long SERVER_UPDATE_INTERVAL = 2000;
 unsigned long lastGameStatusCheck = 0;
 const unsigned long GAME_STATUS_CHECK_INTERVAL = 10000; // كل 10 ثوان
+bool skipServerSync = false; // منع التزامن مع السيرفر مؤقتاً
+int serverSyncSkipCount = 0; // عداد لتخطي التزامن
+const int SERVER_SYNC_SKIP_CYCLES = 3; // عدد الدورات لتخطي التزامن
+bool hasResigned = false; // علم الاستسلام للانتقال للعبة الجديدة
+bool isFetchingNewGame = false; // منع فحص حالة اللعبة أثناء انتظار المباراة الجديدة
 
 bool boardState[8][8], lastBoard[8][8];
 bool protectedOldBoard[8][8];
@@ -96,6 +102,10 @@ bool isBlackPiece(char piece);
 bool isCurrentPlayerPiece(char piece, const String &currentTurn);
 bool checkGameStatus();
 void returnMotorsToHome();
+void handleCapture(int r, int c);
+bool fetchLastActiveGame();
+// Returns (r,c) of any removed piece between prevFen and currentFen, or (-1,-1) if none.
+std::pair<int,int> findCaptureFromFen(const String& prevFen, const String& currentFen);
 
 // Sensor Functions
 bool readReed(int mux, int ch) {
@@ -318,6 +328,12 @@ bool updateBoardStateFromServer() {
 }
 
 void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
+    // منع تحديثات WebSocket أثناء skipServerSync
+    if (skipServerSync) {
+        Serial.println("⏸️ Skipping WebSocket update due to skipServerSync");
+        return;
+    }
+    
     if (type == WStype_CONNECTED) {
         Serial.println("🔌 TCP connected");
     } else if (type == WStype_DISCONNECTED) {
@@ -363,11 +379,12 @@ void printBoardArray(bool arr[8][8], const char* name) {
     Serial.println("==============");
 }
 
+// الدالة المسؤولة عن الوميض؛ الـ LED "نشط" بالـ HIGH
 void blinkLED(int n) {
     for (int i = 0; i < n; ++i) {
-        digitalWrite(LED_PIN, HIGH);
+        digitalWrite(LED_PIN, HIGH); // HIGH = LED on
         delay(200);
-        digitalWrite(LED_PIN, LOW);
+        digitalWrite(LED_PIN, LOW);  // LOW  = LED off
         delay(200);
     }
 }
@@ -484,6 +501,7 @@ void setup() {
     digitalWrite(E3, HIGH);
     pinMode(SIG, INPUT);
     pinMode(BTN_PIN, INPUT_PULLUP);
+    pinMode(RESIGN_PIN, INPUT_PULLUP); // تهيئة زر الاستسلام
     
     // Initialize Stepper Motor Pins
     pinMode(ENABLE_PIN, OUTPUT);
@@ -569,16 +587,28 @@ void loop() {
     if (currentTime - lastServerUpdate >= SERVER_UPDATE_INTERVAL) {
         String prevFen = currentFen; // حفظ FEN السابق للمقارنة
         
-        if (updateBoardStateFromServer()) {
-            Serial.println("✅ Server update successful");
+        // منع التزامن مع السيرفر مؤقتاً بعد الـ capture
+        if (skipServerSync) {
+            serverSyncSkipCount++;
+            Serial.println("⏸️ Skipping server sync (" + String(serverSyncSkipCount) + "/" + String(SERVER_SYNC_SKIP_CYCLES) + ")");
             
-            // تحديث FEN المعالج إذا تم تحديثه من السيرفر
-            if (currentFen != prevFen) {
-                lastProcessedFen = prevFen;  // جهّز lastProcessedFen للكشف
-                Serial.println("🔄 FEN updated from server - ready for detection");
+            if (serverSyncSkipCount >= SERVER_SYNC_SKIP_CYCLES) {
+                skipServerSync = false;
+                serverSyncSkipCount = 0;
+                Serial.println("✅ Server sync resumed");
             }
         } else {
-            Serial.println("❌ Server update failed");
+            if (updateBoardStateFromServer()) {
+                Serial.println("✅ Server update successful");
+                
+                // تحديث FEN المعالج إذا تم تحديثه من السيرفر
+                if (currentFen != prevFen) {
+                    lastProcessedFen = prevFen;  // جهّز lastProcessedFen للكشف
+                    Serial.println("🔄 FEN updated from server - ready for detection");
+                }
+            } else {
+                Serial.println("❌ Server update failed");
+            }
         }
         lastServerUpdate = currentTime;
     }
@@ -600,9 +630,13 @@ void loop() {
     }
     
     // ==================== 3) فحص حالة اللعبة كل 10 ثوان ====================
-    if (currentTime - lastGameStatusCheck >= GAME_STATUS_CHECK_INTERVAL) {
+    if (!isFetchingNewGame && currentTime - lastGameStatusCheck >= GAME_STATUS_CHECK_INTERVAL) {
         Serial.println("🔍 Checking game status...");
         if (checkGameStatus()) {
+            // إذا كان هو الفرع الخاص بالاستسلام
+            if (hasResigned) {
+                isFetchingNewGame = true;
+            }
             Serial.println("🏁 Game has ended - motors returned to home");
         } else {
             Serial.println("✅ Game is still active");
@@ -631,7 +665,125 @@ void loop() {
             memcpy(lastBoard, protectedOldBoard, sizeof(protectedOldBoard));
             currentFen = protectedOldFen;
             
+        } else if (rem == 1 && add == 0) {
+            // حالة الـ capture - قطعة واحدة أزيلت ولم تضف قطعة جديدة
+            Serial.println("🎯 Capture move detected! (rem=" + String(rem) + ", add=" + String(add) + ")");
+            
+            // استخدام الفرق بين FENs لتحديد القطعة المأخوذة بدلاً من الحساسات
+            auto [capturedR, capturedC] = findCaptureFromFen(protectedOldFen, currentFen);
+            
+            if (capturedR >= 0) {
+                Serial.println("🔍 Captured piece at: (" + String(capturedR) + "," + String(capturedC) + ") from FEN difference");
+                
+                // التحقق من أن القطعة المأخوذة هي للخصم
+                char board8[8][8];
+                fenToBoard(protectedOldFen, board8);
+                char capturedPiece = board8[capturedR][capturedC];
+                
+                bool isOpponentPiece = 
+                    (playerColor == "white" && isBlackPiece(capturedPiece)) ||
+                    (playerColor == "black" && isWhitePiece(capturedPiece));
+                
+                if (isOpponentPiece) {
+                    Serial.println("✅ Valid capture detected - opponent piece: " + String(capturedPiece));
+                    
+                    // معالجة الـ capture
+                    handleCapture(capturedR, capturedC);
+                    
+                    // البحث عن قطعتك التي تحركت
+                    int movedR = -1, movedC = -1;
+                    for (int r = 0; r < 8; r++) {
+                        for (int c = 0; c < 8; c++) {
+                            if (!lastBoard[r][c] && boardState[r][c]) {
+                                movedR = r; movedC = c;
+                                Serial.println("🔍 Your piece moved to: (" + String(r) + "," + String(c) + ")");
+                                break;
+                            }
+                        }
+                        if (movedR >= 0) break;
+                    }
+                    
+                    if (movedR >= 0) {
+                        // التقط قطعتك وانقلها للموقع النهائي
+                        myServo.write(45); // RELEASE
+                        moveToCell(movedR, movedC + 1); // +1 offset for grid
+                        myServo.write(0); // ENGAGE
+                        delay(300);
+                        
+                        // انقلها للموقع النهائي (نفس الموقع)
+                        moveToCell(movedR, movedC + 1);
+                        myServo.write(45); // RELEASE
+                        delay(300);
+                        
+                        Serial.println("✅ Capture move executed successfully!");
+                        
+                        // تحديث الحالة
+                        memcpy(lastBoard, boardState, sizeof(boardState));
+                        memcpy(protectedOldBoard, lastBoard, sizeof(lastBoard));
+                        protectedOldFen = currentFen;
+                        
+                        // إرسال الحركة للسيرفر (مثل الحركة العادية)
+                        MoveResult mv = computeMove(lastBoard, boardState, currentFen);
+                        if (mv.fromSq.length()) {
+                            String nextTurn = (currentTurn == "white") ? "black" : "white";
+                            
+                            // تحسين SAN للـ capture
+                            String san = mv.san;
+                            if (san.indexOf("x") == -1) {
+                                // إضافة x للـ capture إذا لم تكن موجودة
+                                san = mv.fromSq.charAt(0) + "x" + mv.toSq;
+                            }
+                            
+                            String p = "{\"gameId\":\""+gameId+"\","+
+                                       "\"from\":\"" + mv.fromSq +"\","+
+                                       "\"to\":\""   + mv.toSq   +"\","+
+                                       "\"san\":\""  + san        +"\","+
+                                       "\"fen\":\""  + mv.newFen +"\","+
+                                       "\"movedBy\":\"" + playerColor +"\","+
+                                       "\"currentTurn\":\"" + nextTurn +"\"}";
+                            
+                            String frame="42/friends,[\"move\","+p+"]";
+                            webSocket.sendTXT(frame);
+                            Serial.println("📤 Capture move sent to server: " + frame);
+                            
+                            currentTurn = nextTurn;
+                            currentFen = mv.newFen;
+                            
+                            // مزامنة lastProcessedFen لمنع تنفيذ executeOpponentMove عن هذه الحركة
+                            lastProcessedFen = currentFen;
+                            
+                            // منع التزامن مع السيرفر مؤقتاً
+                            skipServerSync = true;
+                            serverSyncSkipCount = 0;
+                            Serial.println("⏸️ Skipping server sync for " + String(SERVER_SYNC_SKIP_CYCLES) + " cycles");
+                            
+                            digitalWrite(LED_PIN, HIGH);
+                            delay(500);
+                            digitalWrite(LED_PIN, LOW);
+                        }
+                    } else {
+                        Serial.println("❌ Could not determine moved piece location");
+                        memcpy(lastBoard, protectedOldBoard, sizeof(protectedOldBoard));
+                        currentFen = protectedOldFen;
+                        blinkLED(3);
+                    }
+                } else {
+                    Serial.println("❌ Captured piece is not opponent's piece: " + String(capturedPiece));
+                    memcpy(lastBoard, protectedOldBoard, sizeof(protectedOldBoard));
+                    currentFen = protectedOldFen;
+                    blinkLED(3);
+                }
+            } else {
+                Serial.println("❌ Could not determine captured piece location from FEN difference");
+                memcpy(lastBoard, protectedOldBoard, sizeof(protectedOldBoard));
+                currentFen = protectedOldFen;
+                blinkLED(3);
+            }
+            
         } else if (rem == 1 && add == 1) {
+            // حركة عادية (غير capture)
+            Serial.println("♟️ Normal move detected (rem=" + String(rem) + ", add=" + String(add) + ")");
+            
             MoveResult mv = computeMove(lastBoard, boardState, currentFen);
             Serial.println("New FEN: " + mv.newFen);
             
@@ -695,6 +847,19 @@ void loop() {
     }
     
     lastBtn = btnNow;
+    
+    // ==================== 4) معالجة زر الاستسلام ====================
+    static bool lastResignBtn = HIGH;
+    bool resignBtnNow = digitalRead(RESIGN_PIN);
+    
+    if (lastResignBtn == HIGH && resignBtnNow == LOW) {
+        Serial.println("🏳️ Resign button pressed!");
+        hasResigned = true;
+        blinkLED(5); // إشارة بصرية للاستسلام
+        Serial.println("🔄 Will fetch new active game after current game ends...");
+    }
+    
+    lastResignBtn = resignBtnNow;
     delay(10);
 }
 
@@ -919,8 +1084,26 @@ bool checkGameStatus() {
             http.end();
             
             if (gameStatus == "ended") {
-                Serial.println("🏁 Game ended - returning motors to home position");
-                returnMotorsToHome();
+                // إذا انتهت اللعبة بسبب استسلام اللاعب (تحددها بإشارة خارجية، مثلاً flag `hasResigned`)
+                if (hasResigned) {
+                    Serial.println("🔄 استعلام عن آخر لعبة نشطة للمستخدم...");
+                    if (fetchLastActiveGame()) {
+                        // إعادة تهيئة الحالة للشروع في اللعبة الجديدة
+                        updateBoardStateFromServer();
+                        lastProcessedFen = currentFen;
+                        memcpy(protectedOldBoard, lastBoard, sizeof(lastBoard));
+                        protectedOldFen = currentFen;
+                        hasResigned = false;      // رجّع العلم لوضع اللعب العادي
+                        isFetchingNewGame = false; // إعادة تفعيل فحص حالة اللعبة
+                        Serial.println("✅ انتقلت للعبة الجديدة: " + gameId);
+                    } else {
+                        Serial.println("❌ فشل جلب آخر لعبة نشطة");
+                    }
+                } else {
+                    // السلوك الأصلي: العودة للمركز
+                    Serial.println("🏁 Game ended - returning motors to home position");
+                    returnMotorsToHome();
+                }
                 return true;
             }
         }
@@ -943,3 +1126,72 @@ void returnMotorsToHome() {
     Serial.println("✅ Motors returned to home position");
     blinkLED(5); // إشارة بصرية أن اللعبة انتهت
 }
+
+// يستدعي API ليجلب آخر gameId نشطة للمستخدم userId
+bool fetchLastActiveGame() {
+    HTTPClient http;
+    String url = "http://" + host + ":" + String(port)
+                 + "/api/users/" + String(userId) + "/games/active";
+    http.begin(url);
+    http.addHeader("Authorization", "Bearer " + userToken);
+    int code = http.GET();
+    if (code == HTTP_CODE_OK) {
+        String payload = http.getString();
+        DynamicJsonDocument doc(1024);
+        if (deserializeJson(doc, payload)==DeserializationError::Ok
+            && doc["success"] == true) {
+            gameId = doc["data"]["lastActiveGameId"].as<String>();
+            http.end();
+            return true;
+        }
+    }
+    http.end();
+    return false;
+}
+
+// دالة معالجة الـ capture
+void handleCapture(int r, int c) {
+    Serial.println("🎯 Handling capture at: (" + String(r) + "," + String(c) + ")");
+    
+    // اقرأ القطعة من FEN
+    char board8[8][8];
+    fenToBoard(protectedOldFen, board8);
+    char capturedPiece = board8[r][c]; // r و c الآن من FEN مباشرة
+    
+    // تحديد عمود الخردة حسب لون القطعة
+    int scrapCol = isWhitePiece(capturedPiece) ? 0 : 9;
+    
+    Serial.println("🔍 Captured piece: " + String(capturedPiece) + " -> scrap column: " + String(scrapCol));
+    
+    // تحويل إحداثيات FEN إلى إحداثيات الحساسات (قلب الصفوف)
+    int sensorRow = 7 - r; // FEN row=0 (rank8) -> sensor row=7
+    int sensorCol = c;
+    
+    // 1) ارفع القطعة المأخوذة
+    myServo.write(45); // RELEASE
+    moveToCell(sensorRow, sensorCol + 1); // +1 offset for grid
+    myServo.write(0); // ENGAGE
+    delay(300);
+    
+    // 2) ارميها في scrap
+    moveToCell(sensorRow, scrapCol);
+    myServo.write(45); // RELEASE
+    delay(300);
+    
+    Serial.println("✅ Capture handled successfully!");
+}// Returns (r,c) of any removed piece between prevFen and currentFen, or (-1,-1) if none.
+std::pair<int,int> findCaptureFromFen(const String& prevFen, const String& currentFen) {
+    char prevB[8][8], curB[8][8];
+    parseFen(prevFen, prevB);
+    parseFen(currentFen, curB);
+
+    for (int r = 0; r < 8; ++r) {
+        for (int c = 0; c < 8; ++c) {
+            if (prevB[r][c] != '.' && curB[r][c] == '.') {
+                return {r, c};
+            }
+        }
+    }
+    return {-1, -1};
+}
+
