@@ -36,6 +36,8 @@ String gameId, playerColor = "white", currentTurn = "white", userToken;
 String lastProcessedFen = currentFen; // متغير لتتبع آخر FEN تم معالجته
 unsigned long lastServerUpdate = 0;
 const unsigned long SERVER_UPDATE_INTERVAL = 2000;
+unsigned long lastGameStatusCheck = 0;
+const unsigned long GAME_STATUS_CHECK_INTERVAL = 10000; // كل 10 ثوان
 
 bool boardState[8][8], lastBoard[8][8];
 bool protectedOldBoard[8][8];
@@ -92,6 +94,8 @@ bool isValidSquare(int row, int col);
 bool isWhitePiece(char piece);
 bool isBlackPiece(char piece);
 bool isCurrentPlayerPiece(char piece, const String &currentTurn);
+bool checkGameStatus();
+void returnMotorsToHome();
 
 // Sensor Functions
 bool readReed(int mux, int ch) {
@@ -595,6 +599,17 @@ void loop() {
         Serial.println("✅ Move executed - FEN updated");
     }
     
+    // ==================== 3) فحص حالة اللعبة كل 10 ثوان ====================
+    if (currentTime - lastGameStatusCheck >= GAME_STATUS_CHECK_INTERVAL) {
+        Serial.println("🔍 Checking game status...");
+        if (checkGameStatus()) {
+            Serial.println("🏁 Game has ended - motors returned to home");
+        } else {
+            Serial.println("✅ Game is still active");
+        }
+        lastGameStatusCheck = currentTime;
+    }
+    
     // كشف حركة اللاعب
     static bool lastBtn = HIGH;
     bool btnNow = digitalRead(BTN_PIN);
@@ -881,4 +896,50 @@ void executeOpponentMove(const String &prevFen, const String &currentFen) {
     delay(300);
     
     Serial.println("✅ Opponent move executed successfully!");
-} 
+}
+
+// دالة فحص حالة اللعبة
+bool checkGameStatus() {
+    if (gameId.length() == 0) return false;
+    
+    HTTPClient http;
+    String url = "http://" + host + ":" + String(port) + "/api/game/" + gameId;
+    
+    http.begin(url);
+    http.addHeader("Authorization", "Bearer " + userToken);
+    int httpCode = http.GET();
+    
+    if (httpCode == HTTP_CODE_OK) {
+        String payload = http.getString();
+        DynamicJsonDocument doc(2048);
+        DeserializationError error = deserializeJson(doc, payload);
+        
+        if (!error && doc["success"] == true) {
+            String gameStatus = doc["data"]["status"].as<String>();
+            http.end();
+            
+            if (gameStatus == "ended") {
+                Serial.println("🏁 Game ended - returning motors to home position");
+                returnMotorsToHome();
+                return true;
+            }
+        }
+    }
+    http.end();
+    return false;
+}
+
+// دالة إعادة الموتورات للموقع 0,0
+void returnMotorsToHome() {
+    Serial.println("🏠 Returning motors to home position (0,0)");
+    
+    // RELEASE servo
+    myServo.write(45);
+    delay(300);
+    
+    // Move to home position (0,0)
+    moveToCell(0, 0);
+    
+    Serial.println("✅ Motors returned to home position");
+    blinkLED(5); // إشارة بصرية أن اللعبة انتهت
+}
