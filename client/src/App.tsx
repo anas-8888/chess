@@ -16,6 +16,8 @@ import Friends from "./pages/Friends";
 import Admin from "./pages/Admin";
 import ConnectBoard from "./pages/ConnectBoard";
 import Courses from "./pages/Courses";
+import AIGame from "./pages/AIGame";
+import AILoading from "./pages/AILoading";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -41,6 +43,8 @@ const App = () => (
             <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
             <Route path="/connect-board" element={<ProtectedRoute><ConnectBoard /></ProtectedRoute>} />
             <Route path="/courses" element={<ProtectedRoute><Courses /></ProtectedRoute>} />
+            <Route path="/ai-loading" element={<ProtectedRoute><AILoading /></ProtectedRoute>} />
+            <Route path="/ai-game" element={<ProtectedRoute><AIGame /></ProtectedRoute>} />
             
             {/* Catch-all route */}
             <Route path="*" element={<NotFound />} />

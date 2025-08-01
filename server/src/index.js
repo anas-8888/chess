@@ -94,8 +94,8 @@ app.use(
           "'self'", 
           "wss:", 
           "ws:",
-          "https://192.168.1.6:3000",
-          "http://192.168.1.6:3000"
+          "https://localhost:3000",
+          "http://localhost:3000"
         ],
         mediaSrc: [
           "'self'",
@@ -112,7 +112,7 @@ app.use(
 // CORS configuration - Allow all origins for development
 app.use(
   cors({
-    origin: ['http://192.168.1.6:8080', 'http://192.168.1.6:3000', 'http://192.168.1.6:3001', 'http://127.0.0.1:8080', 'http://127.0.0.1:3000'],
+    origin: ['http://localhost:8080', 'http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:8080', 'http://127.0.0.1:3000'],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],

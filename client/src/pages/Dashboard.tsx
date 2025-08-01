@@ -501,19 +501,20 @@ const Dashboard = () => {
                     </CardContent>
                   </Card>
 
-                  <Card className="hover:shadow-elegant transition-shadow">
+                  <Card className="hover:shadow-elegant transition-shadow cursor-pointer"
+                        onClick={() => navigate('/ai-loading')}>
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <User className="w-5 h-5 text-accent" />
-                        ضد الحاسوب
+                        ضد الذكاء الاصطناعي
                       </CardTitle>
                       <CardDescription>
                         تدرب مع الذكاء الاصطناعي
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <Button variant="outline" className="w-full" disabled>
-                        قريباً
+                      <Button variant="outline" className="w-full">
+                        ابدأ اللعب
                       </Button>
                     </CardContent>
                   </Card>
