@@ -119,56 +119,78 @@ void loop(){
     http.end(); delay(5000); return; }
 
   /* —— مرحلة ٢ —— */
-  if(motorA.distanceToGo()==0 && motorB.distanceToGo()==0){
-    String url="http://192.168.1.4:3000/api/game/"+String(lastGameId);
-    HTTPClient http; http.begin(url);
-    int code=http.GET();
-    if(code==HTTP_CODE_OK){
-      DynamicJsonDocument doc(4096);
-      if(deserializeJson(doc,http.getStream())==DeserializationError::Ok && doc["success"]){
-        String currFen=doc["data"]["currentFen"]|"";
-        if(prevFen.length() && currFen!=prevFen){
-          char prevB[8][8],curB[8][8]; parseFen(prevFen,prevB); parseFen(currFen,curB);
-          int fr=-1,fc=-1,tr=-1,tc=-1;
-          for(int r=0;r<8;++r) for(int c=0;c<8;++c){
-            if(prevB[r][c]!='.' && curB[r][c]=='.'){ fr=r; fc=c; }
-            if(prevB[r][c]!=curB[r][c] && curB[r][c]!='.'){ tr=r; tc=c; }
-          }
-          if(fr>=0 && tr>=0){
-            bool capture=(prevB[tr][tc]!='.');
-            int gFr=fr, gFc=fc+1;   // +1 offset for grid
-            int gTr=tr, gTc=tc+1;
+  if (motorA.distanceToGo() == 0 && motorB.distanceToGo() == 0) {
+    String url = "http://192.168.1.4:3000/api/game/" + String(lastGameId);
+    HTTPClient http; 
+    http.begin(url);
+    int code = http.GET();
+    if (code == HTTP_CODE_OK) {
+        DynamicJsonDocument doc(4096);
+        if (deserializeJson(doc, http.getStream()) == DeserializationError::Ok && doc["success"]) {
+            String currFen = doc["data"]["currentFen"] | "";
+            if (prevFen.length() && currFen != prevFen) {
+                char prevB[8][8], curB[8][8];
+                parseFen(prevFen, prevB);
+                parseFen(currFen, curB);
 
-            if(capture){
-              bool whiteCap=isupper(prevB[tr][tc]);
-              int scrapCol=whiteCap?0:9;
-              // 1) RELEASE → move to captured piece
-              myServo.write(50);
-              moveToCell(gTr,gTc);
-              // 2) ENGAGE & wait
-              myServo.write(0); delay(300);
-              // 3) move to scrap column while ENGAGED
-              moveToCell(gTr,scrapCol);
-              // 4) RELEASE و تأخير صغير
-              myServo.write(50); delay(300);
+                int fr = -1, fc = -1, tr = -1, tc = -1;
+                for (int r = 0; r < 8; ++r) {
+                    for (int c = 0; c < 8; ++c) {
+                        if (prevB[r][c] != '.' && curB[r][c] == '.') {
+                            fr = r; fc = c;
+                        }
+                        if (prevB[r][c] != curB[r][c] && curB[r][c] != '.') {
+                            tr = r; tc = c;
+                        }
+                    }
+                }
+
+                if (fr >= 0 && tr >= 0) {
+                    bool capture = (prevB[tr][tc] != '.');
+
+                    // ——— انعكاس الإحداثيات من منظور الخصم إلى منظورنا ———
+                    fr = 7 - fr;
+                    fc = 7 - fc;
+                    tr = 7 - tr;
+                    tc = 7 - tc;
+
+                    // —— حساب إحداثيات الشبكة بعد الانعكاس ——
+                    int gFr = fr;
+                    int gFc = fc + 1;   // +1 offset for grid
+                    int gTr = tr;
+                    int gTc = tc + 1;
+
+                    if (capture) {
+                        bool whiteCap = isupper(prevB[tr][tc]);
+                        int scrapCol = whiteCap ? 0 : 9;
+                        // 1) RELEASE → move to captured piece
+                        myServo.write(50);
+                        moveToCell(gTr, gTc);
+                        // 2) ENGAGE & wait
+                        myServo.write(0); delay(300);
+                        // 3) move to scrap column while ENGAGED
+                        moveToCell(gTr, scrapCol);
+                        // 4) RELEASE & تأخير صغير
+                        myServo.write(50); delay(300);
+                    }
+
+                    // ——— Move active piece ———
+                    // 1) RELEASE → origin
+                    myServo.write(50);
+                    moveToCell(gFr, gFc);
+                    // 2) ENGAGE & wait
+                    myServo.write(0); delay(300);
+                    // 3) move to destination while ENGAGED
+                    moveToCell(gTr, gTc);
+                    // 4) RELEASE & wait
+                    myServo.write(50); delay(300);
+                }
             }
-
-            // ——— Move active piece ———
-            // 1) RELEASE → origin
-            myServo.write(50);
-            moveToCell(gFr,gFc);
-            // 2) ENGAGE & wait
-            myServo.write(0); delay(300);
-            // 3) move to destination while ENGAGED
-            moveToCell(gTr,gTc);
-            // 4) RELEASE & wait
-            myServo.write(50); delay(300);
-          }
+            prevFen = currFen;
         }
-        prevFen=currFen;
-      }
     }
-    http.end(); delay(2000);
+    http.end();
+    delay(2000);
   }
 }
 

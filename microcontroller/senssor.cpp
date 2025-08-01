@@ -264,8 +264,8 @@ bool isValidMove(char board[8][8], int fromRow, int fromCol, int toRow, int toCo
             if (fromCol == toCol && fromRow == startRow && toRow - fromRow == 2*dir && board[fromRow+dir][fromCol] == '.' && board[toRow][toCol] == '.') return true;
             // أكل قطري
             if (abs(toCol - fromCol) == 1 && toRow - fromRow == dir && board[toRow][toCol] != '.' && !isCurrentPlayerPiece(board[toRow][toCol], currentTurn)) return true;
-            return false;
-        }
+        return false;
+    }
         case 'N': {
             int dr = abs(toRow - fromRow), dc = abs(toCol - fromCol);
             return (dr == 2 && dc == 1) || (dr == 1 && dc == 2);
@@ -301,8 +301,8 @@ bool isValidMove(char board[8][8], int fromRow, int fromCol, int toRow, int toCo
                     if (board[r][c] != '.') return false;
                 return true;
             }
-            return false;
-        }
+                return false;
+            }
         case 'K': {
             int dr = abs(toRow - fromRow), dc = abs(toCol - fromCol);
             return dr <= 1 && dc <= 1;
