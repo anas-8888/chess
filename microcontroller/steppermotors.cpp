@@ -106,7 +106,7 @@ void loop(){
   /* —— مرحلة ١ —— */
   if(!stage1Complete){
     HTTPClient http;
-    http.begin("http://192.168.1.4:3000/api/users/5/token-and-game");
+    http.begin("http://192.168.1.6:3000/api/users/5/token-and-game");
     int code=http.GET();
     if(code==HTTP_CODE_OK){
       DynamicJsonDocument doc(4096);
@@ -120,7 +120,7 @@ void loop(){
 
   /* —— مرحلة ٢ —— */
   if (motorA.distanceToGo() == 0 && motorB.distanceToGo() == 0) {
-    String url = "http://192.168.1.4:3000/api/game/" + String(lastGameId);
+    String url = "http://192.168.1.6:3000/api/game/" + String(lastGameId);
     HTTPClient http; 
     http.begin(url);
     int code = http.GET();
