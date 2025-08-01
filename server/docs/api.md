@@ -6,7 +6,7 @@
 
 ## معلومات أساسية
 
-- **Base URL**: `http://localhost:3000/api`
+- **Base URL**: `http://192.168.1.4:3000/api`
 - **Content-Type**: `application/json`
 - **Authentication**: JWT Bearer Token
 

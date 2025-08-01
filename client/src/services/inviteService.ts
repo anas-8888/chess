@@ -33,7 +33,7 @@ class InviteService {
   // Get received invites
   async getReceivedInvites(): Promise<Invite[]> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/invites/received`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://192.168.1.4:3000'}/api/invites/received`, {
         method: 'GET',
         headers: this.getAuthHeaders(),
       });
@@ -54,7 +54,7 @@ class InviteService {
   // Accept invite with validation
   async acceptInvite(inviteId: string, playMethod: string = 'phone'): Promise<any> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/invites/${inviteId}/accept-validated`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://192.168.1.4:3000'}/api/invites/${inviteId}/accept-validated`, {
         method: 'POST',
         headers: {
           ...this.getAuthHeaders(),
@@ -81,7 +81,7 @@ class InviteService {
   // Decline invite
   async declineInvite(inviteId: string): Promise<void> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/invites/${inviteId}/respond`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://192.168.1.4:3000'}/api/invites/${inviteId}/respond`, {
         method: 'PUT',
         headers: {
           ...this.getAuthHeaders(),
@@ -105,7 +105,7 @@ class InviteService {
   // Start game from invite
   async startGame(inviteId: string, playMethod: string = 'phone'): Promise<any> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/invites/${inviteId}/start-game`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://192.168.1.4:3000'}/api/invites/${inviteId}/start-game`, {
         method: 'POST',
         headers: {
           ...this.getAuthHeaders(),
@@ -132,7 +132,7 @@ class InviteService {
   // Get sent invites
   async getSentInvites(): Promise<Invite[]> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/invites/sent`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://192.168.1.4:3000'}/api/invites/sent`, {
         method: 'GET',
         headers: this.getAuthHeaders(),
       });
@@ -153,7 +153,7 @@ class InviteService {
   // Cancel sent invite
   async cancelInvite(inviteId: string): Promise<void> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/invites/${inviteId}`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://192.168.1.4:3000'}/api/invites/${inviteId}`, {
         method: 'DELETE',
         headers: this.getAuthHeaders(),
       });
