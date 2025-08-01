@@ -17,9 +17,9 @@ const int BTN_PIN = 4; // زر لحظي
 const int LED_PIN = 2; // LED للتنبيه
 
 // --- Connection Settings ---
-const String ssid = "Adham";
-const String password = "12345678";
-const String host = "192.168.204.221";
+const String ssid = "king";
+const String password = "20002000moon555555";
+const String host = "192.168.1.4";
 const uint16_t port = 3000;
 const int userId = 5; // المستخدم الخامس دائماً
 
