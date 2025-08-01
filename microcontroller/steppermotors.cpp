@@ -80,7 +80,7 @@ void setup(){
   // Servo
   myServo.setPeriodHertz(50);
   myServo.attach(SERVO_PIN,500,2500);
-  myServo.write(50);                        // RELEASE
+  myServo.write(37);                        // RELEASE
 
   // Steppers (always enabled)
   pinMode(ENABLE_PIN,OUTPUT);
@@ -164,26 +164,26 @@ void loop(){
                         bool whiteCap = isupper(prevB[tr][tc]);
                         int scrapCol = whiteCap ? 0 : 9;
                         // 1) RELEASE → move to captured piece
-                        myServo.write(50);
+                        myServo.write(37);
                         moveToCell(gTr, gTc);
                         // 2) ENGAGE & wait
                         myServo.write(0); delay(300);
                         // 3) move to scrap column while ENGAGED
                         moveToCell(gTr, scrapCol);
                         // 4) RELEASE & تأخير صغير
-                        myServo.write(50); delay(300);
+                        myServo.write(37); delay(300);
                     }
 
                     // ——— Move active piece ———
                     // 1) RELEASE → origin
-                    myServo.write(50);
+                    myServo.write(37);
                     moveToCell(gFr, gFc);
                     // 2) ENGAGE & wait
                     myServo.write(0); delay(300);
                     // 3) move to destination while ENGAGED
                     moveToCell(gTr, gTc);
                     // 4) RELEASE & wait
-                    myServo.write(50); delay(300);
+                    myServo.write(37); delay(300);
                 }
             }
             prevFen = currFen;
