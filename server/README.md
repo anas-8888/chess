@@ -78,7 +78,7 @@ npm start
 
 7. **فتح المتصفح**
 ```
-http://localhost:3000
+http://192.168.204.221:3000
 ```
 
 ## هيكل المشروع
@@ -266,8 +266,8 @@ SECURE_COOKIES=true
 2. **إعداد قاعدة البيانات**
 ```bash
 # إنشاء مستخدم قاعدة البيانات للإنتاج
-CREATE USER 'smart_chess'@'localhost' IDENTIFIED BY 'secure_password';
-GRANT ALL PRIVILEGES ON smart_chess.* TO 'smart_chess'@'localhost';
+CREATE USER 'smart_chess'@'192.168.204.221' IDENTIFIED BY 'secure_password';
+GRANT ALL PRIVILEGES ON smart_chess.* TO 'smart_chess'@'192.168.204.221';
 FLUSH PRIVILEGES;
 ```
 

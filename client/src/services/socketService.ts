@@ -19,7 +19,7 @@ class SocketService {
     }
 
     // Connect directly to the namespace
-    this.socket = io('http://localhost:3000/friends', {
+    this.socket = io('http://192.168.204.221:3000/friends', {
       auth: {
         token
       },
