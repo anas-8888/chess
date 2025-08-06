@@ -26,7 +26,7 @@ const int SERVO_PIN = 22;
 // Connection Settings
 const String ssid = "king";
 const String password = "20002000moon555555";
-const String host = "192.168.204.221";
+const String host = "localhost";
 const uint16_t port = 3000;
 const int userId = 5;
 

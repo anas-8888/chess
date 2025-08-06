@@ -90,7 +90,7 @@ class AuthService {
     // Call server logout API first if we have a token
     if (this.token) {
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://192.168.204.221:3000'}/api/auth/logout`, {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/auth/logout`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -120,7 +120,7 @@ class AuthService {
     }
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://192.168.204.221:3000'}/api/auth/validate`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/auth/validate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

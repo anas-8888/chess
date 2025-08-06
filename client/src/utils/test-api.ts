@@ -30,7 +30,7 @@ export async function testApiConnection() {
 // Test function to check environment variables
 export function testEnvironment() {
   console.log('Environment check:');
-  console.log('- API URL:', import.meta.env.VITE_API_URL || 'http://192.168.204.221:3000 (default)');
+  console.log('- API URL:', import.meta.env.VITE_API_URL || 'http://localhost:3000 (default)');
   console.log('- Development mode:', import.meta.env.DEV);
   console.log('- Production mode:', import.meta.env.PROD);
 } 

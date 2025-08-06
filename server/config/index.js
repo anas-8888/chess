@@ -22,7 +22,7 @@ export default {
     maxSessions: parseInt(process.env.MAX_SESSIONS) || 5,
   },
   cors: {
-    allowedOrigins: process.env.ALLOWED_ORIGINS?.split(',') || ['http://192.168.204.221:3000', 'http://192.168.204.221:8080'],
+    allowedOrigins: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000', 'http://localhost:8080'],
   },
   rateLimit: {
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900000,

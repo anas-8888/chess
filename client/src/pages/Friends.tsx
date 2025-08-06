@@ -133,7 +133,7 @@ const Friends = () => {
   };
 
   const setupSocketListeners = () => {
-    const socket = io(`${import.meta.env.VITE_API_URL || 'http://192.168.204.221:3000'}/friends`, {
+    const socket = io(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/friends`, {
       auth: {
         token: authService.getToken()
       },
@@ -314,7 +314,7 @@ const Friends = () => {
         play_method: playMethod === 'physical_board' ? 'physical_board' : 'phone',
         time_control: 10,
       };
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://192.168.204.221:3000'}/api/invites/game`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/invites/game`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
