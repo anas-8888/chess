@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
+import AdminRoute from "./components/AdminRoute";
 import PublicRoute from "./components/PublicRoute";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
@@ -18,6 +19,8 @@ import ConnectBoard from "./pages/ConnectBoard";
 import Courses from "./pages/Courses";
 import AIGame from "./pages/AIGame";
 import AILoading from "./pages/AILoading";
+import Settings from "./pages/Settings";
+import MyStatistics from "./pages/MyStatistics";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -40,11 +43,13 @@ const App = () => (
             <Route path="/puzzle" element={<ProtectedRoute><Puzzle /></ProtectedRoute>} />
             <Route path="/play" element={<ProtectedRoute><Play /></ProtectedRoute>} />
             <Route path="/friends" element={<ProtectedRoute><Friends /></ProtectedRoute>} />
-            <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
+            <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
             <Route path="/connect-board" element={<ProtectedRoute><ConnectBoard /></ProtectedRoute>} />
             <Route path="/courses" element={<ProtectedRoute><Courses /></ProtectedRoute>} />
             <Route path="/ai-loading" element={<ProtectedRoute><AILoading /></ProtectedRoute>} />
             <Route path="/ai-game" element={<ProtectedRoute><AIGame /></ProtectedRoute>} />
+            <Route path="/my-profile" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            <Route path="/my-statistics" element={<ProtectedRoute><MyStatistics /></ProtectedRoute>} />
             
             {/* Catch-all route */}
             <Route path="*" element={<NotFound />} />

@@ -23,7 +23,14 @@ import Game from '../models/Game.js';
 import Puzzle from '../models/Puzzle.js';
 import Course from '../models/Course.js';
 import Session from '../models/Session.js';
-import { Op } from 'sequelize';
+import { Op, QueryTypes } from 'sequelize';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import sequelize from '../models/index.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Create new user (Admin only)
 export const createNewUser = asyncHandler(async (req, res) => {
@@ -107,6 +114,91 @@ export const updateCurrentProfile = asyncHandler(async (req, res) => {
   );
   // إرجاع البيانات مباشرة بدون تغليفها
   res.status(200).json(updatedUser);
+});
+
+// Upload current user avatar (base64 data URL)
+export const uploadCurrentAvatar = asyncHandler(async (req, res) => {
+  const userId = req.user.user_id;
+  const rawContentType = (req.headers['content-type'] || '').toLowerCase();
+  let imageBuffer = null;
+  let extension = null;
+
+  if (Buffer.isBuffer(req.body) && req.body.length > 0) {
+    imageBuffer = req.body;
+    if (rawContentType.includes('image/png')) extension = 'png';
+    else if (rawContentType.includes('image/webp')) extension = 'webp';
+    else if (
+      rawContentType.includes('image/jpeg') ||
+      rawContentType.includes('image/jpg')
+    ) {
+      extension = 'jpg';
+    }
+  } else {
+    const { imageData } = req.body || {};
+    if (!imageData || typeof imageData !== 'string') {
+      return res.status(400).json(formatError('Image data is required'));
+    }
+
+    const matched = imageData.match(
+      /^data:(image\/(png|jpeg|jpg|webp));base64,(.+)$/i
+    );
+    if (!matched) {
+      return res.status(400).json(formatError('Invalid image format'));
+    }
+
+    const mimeType = matched[1].toLowerCase();
+    extension = mimeType.includes('png')
+      ? 'png'
+      : mimeType.includes('webp')
+        ? 'webp'
+        : 'jpg';
+    const base64 = matched[3];
+    imageBuffer = Buffer.from(base64, 'base64');
+  }
+
+  if (!imageBuffer || !extension) {
+    return res.status(400).json(formatError('Unsupported image payload'));
+  }
+
+  const maxBytes = 2 * 1024 * 1024;
+  if (imageBuffer.length > maxBytes) {
+    return res.status(400).json(formatError('Image is too large (max 2MB)'));
+  }
+
+  const storageDir = path.join(__dirname, '../../storage');
+  if (!fs.existsSync(storageDir)) {
+    fs.mkdirSync(storageDir, { recursive: true });
+  }
+
+  const fileName = `${Date.now()}_${userId}.${extension}`;
+  const absoluteFilePath = path.join(storageDir, fileName);
+  fs.writeFileSync(absoluteFilePath, imageBuffer);
+
+  const thumbnailsBaseUrl =
+    (process.env.THUBNAILS_URL || process.env.THUMBNAILS_URL || `${req.protocol}://${req.get('host')}/thumbnails`)
+      .replace(/\/+$/, '');
+  const publicPath = `${thumbnailsBaseUrl}/${fileName}`;
+  const [updatedRows] = await User.update(
+    { thumbnail: publicPath },
+    { where: { user_id: userId } }
+  );
+
+  if (!updatedRows) {
+    return res.status(404).json(formatError('User not found while updating avatar'));
+  }
+
+  const updatedUser = await User.findByPk(userId, {
+    attributes: ['user_id', 'thumbnail'],
+  });
+
+  return res.status(200).json({
+    success: true,
+    data: {
+      thumbnail: updatedUser?.thumbnail,
+      avatar: updatedUser?.thumbnail,
+    },
+    message: 'Avatar uploaded successfully',
+  });
 });
 
 // Delete user (Admin or owner)
@@ -360,83 +452,67 @@ export const updateUserStatus = asyncHandler(async (req, res) => {
 
 // Get user profile with statistics for dashboard
 export const getProfileWithStats = asyncHandler(async (req, res) => {
-  // Temporary: Use a default user ID for testing
-  const userId = req.user?.user_id || 1;
+  const userId = req.user?.user_id;
+
+  if (!userId) {
+    return res.status(401).json(formatError('غير مصرح'));
+  }
 
   try {
-    // Get user data directly
-    const User = await import('../models/User.js');
-    const user = await User.default.findByPk(userId, {
+    const user = await User.findByPk(userId, {
       attributes: { exclude: ['password_hash', 'deleted_at'] },
     });
 
     if (!user) {
       return res.status(404).json(formatError('المستخدم غير موجود'));
     }
-    
-    // Get game statistics - return 0 for now since Game table might not exist
-    let wins = 0, losses = 0, draws = 0;
-    
-    try {
-      const Game = await import('../models/Game.js');
-      const { Op } = await import('sequelize');
-      
-      // Count wins, losses, draws
-      [wins, losses, draws] = await Promise.all([
-        Game.default.count({
-          where: {
-            [Op.or]: [
-              { player1_id: userId, winner: 'player1' },
-              { player2_id: userId, winner: 'player2' }
-            ],
-            status: 'finished'
-          }
-        }),
-        Game.default.count({
-          where: {
-            [Op.or]: [
-              { player1_id: userId, winner: 'player2' },
-              { player2_id: userId, winner: 'player1' }
-            ],
-            status: 'finished'
-          }
-        }),
-        Game.default.count({
-          where: {
-            [Op.or]: [
-              { player1_id: userId },
-              { player2_id: userId }
-            ],
-            winner: 'draw',
-            status: 'finished'
-          }
-        })
-      ]);
-    } catch (error) {
-      logger.warn('Game table might not exist, using default statistics:', error.message);
-      // Use default values if Game table doesn't exist
-      wins = 0;
-      losses = 0;
-      draws = 0;
-    }
 
-    const response = {
-      success: true,
-      data: {
-        user: user,
-        statistics: {
-          wins,
-          losses,
-          draws
-        }
-      },
-      message: 'تم جلب بيانات المستخدم والإحصائيات بنجاح'
+    const participationWhere = {
+      [Op.or]: [{ white_player_id: userId }, { black_player_id: userId }],
+      status: 'ended',
     };
 
-    res.status(200).json(response);
+    const [wins, losses, draws] = await Promise.all([
+      Game.count({
+        where: {
+          ...participationWhere,
+          winner_id: userId,
+        },
+      }),
+      Game.count({
+        where: {
+          ...participationWhere,
+          [Op.and]: [{ winner_id: { [Op.ne]: null } }, { winner_id: { [Op.ne]: userId } }],
+        },
+      }),
+      Game.count({
+        where: {
+          ...participationWhere,
+          winner_id: null,
+        },
+      }),
+    ]);
+
+    const total_games = wins + losses + draws;
+    const win_rate = total_games > 0 ? (wins / total_games) * 100 : 0;
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        ...user.toJSON(),
+        wins,
+        losses,
+        draws,
+        total_games,
+        win_rate,
+        rating: user.rank,
+        avatar: user.thumbnail,
+      },
+      message: 'تم جلب بيانات المستخدم والإحصائيات بنجاح',
+    });
   } catch (error) {
     logger.error('Failed to fetch profile statistics:', error);
-    res.status(500).json(formatError('خطأ في جلب إحصائيات المستخدم'));
+    return res.status(500).json(formatError('خطأ في جلب إحصائيات المستخدم'));
   }
 });
 
@@ -461,6 +537,165 @@ export const getCurrentUserStatus = asyncHandler(async (req, res) => {
     logger.error('Error getting current user status:', error);
     res.status(500).json(formatError('Failed to get user status'));
   }
+});
+
+// Get current user recent games
+export const getRecentGamesForCurrentUser = asyncHandler(async (req, res) => {
+  const userId = req.user.user_id;
+  const limit = Math.min(20, Math.max(1, parseInt(req.query.limit, 10) || 10));
+
+  const rows = await sequelize.query(
+    `
+      SELECT
+        g.id,
+        g.status,
+        g.game_type AS game_type,
+        g.started_at,
+        g.ended_at,
+        g.winner_id,
+        g.white_player_id,
+        g.black_player_id,
+        wp.username AS white_username,
+        bp.username AS black_username
+      FROM game g
+      INNER JOIN users wp ON wp.user_id = g.white_player_id
+      INNER JOIN users bp ON bp.user_id = g.black_player_id
+      WHERE g.white_player_id = :userId OR g.black_player_id = :userId
+      ORDER BY g.created_at DESC
+      LIMIT :limit
+    `,
+    {
+      replacements: { userId, limit },
+      type: QueryTypes.SELECT,
+    }
+  );
+
+  const data = rows.map(game => {
+    const isWhite = Number(game.white_player_id) === Number(userId);
+    const opponent = isWhite ? game.black_username : game.white_username;
+
+    let result = 'جارية';
+    if (game.status === 'ended') {
+      if (!game.winner_id) {
+        result = 'تعادل';
+      } else if (Number(game.winner_id) === Number(userId)) {
+        result = 'فوز';
+      } else {
+        result = 'خسارة';
+      }
+    }
+
+    return {
+      id: game.id,
+      status: game.status,
+      game_type: game.game_type,
+      started_at: game.started_at,
+      ended_at: game.ended_at,
+      opponent,
+      color: isWhite ? 'white' : 'black',
+      result,
+    };
+  });
+
+  return res.status(200).json({
+    success: true,
+    data,
+  });
+});
+
+// Get current active/waiting game for logged-in user
+export const getCurrentActiveGame = asyncHandler(async (req, res) => {
+  const userId = req.user.user_id;
+
+  const game = await Game.findOne({
+    where: {
+      [Op.or]: [{ white_player_id: userId }, { black_player_id: userId }],
+      status: { [Op.in]: ['waiting', 'active'] },
+    },
+    order: [['created_at', 'DESC']],
+    attributes: [
+      'id',
+      'status',
+      'game_type',
+      'white_player_id',
+      'black_player_id',
+      'started_at',
+      'created_at',
+    ],
+  });
+
+  if (!game) {
+    return res.status(200).json({
+      success: true,
+      data: null,
+    });
+  }
+
+  const color = Number(game.white_player_id) === Number(userId) ? 'white' : 'black';
+
+  return res.status(200).json({
+    success: true,
+    data: {
+      id: game.id,
+      status: game.status,
+      game_type: game.game_type,
+      color,
+      started_at: game.started_at || game.created_at,
+    },
+  });
+});
+
+// End an active/waiting game for current user (forfeit when active)
+export const endCurrentGame = asyncHandler(async (req, res) => {
+  const userId = req.user.user_id;
+  const gameId = Number(req.params.gameId);
+
+  if (!gameId) {
+    return res.status(400).json(formatError('Game ID is required'));
+  }
+
+  const game = await Game.findByPk(gameId);
+  if (!game) {
+    return res.status(404).json(formatError('Game not found'));
+  }
+
+  const isParticipant =
+    Number(game.white_player_id) === Number(userId) ||
+    Number(game.black_player_id) === Number(userId);
+  if (!isParticipant) {
+    return res.status(403).json(formatError('Not authorized to end this game'));
+  }
+
+  if (!['waiting', 'active'].includes(game.status)) {
+    return res.status(409).json(formatError('Game is not active'));
+  }
+
+  const opponentId =
+    Number(game.white_player_id) === Number(userId) ? game.black_player_id : game.white_player_id;
+  const winnerId = game.status === 'active' ? opponentId : null;
+
+  await game.update({
+    status: 'ended',
+    winner_id: winnerId,
+    ended_at: new Date(),
+  });
+
+  try {
+    const { stopClock } = await import('../socket/socketHelpers.js');
+    await stopClock(String(gameId));
+  } catch (error) {
+    logger.error('Failed to stop game clock while ending game:', error);
+  }
+
+  return res.status(200).json({
+    success: true,
+    message: 'Game ended successfully',
+    data: {
+      id: game.id,
+      status: 'ended',
+      winner_id: winnerId,
+    },
+  });
 });
 
 // الحصول على توكن المستخدم ورقم آخر لعبة له

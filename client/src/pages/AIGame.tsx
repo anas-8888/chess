@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Chess, Square, Move } from 'chess.js';
 import ChessBoard from '@/components/ChessBoard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,6 +21,8 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { getInitialsFromName, hasCustomAvatar } from '@/utils/avatar';
+import { ActiveAiGameSession, GameMovePair, userService } from '@/services/userService';
 
 interface GameMove {
   moveNumber: number;
@@ -41,6 +43,13 @@ const AIGame = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const gameStartTimeRef = useRef<string>(new Date().toISOString());
+  const resultSavedRef = useRef(false);
+  const clockSyncInFlightRef = useRef(false);
+  const [persistedGameId, setPersistedGameId] = useState<number | null>(null);
+  const [showNewGameConfirm, setShowNewGameConfirm] = useState(false);
+  const [restartingGame, setRestartingGame] = useState(false);
+  const storageSessionKey = useMemo(() => `ai_active_game_id_${user?.id || 'guest'}`, [user?.id]);
   
   const [game, setGame] = useState(new Chess());
   const [loading, setLoading] = useState(false);
@@ -79,6 +88,166 @@ const AIGame = () => {
     avatar: user?.avatar || ''
   });
 
+  const mapMovePairsToList = useCallback((pairs: GameMovePair[]): GameMove[] => {
+    return (pairs || []).map((pair) => ({
+      moveNumber: pair.moveNumber,
+      white: pair.white?.san || undefined,
+      black: pair.black?.san || undefined,
+      san: pair.black?.san || pair.white?.san || '',
+      fen: pair.fen || '',
+    }));
+  }, []);
+
+  const restoreAiSession = useCallback(async (session: ActiveAiGameSession) => {
+    const restoredGame =
+      session.currentFen && session.currentFen !== 'startpos'
+        ? new Chess(session.currentFen)
+        : new Chess();
+
+    const movesPairs = await userService.getGameMoves(session.gameId);
+
+    setPersistedGameId(session.gameId);
+    setPlayerColor(session.playerColor);
+    setGame(restoredGame);
+    setMoves(mapMovePairsToList(movesPairs));
+
+    setGameState({
+      status: session.status === 'active' ? 'active' : 'finished',
+      currentTurn: session.currentTurn,
+      isCheck: restoredGame.inCheck(),
+      isCheckmate: restoredGame.isCheckmate(),
+      isDraw: restoredGame.isDraw(),
+      winner: null,
+    });
+
+    let restoredWhite = Math.max(0, Number(session.whiteTimeLeft) || 0);
+    let restoredBlack = Math.max(0, Number(session.blackTimeLeft) || 0);
+
+    if (session.status === 'active' && session.clockSyncedAt) {
+      const syncedAtMs = new Date(session.clockSyncedAt).getTime();
+      if (!Number.isNaN(syncedAtMs)) {
+        const elapsedSeconds = Math.max(0, Math.floor((Date.now() - syncedAtMs) / 1000));
+        if (session.currentTurn === 'white') {
+          restoredWhite = Math.max(0, restoredWhite - elapsedSeconds);
+        } else {
+          restoredBlack = Math.max(0, restoredBlack - elapsedSeconds);
+        }
+      }
+    }
+
+    setGameTime({
+      white: restoredWhite,
+      black: restoredBlack,
+      isRunning: session.status === 'active',
+      lastUpdate: Date.now(),
+    });
+
+    gameStartTimeRef.current = session.startedAt || new Date().toISOString();
+    resultSavedRef.current = session.status !== 'active';
+    localStorage.setItem(storageSessionKey, String(session.gameId));
+  }, [mapMovePairsToList, storageSessionKey]);
+
+  const syncClockToServer = useCallback(async () => {
+    if (!persistedGameId || loading || gameState.status !== 'active') return;
+    if (clockSyncInFlightRef.current) return;
+
+    clockSyncInFlightRef.current = true;
+    try {
+      await userService.syncGameClock(persistedGameId, {
+        whiteTimeLeft: Math.max(0, Math.floor(gameTime.white)),
+        blackTimeLeft: Math.max(0, Math.floor(gameTime.black)),
+        currentTurn: (gameState.currentTurn as 'white' | 'black') || 'white',
+      });
+    } catch (error) {
+      console.error('Failed to sync AI game clock:', error);
+    } finally {
+      clockSyncInFlightRef.current = false;
+    }
+  }, [persistedGameId, loading, gameState.status, gameState.currentTurn, gameTime.white, gameTime.black]);
+
+  const initializeAiPersistence = useCallback(async () => {
+    try {
+      const session = await userService.createAiGameSession({
+        playerColor,
+        aiLevel: aiPlayer.rating,
+        initialTime: 600,
+      });
+      setPersistedGameId(session.gameId);
+      localStorage.setItem(storageSessionKey, String(session.gameId));
+      gameStartTimeRef.current = new Date().toISOString();
+      resultSavedRef.current = false;
+    } catch (error) {
+      console.error('Failed to create AI game session:', error);
+      setPersistedGameId(null);
+      toast({
+        title: 'تحذير',
+        description: 'تعذر تهيئة حفظ المباراة على الخادم',
+        variant: 'destructive',
+      });
+    }
+  }, [playerColor, aiPlayer.rating, storageSessionKey, toast]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const bootstrapAiGame = async () => {
+      setLoading(true);
+      try {
+        const activeSession = await userService.getActiveAiGameSession();
+        if (cancelled) return;
+
+        if (activeSession) {
+          await restoreAiSession(activeSession);
+          return;
+        }
+
+        await initializeAiPersistence();
+      } catch (error) {
+        console.error('Failed to bootstrap AI game session:', error);
+        if (!cancelled) {
+          await initializeAiPersistence();
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    bootstrapAiGame();
+    return () => {
+      cancelled = true;
+    };
+  }, [initializeAiPersistence, restoreAiSession]);
+
+  useEffect(() => {
+    if (!persistedGameId || loading || gameState.status !== 'active') return;
+    const interval = window.setInterval(() => {
+      syncClockToServer();
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [persistedGameId, loading, gameState.status, syncClockToServer]);
+
+  useEffect(() => {
+    const flushClock = () => {
+      syncClockToServer();
+    };
+
+    const onVisibilityChange = () => {
+      if (document.hidden) flushClock();
+    };
+
+    window.addEventListener('beforeunload', flushClock);
+    window.addEventListener('pagehide', flushClock);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      window.removeEventListener('beforeunload', flushClock);
+      window.removeEventListener('pagehide', flushClock);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [syncClockToServer]);
+
   // Timer countdown effect
   useEffect(() => {
     if (!gameTime.isRunning) return;
@@ -101,18 +270,10 @@ const AIGame = () => {
         if (newWhiteTime <= 0 || newBlackTime <= 0) {
           const timeoutPlayer = newWhiteTime <= 0 ? 'white' : 'black';
           const winner = timeoutPlayer === 'white' ? 'black' : 'white';
-          
-          // Handle timeout directly
-          setGameState(prev => ({
-            ...prev,
-            status: 'finished',
-            winner: winner
-          }));
-          
-          toast({
-            title: "انتهت المباراة",
-            description: `فاز ${winner === playerColor ? 'أنت' : 'الذكاء الاصطناعي'} بالوقت`,
-          });
+
+          setTimeout(() => {
+            handleGameEnd({ reason: 'timeout', winner });
+          }, 0);
           
           return {
             ...prev,
@@ -133,10 +294,38 @@ const AIGame = () => {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [gameTime.isRunning, gameState.currentTurn, playerColor, toast]);
+  }, [gameTime.isRunning, gameState.currentTurn, playerColor]);
 
   const handleGameEnd = useCallback((data: { reason: string; winner?: string }) => {
     const { reason, winner } = data;
+
+    if (!resultSavedRef.current) {
+      resultSavedRef.current = true;
+      const aiResult: 'win' | 'loss' | 'draw' =
+        reason === 'draw' ||
+        reason === 'stalemate' ||
+        reason === 'threefold_repetition' ||
+        reason === 'insufficient_material'
+          ? 'draw'
+          : winner === playerColor
+            ? 'win'
+            : 'loss';
+
+      if (persistedGameId) {
+        userService
+          .finalizeAiGame(persistedGameId, {
+            result: aiResult,
+            finalFen: game.fen(),
+            whiteTimeLeft: gameTime.white,
+            blackTimeLeft: gameTime.black,
+          })
+          .catch(error => {
+            console.error('Failed to finalize AI game:', error);
+          });
+      }
+
+      localStorage.removeItem(storageSessionKey);
+    }
     
     setGameState(prev => ({
       ...prev,
@@ -174,7 +363,7 @@ const AIGame = () => {
       title: "انتهت المباراة",
       description: message,
     });
-  }, [playerColor, toast]);
+  }, [playerColor, toast, gameTime.white, gameTime.black, game, persistedGameId, storageSessionKey]);
 
   // Simple AI move generation
   const generateAIMove = useCallback(async () => {
@@ -253,6 +442,22 @@ const AIGame = () => {
       // Make the AI move
       const aiMove = gameCopy.move(bestMove);
       if (aiMove) {
+        if (persistedGameId) {
+          try {
+            await userService.recordAiGameMove(persistedGameId, {
+              from: aiMove.from,
+              to: aiMove.to,
+              promotion: aiMove.promotion || '',
+              san: aiMove.san,
+              fenAfter: gameCopy.fen(),
+              movedBy: 'ai',
+              nextTurn: playerColor,
+            });
+          } catch (error) {
+            console.error('Failed to persist AI move:', error);
+          }
+        }
+
         setGame(gameCopy);
         
         // Update moves list
@@ -320,7 +525,7 @@ const AIGame = () => {
     } finally {
       setAiThinking(false);
     }
-  }, [game, gameState, aiPlayer.color, playerColor, handleGameEnd, toast]);
+  }, [game, gameState, aiPlayer.color, playerColor, handleGameEnd, toast, persistedGameId]);
 
   // Trigger AI move when it's AI's turn
   useEffect(() => {
@@ -369,6 +574,22 @@ const AIGame = () => {
       });
 
       if (move) {
+        if (persistedGameId) {
+          userService
+            .recordAiGameMove(persistedGameId, {
+              from: move.from,
+              to: move.to,
+              promotion: move.promotion || '',
+              san: move.san,
+              fenAfter: gameCopy.fen(),
+              movedBy: 'human',
+              nextTurn: aiPlayer.color,
+            })
+            .catch(error => {
+              console.error('Failed to persist player move:', error);
+            });
+        }
+
         setGame(gameCopy);
         
         // Update moves list
@@ -440,14 +661,26 @@ const AIGame = () => {
     }
 
     return false;
-  }, [game, gameState, playerColor, aiPlayer.color, handleGameEnd, toast]);
+  }, [game, gameState, playerColor, aiPlayer.color, handleGameEnd, toast, persistedGameId]);
 
   const handleResign = () => {
+    syncClockToServer();
     const winner = playerColor === 'white' ? 'black' : 'white';
     handleGameEnd({ reason: 'resign', winner });
   };
 
-  const handleNewGame = () => {
+  const getFinalizeResultForCurrentGame = useCallback((): 'win' | 'loss' | 'draw' => {
+    if (gameState.status === 'active') {
+      // Starting a new game while active is treated as resignation/forfeit.
+      return 'loss';
+    }
+
+    if (!gameState.winner) return 'draw';
+    return gameState.winner === playerColor ? 'win' : 'loss';
+  }, [gameState.status, gameState.winner, playerColor]);
+
+  const resetForNewGame = useCallback(() => {
+    localStorage.removeItem(storageSessionKey);
     setGame(new Chess());
     setMoves([]);
     setGameState({
@@ -465,6 +698,76 @@ const AIGame = () => {
       lastUpdate: Date.now()
     });
     setAiThinking(false);
+    setPersistedGameId(null);
+    setLoading(false);
+    setShowNewGameConfirm(false);
+  }, [storageSessionKey]);
+
+  const handleConfirmNewGame = useCallback(async () => {
+    setRestartingGame(true);
+    try {
+      if (persistedGameId && !resultSavedRef.current) {
+        await syncClockToServer();
+        const finalizeResult = getFinalizeResultForCurrentGame();
+        await userService.finalizeAiGame(persistedGameId, {
+          result: finalizeResult,
+          finalFen: game.fen(),
+          whiteTimeLeft: Math.max(0, Math.floor(gameTime.white)),
+          blackTimeLeft: Math.max(0, Math.floor(gameTime.black)),
+        });
+        resultSavedRef.current = true;
+      }
+
+      resetForNewGame();
+      await initializeAiPersistence();
+    } catch (error) {
+      console.error('Failed to restart AI game:', error);
+      toast({
+        title: 'تعذر بدء لعبة جديدة',
+        description: 'حدث خطأ أثناء إنهاء اللعبة الحالية. حاول مرة أخرى.',
+        variant: 'destructive',
+      });
+    } finally {
+      setRestartingGame(false);
+    }
+  }, [
+    persistedGameId,
+    syncClockToServer,
+    getFinalizeResultForCurrentGame,
+    game,
+    gameTime.white,
+    gameTime.black,
+    resetForNewGame,
+    initializeAiPersistence,
+    toast,
+  ]);
+
+  const handleNewGame = () => {
+    if (gameState.status === 'active' && persistedGameId) {
+      setShowNewGameConfirm(true);
+      return;
+    }
+
+    handleConfirmNewGame();
+  };
+
+  const getPendingNewGameResultText = () => {
+    const result = getFinalizeResultForCurrentGame();
+    if (result === 'win') return 'فوز';
+    if (result === 'draw') return 'تعادل';
+    return 'خسارة (انسحاب)';
+  };
+
+  const getPendingNewGameDescription = () => {
+    if (gameState.status === 'active') {
+      return 'سيتم إنهاء المباراة الحالية فورًا وتسجيلها كخسارة بالانسحاب، ثم إنشاء مباراة جديدة من البداية.';
+    }
+    return 'سيتم حفظ النتيجة الحالية كما هي، ثم بدء مباراة جديدة من الصفر.';
+  };
+
+  const legacyReset = () => {
+    resetForNewGame();
+    initializeAiPersistence();
   };
 
   const formatTime = (seconds: number) => {
@@ -492,6 +795,11 @@ const AIGame = () => {
                 <ArrowLeft className="w-5 h-5" />
               </Button>
               <h1 className="font-amiri text-xl font-bold">اللعب ضد الذكاء الاصطناعي</h1>
+              {loading && (
+                <Badge variant="outline" className="bg-secondary/10">
+                  جاري استعادة المباراة...
+                </Badge>
+              )}
               {aiThinking && (
                 <Badge variant="outline" className="bg-primary/10 text-primary animate-pulse">
                   <Brain className="w-3 h-3 ml-1" />
@@ -519,9 +827,9 @@ const AIGame = () => {
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <Avatar>
-                    <AvatarImage src={aiPlayer.avatar} />
+                    <AvatarImage src={hasCustomAvatar(aiPlayer.avatar) ? aiPlayer.avatar : undefined} />
                     <AvatarFallback className="bg-secondary text-secondary-foreground">
-                      <Brain className="w-4 h-4" />
+                      {getInitialsFromName(aiPlayer.name)}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1">
@@ -580,9 +888,9 @@ const AIGame = () => {
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <Avatar>
-                    <AvatarImage src={humanPlayer.avatar} />
+                    <AvatarImage src={hasCustomAvatar(humanPlayer.avatar) ? humanPlayer.avatar : undefined} />
                     <AvatarFallback className="bg-primary text-primary-foreground">
-                      <User className="w-4 h-4" />
+                      {getInitialsFromName(humanPlayer.name)}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1">
@@ -634,7 +942,7 @@ const AIGame = () => {
                 game={game}
                 onMove={handleMove}
                 orientation={playerColor}
-                allowMoves={gameState.status === 'active' && gameState.currentTurn === playerColor && !aiThinking}
+                allowMoves={!loading && gameState.status === 'active' && gameState.currentTurn === playerColor && !aiThinking}
               />
             </Card>
           </div>
@@ -714,7 +1022,7 @@ const AIGame = () => {
               
               <div className="flex gap-2">
                 <Button 
-                  onClick={handleNewGame}
+                  onClick={legacyReset}
                   className="flex-1"
                 >
                   لعبة جديدة
@@ -727,6 +1035,36 @@ const AIGame = () => {
                   العودة للوحة التحكم
                 </Button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showNewGameConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="mx-4 w-full max-w-md rounded-lg bg-card p-6 shadow-lg">
+            <h2 className="mb-2 text-xl font-bold">تأكيد بدء لعبة جديدة</h2>
+            <p className="mb-4 text-sm text-muted-foreground">{getPendingNewGameDescription()}</p>
+
+            <div className="mb-5 rounded-md border border-border bg-muted/40 p-3 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">النتيجة التي ستُسجل:</span>
+                <span className="font-semibold text-primary">{getPendingNewGameResultText()}</span>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setShowNewGameConfirm(false)}
+                disabled={restartingGame}
+              >
+                إلغاء
+              </Button>
+              <Button className="flex-1" onClick={handleConfirmNewGame} disabled={restartingGame}>
+                {restartingGame ? 'جارٍ التنفيذ...' : 'تأكيد وبدء لعبة جديدة'}
+              </Button>
             </div>
           </div>
         </div>

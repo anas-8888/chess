@@ -17,6 +17,7 @@ import { inviteService } from "@/services/inviteService";
 import { authService } from "@/services/authService";
 import { useAuth } from "@/contexts/AuthContext";
 import { API_BASE_URL, SOCKET_BASE_URL } from "@/config/urls";
+import { getInitialsFromName, hasCustomAvatar } from "@/utils/avatar";
 import {
   Home,
   Users,
@@ -856,8 +857,8 @@ const Friends = () => {
                           <div key={user.user_id} className="flex items-center justify-between p-3 border rounded-lg">
                             <div className="flex items-center gap-3">
                               <Avatar className="h-8 w-8">
-                                <AvatarImage src={user.thumbnail} />
-                                <AvatarFallback>{user.username[0]}</AvatarFallback>
+                                <AvatarImage src={hasCustomAvatar(user.thumbnail) ? user.thumbnail : undefined} />
+                                <AvatarFallback>{getInitialsFromName(user.username)}</AvatarFallback>
                               </Avatar>
                               <div>
                                 <h4 className="font-medium">{user.username}</h4>
@@ -906,8 +907,14 @@ const Friends = () => {
                       <div key={request.id} className="flex items-center justify-between p-3 border rounded-lg">
                         <div className="flex items-center gap-3">
                           <Avatar className="h-8 w-8">
-                            <AvatarImage src={request.from_user?.thumbnail} />
-                            <AvatarFallback>{request.from_user?.username?.[0]}</AvatarFallback>
+                            <AvatarImage
+                              src={
+                                hasCustomAvatar(request.from_user?.thumbnail)
+                                  ? request.from_user?.thumbnail
+                                  : undefined
+                              }
+                            />
+                            <AvatarFallback>{getInitialsFromName(request.from_user?.username)}</AvatarFallback>
                           </Avatar>
                           <div>
                             <h4 className="font-medium">{request.from_user?.username}</h4>
@@ -956,8 +963,8 @@ const Friends = () => {
                      <div className="flex items-center justify-between">
                        <div className="flex items-center gap-4">
                          <Avatar className="h-10 w-10">
-                           <AvatarImage src={friend.thumbnail} />
-                           <AvatarFallback>{friend.username[0]}</AvatarFallback>
+                           <AvatarImage src={hasCustomAvatar(friend.thumbnail) ? friend.thumbnail : undefined} />
+                           <AvatarFallback>{getInitialsFromName(friend.username)}</AvatarFallback>
                          </Avatar>
                          <div className="space-y-1">
                            <h3 className="font-semibold font-cairo">{friend.username}</h3>
@@ -1013,8 +1020,10 @@ const Friends = () => {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <Avatar className="h-10 w-10">
-                        <AvatarImage src={invite.fromUser?.thumbnail} />
-                        <AvatarFallback>{invite.fromUser?.username?.[0] || '?'}</AvatarFallback>
+                        <AvatarImage
+                          src={hasCustomAvatar(invite.fromUser?.thumbnail) ? invite.fromUser?.thumbnail : undefined}
+                        />
+                        <AvatarFallback>{getInitialsFromName(invite.fromUser?.username)}</AvatarFallback>
                       </Avatar>
                                              <div className="space-y-1">
                          <h3 className="font-semibold font-cairo">{invite.fromUser?.username || 'مستخدم غير معروف'}</h3>
@@ -1060,8 +1069,10 @@ const Friends = () => {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <Avatar className="h-10 w-10">
-                        <AvatarImage src={invite.toUser?.thumbnail} />
-                        <AvatarFallback>{invite.toUser?.username?.[0]}</AvatarFallback>
+                        <AvatarImage
+                          src={hasCustomAvatar(invite.toUser?.thumbnail) ? invite.toUser?.thumbnail : undefined}
+                        />
+                        <AvatarFallback>{getInitialsFromName(invite.toUser?.username)}</AvatarFallback>
                       </Avatar>
                       <div className="space-y-1">
                         <h3 className="font-semibold font-cairo">{invite.toUser?.username}</h3>

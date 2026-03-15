@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { API_BASE_URL } from "@/config/urls";
 import { authService } from "@/services/authService";
+import { getInitialsFromName, hasCustomAvatar } from "@/utils/avatar";
 import {
   Home,
   Shield,
@@ -387,8 +388,8 @@ const Admin = () => {
                         <TableCell>
                           <div className="flex items-center gap-3">
                             <Avatar className="h-8 w-8">
-                              <AvatarImage src={user.avatar || "/placeholder.svg"} />
-                              <AvatarFallback>{user.username[0]}</AvatarFallback>
+                              <AvatarImage src={hasCustomAvatar(user.avatar) ? user.avatar || undefined : undefined} />
+                              <AvatarFallback>{getInitialsFromName(user.username)}</AvatarFallback>
                             </Avatar>
                             <div>
                               <div className="font-medium font-cairo">{user.username}</div>

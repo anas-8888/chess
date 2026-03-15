@@ -11,18 +11,29 @@ import {
   Trophy, 
   Clock, 
   User,
-  Settings,
   LogOut,
   Check,
   X,
   MessageCircle,
-  Crown
+  Crown,
+  BarChart3,
+  UserCircle
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { userService, UserProfile } from '@/services/userService';
+import { userService, UserProfile, RecentGame, ActiveGameSummary } from '@/services/userService';
 import { inviteService } from '@/services/inviteService';
 import { useNavigate } from 'react-router-dom';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { getInitialsFromName, hasCustomAvatar } from '@/utils/avatar';
+import BrandLogo from '@/components/BrandLogo';
 
 
 interface GameInvite {
@@ -58,7 +69,9 @@ const Dashboard = () => {
   const [user, setUser] = useState<UserProfile | null>(null);
 
   const [invites, setInvites] = useState<any[]>([]);
-  const [activeGames, setActiveGames] = useState<ActiveGame[]>([]);
+  const [recentGames, setRecentGames] = useState<RecentGame[]>([]);
+  const [activeGame, setActiveGame] = useState<ActiveGameSummary | null>(null);
+  const [endingGameId, setEndingGameId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const { updateStatus } = useAuth();
 
@@ -73,10 +86,15 @@ const Dashboard = () => {
           console.error('Failed to update status:', error);
           // Continue with data fetching even if status update fails
         }
-        const userProfile = await userService.getCurrentUserProfile();
+        const [userProfile, recent, currentActiveGame] = await Promise.all([
+          userService.getProfileStats(),
+          userService.getRecentGames(12),
+          userService.getCurrentActiveGame(),
+        ]);
         setUser(userProfile);
-        
-        // تحميل الدعوات الواردة
+        setRecentGames(recent);
+        setActiveGame(currentActiveGame);
+
         try {
           const invitesData = await inviteService.getReceivedInvites();
           setInvites(invitesData);
@@ -118,13 +136,30 @@ const Dashboard = () => {
   }, [authUser, updateStatus]);
 
   const handleStartQuickGame = () => {
+    if (activeGame) {
+      toast({
+        title: 'لديك مباراة جارية',
+        description: 'لا يمكن بدء مباراة جديدة قبل إنهاء الحالية',
+        variant: 'destructive',
+      });
+      navigate(activeGame.game_type === 'ai' ? '/ai-game' : `/game?id=${activeGame.id}`);
+      return;
+    }
     // Update status to in-game
     updateStatus('in-game');
     // Navigate to game page
-    window.location.href = '/game';
+    navigate('/game');
   };
 
   const handleAcceptInvite = async (inviteId: string) => {
+    if (activeGame) {
+      toast({
+        title: 'لديك مباراة جارية',
+        description: 'أنهِ المباراة الحالية أولًا قبل قبول دعوة جديدة',
+        variant: 'destructive',
+      });
+      return;
+    }
     // Update status to in-game when accepting invite
     updateStatus('in-game');
     await acceptInvite(inviteId);
@@ -150,7 +185,7 @@ const Dashboard = () => {
 
   const acceptInvite = async (inviteId: string) => {
     try {
-      await inviteService.acceptInvite(inviteId);
+      const result = await inviteService.acceptInvite(inviteId);
       toast({
         title: "تم قبول الدعوة",
         description: "جاري الانتقال إلى المباراة..."
@@ -161,7 +196,12 @@ const Dashboard = () => {
 
       // Navigate to game
       setTimeout(() => {
-        navigate("/game?id=invited_game_123");
+        const gameId = result?.data?.game?.id || result?.data?.gameId || result?.gameId;
+        if (gameId) {
+          navigate(`/game?id=${gameId}`);
+          return;
+        }
+        navigate('/game');
       }, 1000);
     } catch (error) {
       console.error('Error accepting invite:', error);
@@ -176,6 +216,15 @@ const Dashboard = () => {
   // دالة بدء المباراة
   const startGame = async (inviteId: string) => {
     try {
+      if (activeGame) {
+        toast({
+          title: 'لديك مباراة جارية',
+          description: 'لا يمكن بدء مباراة جديدة قبل إنهاء الحالية',
+          variant: 'destructive',
+        });
+        return;
+      }
+
       const result = await inviteService.startGame(inviteId, 'phone');
       
       toast({
@@ -243,18 +292,51 @@ const Dashboard = () => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending':
-        return 'bg-yellow-100 text-yellow-800';
+        return 'bg-muted text-muted-foreground border border-border';
       case 'accepted':
-        return 'bg-green-100 text-green-800';
+        return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
       case 'rejected':
-        return 'bg-red-100 text-red-800';
+        return 'bg-rose-50 text-rose-700 border border-rose-200';
       case 'expired':
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-muted text-muted-foreground border border-border';
       case 'game_started':
-        return 'bg-blue-100 text-blue-800';
+        return 'bg-blue-50 text-blue-700 border border-blue-200';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-muted text-muted-foreground border border-border';
     }
+  };
+
+  const handleEndGame = async (gameId: number) => {
+    try {
+      setEndingGameId(gameId);
+      await userService.endCurrentGame(gameId);
+      const [recent, currentActiveGame, refreshedProfile] = await Promise.all([
+        userService.getRecentGames(12),
+        userService.getCurrentActiveGame(),
+        userService.getProfileStats(),
+      ]);
+      setRecentGames(recent);
+      setActiveGame(currentActiveGame);
+      setUser(refreshedProfile);
+      toast({
+        title: 'تم إنهاء المباراة',
+        description: 'تم إنهاء المباراة الجارية بنجاح',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'تعذر إنهاء المباراة',
+        description: error.message || 'حدث خطأ أثناء إنهاء المباراة',
+        variant: 'destructive',
+      });
+    } finally {
+      setEndingGameId(null);
+    }
+  };
+
+  const getResultBadgeVariant = (result: RecentGame['result']) => {
+    if (result === 'فوز') return 'default';
+    if (result === 'خسارة') return 'destructive';
+    return 'secondary';
   };
 
   // دالة معالجة أزرار الدعوة بناءً على الحالة
@@ -266,8 +348,8 @@ const Dashboard = () => {
         return (
           <div className="flex items-center gap-2">
             <Button
-              onClick={() => acceptInvite(invite.id)}
-              variant="chess"
+              onClick={() => handleAcceptInvite(invite.id)}
+              variant="default"
               size="sm"
             >
               <Check className="h-4 w-4 ml-1" />
@@ -288,7 +370,7 @@ const Dashboard = () => {
         return (
           <Button
             onClick={() => startGame(invite.id)}
-            variant="chess"
+            variant="default"
             size="sm"
           >
             <MessageCircle className="h-4 w-4 ml-1" />
@@ -304,7 +386,7 @@ const Dashboard = () => {
         return (
           <Button
             onClick={() => joinGame(invite.game_id)}
-            variant="chess"
+            variant="default"
             size="sm"
           >
             <MessageCircle className="h-4 w-4 ml-1" />
@@ -413,132 +495,174 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div
+      className="min-h-screen bg-[radial-gradient(1200px_400px_at_80%_-10%,rgba(15,23,42,0.08),transparent),linear-gradient(to_bottom,#f8fafc,#f1f5f9)]"
+      dir="rtl"
+    >
       {/* Header */}
-      <header className="bg-card border-b shadow-card">
+      <header className="border-b border-border bg-background/90 backdrop-blur sticky top-0 z-20">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Avatar className="h-12 w-12">
-                <AvatarImage src={user.avatar} />
-                <AvatarFallback className="bg-gradient-primary text-primary-foreground font-bold">
-                  {user.username.charAt(0)}
-                </AvatarFallback>
-              </Avatar>
-              <div>
-                <h2 className="font-amiri text-xl font-bold">{user.username}</h2>
-                                 <div className="flex items-center gap-2">
-                   <Badge variant="secondary">
-                     <Trophy className="w-3 h-3 ml-1" />
-                     {user.rating || 1200}
-                   </Badge>
-                 </div>
-              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="flex items-center gap-4 rounded-xl border border-border bg-card px-3 py-2 hover:bg-muted/30 transition-colors">
+                    <Avatar className="h-11 w-11 ring-2 ring-border">
+                      <AvatarImage src={hasCustomAvatar(user.avatar) ? user.avatar : undefined} />
+                      <AvatarFallback className="bg-primary text-primary-foreground font-bold">
+                        {getInitialsFromName(user.username)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="text-right">
+                      <h2 className="font-cairo text-lg font-bold text-foreground">{user.username}</h2>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="border-border text-foreground">
+                          <Trophy className="w-3 h-3 ml-1 text-muted-foreground" />
+                          {user.rating || 1200}
+                        </Badge>
+                      </div>
+                    </div>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56 text-right" dir="rtl">
+                  <DropdownMenuLabel>حسابي</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => navigate('/my-profile')} className="justify-start gap-2">
+                    <UserCircle className="h-4 w-4 shrink-0" />
+                    الملف الشخصي
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate('/my-statistics')} className="justify-start gap-2">
+                    <BarChart3 className="h-4 w-4 shrink-0" />
+                    الإحصائيات
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate('/friends')} className="justify-start gap-2">
+                    <Users className="h-4 w-4 shrink-0" />
+                    الأصدقاء
+                  </DropdownMenuItem>
+                  {authUser?.type === 'admin' && (
+                    <DropdownMenuItem onClick={() => navigate('/admin')} className="justify-start gap-2">
+                      <Crown className="h-4 w-4 shrink-0" />
+                      لوحة الإدارة
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleLogout} className="justify-start gap-2">
+                    <LogOut className="h-4 w-4 shrink-0" />
+                    تسجيل الخروج
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
 
             <div className="flex items-center gap-2">
-              {authUser?.type === 'admin' && (
-                <Button variant="outline" onClick={() => navigate('/admin')}>
-                  <Crown className="w-4 h-4 ml-2" />
-                  لوحة الإدارة
-                </Button>
-              )}
-              <Button variant="ghost" size="icon">
-                <Settings className="w-5 h-5" />
-              </Button>
-              <Button variant="ghost" size="icon" onClick={handleLogout}>
-                <LogOut className="w-5 h-5" />
-              </Button>
+              <BrandLogo variant="icon" imgClassName="h-8 w-8" />
+              {authUser?.type === 'admin' && <Badge variant="outline" className="border-border text-foreground">مدير</Badge>}
             </div>
           </div>
         </div>
       </header>
 
       <div className="container mx-auto px-4 py-8">
+        <div className="mb-8 rounded-2xl border border-border bg-card p-6 shadow-card">
+          <h1 className="text-2xl font-bold text-foreground font-cairo">لوحة التحكم</h1>
+          <p className="mt-1 text-sm text-muted-foreground">إدارة الحساب، متابعة الدعوات، والوصول السريع إلى خدمات المنصة.</p>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2">
             <Tabs defaultValue="play" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-6">
+              <TabsList className="grid w-full grid-cols-2 mb-6 bg-card border border-border p-1">
                 <TabsTrigger value="play" className="flex items-center gap-2">
                   <Play className="w-4 h-4" />
-                  ابدأ لعبة
+                  الوصول السريع
                 </TabsTrigger>
                 <TabsTrigger value="games" className="flex items-center gap-2">
                   <Trophy className="w-4 h-4" />
-                  المباريات
+                  النشاط
                 </TabsTrigger>
               </TabsList>
 
               <TabsContent value="play">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <Card className="hover:shadow-elegant transition-shadow cursor-pointer"
+                  <Card className="border-border bg-card hover:shadow-card transition-shadow cursor-pointer"
                         onClick={handleStartQuickGame}>
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <Play className="w-5 h-5 text-primary" />
-                        لعبة سريعة
+                        مباراة سريعة
                       </CardTitle>
                       <CardDescription>
-                        ابحث عن خصم عشوائي وابدأ المباراة فوراً
+                        إنشاء مباراة مباشرة مع خصم متاح
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <Button variant="chess" className="w-full">
-                        بحث عن خصم
+                      <Button variant="outline" className="w-full border-border">
+                        بدء الآن
                       </Button>
                     </CardContent>
                   </Card>
 
-                  <Card className="hover:shadow-elegant transition-shadow">
+                  <Card className="border-border bg-card hover:shadow-card transition-shadow">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
-                        <Users className="w-5 h-5 text-secondary" />
-                        تحدي صديق
+                        <Users className="w-5 h-5 text-primary" />
+                        مباراة مع صديق
                       </CardTitle>
                       <CardDescription>
-                        أرسل دعوة لأحد أصدقائك لبدء مباراة
+                        اختيار صديق وإرسال دعوة رسمية للمباراة
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <Button variant="secondary" className="w-full" onClick={() => window.location.href = '/friends'}>
-                        اختر صديق
+                      <Button variant="outline" className="w-full border-border" onClick={() => navigate('/friends')}>
+                        إدارة الأصدقاء
                       </Button>
                     </CardContent>
                   </Card>
 
-                  <Card className="hover:shadow-elegant transition-shadow cursor-pointer"
-                        onClick={() => navigate('/ai-loading')}>
+                  <Card className="border-border bg-card hover:shadow-card transition-shadow cursor-pointer"
+                        onClick={() => {
+                          if (activeGame) {
+                            toast({
+                              title: 'لديك مباراة جارية',
+                              description: 'لا يمكن بدء مباراة جديدة قبل إنهاء الحالية',
+                              variant: 'destructive',
+                            });
+                            navigate(activeGame.game_type === 'ai' ? '/ai-game' : `/game?id=${activeGame.id}`);
+                            return;
+                          }
+                          navigate('/ai-loading');
+                        }}>
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
-                        <User className="w-5 h-5 text-accent" />
-                        ضد الذكاء الاصطناعي
+                        <User className="w-5 h-5 text-primary" />
+                        التحليل الذكي
                       </CardTitle>
                       <CardDescription>
-                        تدرب مع الذكاء الاصطناعي
+                        جلسة تدريب وتحليل مع محرك الذكاء الاصطناعي
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <Button variant="outline" className="w-full">
-                        ابدأ اللعب
+                      <Button variant="outline" className="w-full border-border">
+                        بدء الجلسة
                       </Button>
                     </CardContent>
                   </Card>
 
-                  <Card className="hover:shadow-elegant transition-shadow cursor-pointer"
-                        onClick={() => window.location.href = '/connect-board'}>
+                  <Card className="border-border bg-card hover:shadow-card transition-shadow cursor-pointer"
+                        onClick={() => navigate('/connect-board')}>
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
-                        <Trophy className="w-5 h-5 text-primary-glow" />
-                        اللوحة المادية
+                        <Trophy className="w-5 h-5 text-primary" />
+                        الربط المادي
                       </CardTitle>
                       <CardDescription>
-                        العب بالشطرنج المادي المتصل
+                        إدارة الاتصال بلوحة الشطرنج المادية
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <Button variant="outline" className="w-full">
-                        اتصال باللوحة
+                      <Button variant="outline" className="w-full border-border">
+                        فتح الاتصال
                       </Button>
                     </CardContent>
                   </Card>
@@ -548,11 +672,64 @@ const Dashboard = () => {
                              
 
               <TabsContent value="games">
-                <div className="text-center py-12">
-                  <Trophy className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="font-amiri text-xl font-bold mb-2">لا توجد مباريات حالياً</h3>
-                  <p className="text-muted-foreground">ابدأ لعبة جديدة لتظهر هنا</p>
-                </div>
+                <Card className="border-border bg-card">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Clock className="w-5 h-5 text-primary" />
+                      آخر النشاط
+                    </CardTitle>
+                    <CardDescription>آخر 12 مباراة مسجلة في حسابك</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {recentGames.length === 0 ? (
+                      <div className="text-center py-8">
+                        <Trophy className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
+                        <p className="text-muted-foreground">لا توجد مباريات مسجلة حتى الآن</p>
+                      </div>
+                    ) : (
+                      recentGames.map(game => (
+                        <div key={game.id} className="rounded-lg border border-border p-3 bg-muted/20">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="space-y-1">
+                              <div className="font-medium text-foreground">ضد: {game.opponent}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {game.color === 'white' ? 'أبيض' : 'أسود'} • {game.game_type} • {getTimeAgo(game.started_at)}
+                              </div>
+                            </div>
+                            <Badge variant={getResultBadgeVariant(game.result)}>
+                              {game.result}
+                            </Badge>
+                          </div>
+                          <div className="mt-3 flex items-center justify-end gap-2">
+                            {game.status === 'active' || game.status === 'waiting' ? (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => handleEndGame(game.id)}
+                                  disabled={endingGameId === game.id}
+                                >
+                                  {endingGameId === game.id ? 'جارٍ الإنهاء...' : 'إنهاء'}
+                                </Button>
+                                <Button size="sm" onClick={() => navigate(`/game?id=${game.id}`)}>
+                                  متابعة
+                                </Button>
+                              </>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => navigate('/my-statistics')}
+                              >
+                                عرض التقرير
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </CardContent>
+                </Card>
               </TabsContent>
             </Tabs>
           </div>
@@ -560,30 +737,30 @@ const Dashboard = () => {
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Statistics */}
-            <Card>
+            <Card className="border-border bg-card">
               <CardHeader>
-                <CardTitle className="font-amiri">إحصائياتك</CardTitle>
+                <CardTitle className="font-cairo text-foreground">ملخص الأداء</CardTitle>
               </CardHeader>
-                             <CardContent className="space-y-4">
-                 <div className="flex justify-between">
+              <CardContent className="space-y-3">
+                 <div className="flex justify-between rounded-lg border border-border px-3 py-2">
                    <span>انتصارات</span>
-                   <Badge variant="secondary">{user.wins || 0}</Badge>
+                   <Badge variant="outline" className="border-border">{user.wins || 0}</Badge>
                  </div>
-                 <div className="flex justify-between">
+                 <div className="flex justify-between rounded-lg border border-border px-3 py-2">
                    <span>هزائم</span>
-                   <Badge variant="destructive">{user.losses || 0}</Badge>
+                   <Badge variant="outline" className="border-border">{user.losses || 0}</Badge>
                  </div>
-                 <div className="flex justify-between">
+                 <div className="flex justify-between rounded-lg border border-border px-3 py-2">
                    <span>تعادل</span>
-                   <Badge variant="outline">{user.draws || 0}</Badge>
+                   <Badge variant="outline" className="border-border">{user.draws || 0}</Badge>
                  </div>
-                 <div className="flex justify-between">
+                 <div className="flex justify-between rounded-lg border border-border px-3 py-2">
                    <span>إجمالي المباريات</span>
-                   <Badge variant="outline">{user.total_games || 0}</Badge>
+                   <Badge variant="outline" className="border-border">{user.total_games || 0}</Badge>
                  </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between rounded-lg border border-border px-3 py-2">
                   <span>نسبة الفوز</span>
-                  <Badge variant="outline">
+                  <Badge variant="outline" className="border-border">
                     {user.win_rate ? user.win_rate.toFixed(1) : '0.0'}%
                   </Badge>
                 </div>
@@ -592,25 +769,31 @@ const Dashboard = () => {
 
             {/* Invites */}
             {invites.length > 0 && (
-              <Card>
+              <Card className="border-border bg-card">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Mail className="w-5 h-5" />
-                    الدعوات الواردة ({invites.length})
+                  <CardTitle className="flex items-center gap-2 text-foreground">
+                    <Mail className="w-5 h-5 text-primary" />
+                    الدعوات ({invites.length})
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {invites.map((invite) => (
-                    <div key={invite.id} className="border rounded-lg p-3">
+                    <div key={invite.id} className="border border-border rounded-lg p-3 bg-muted/20">
                       <div className="flex items-center gap-3 mb-3">
                         <Avatar className="h-8 w-8">
-                          <AvatarImage src={invite.fromUser?.thumbnail} />
-                          <AvatarFallback>{invite.fromUser?.username?.[0] || '?'}</AvatarFallback>
+                          <AvatarImage
+                            src={
+                              hasCustomAvatar(invite.fromUser?.thumbnail)
+                                ? invite.fromUser?.thumbnail
+                                : undefined
+                            }
+                          />
+                          <AvatarFallback>{getInitialsFromName(invite.fromUser?.username)}</AvatarFallback>
                         </Avatar>
                         <div className="flex-1">
-                          <p className="font-medium text-sm">{invite.fromUser?.username || 'مستخدم غير معروف'}</p>
+                          <p className="font-medium text-sm text-foreground">{invite.fromUser?.username || 'مستخدم غير معروف'}</p>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <Crown className="w-3 h-3" />
+                            <Crown className="w-3 h-3 text-muted-foreground" />
                             <span>{invite.fromUser?.rank || 1200}</span>
                             <span>•</span>
                             <span>{getTimeAgo(invite.date_time)}</span>
@@ -632,11 +815,11 @@ const Dashboard = () => {
             )}
 
             {invites.length === 0 && (
-              <Card>
+              <Card className="border-border bg-card">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Mail className="w-5 h-5" />
-                    الدعوات الواردة
+                  <CardTitle className="flex items-center gap-2 text-foreground">
+                    <Mail className="w-5 h-5 text-primary" />
+                    الدعوات
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="text-center py-8">

@@ -11,6 +11,7 @@ import {
   getProfile,
   updateProfile,
   updateCurrentProfile,
+  uploadCurrentAvatar,
   deleteUserAccount,
   deleteCurrentAccount,
   searchUsersController,
@@ -23,6 +24,9 @@ import {
   getSiteStats,
   updateUserStatus,
   getProfileWithStats,
+  getRecentGamesForCurrentUser,
+  getCurrentActiveGame,
+  endCurrentGame,
   getCurrentUserStatus,
   getUserTokenAndLastGame,
 } from '../controllers/userController.js';
@@ -33,6 +37,10 @@ import { Op } from 'sequelize';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
+const avatarRawUpload = express.raw({
+  type: ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'],
+  limit: '5mb',
+});
 
 // TODO: Import user controllers
 // import {
@@ -52,8 +60,12 @@ router.use(protect);
 // Current user routes (no ID needed)
 router.get('/profile', getProfile);
 router.get('/profile/stats', getProfileWithStats);
+router.get('/profile/recent-games', getRecentGamesForCurrentUser);
+router.get('/games/active', getCurrentActiveGame);
+router.post('/games/:gameId/end', endCurrentGame);
 router.get('/status', getCurrentUserStatus);
 router.put('/profile', updateCurrentProfile);
+router.post('/profile/avatar', avatarRawUpload, uploadCurrentAvatar);
 router.delete('/profile', deleteCurrentAccount);
 router.post('/change-password', changePasswordController);
 
@@ -83,7 +95,6 @@ router.put('/status', async (req, res) => {
         
         // إذا كانت الحالة نفسها، لا حاجة للتحديث
         if (currentUser.state === status) {
-            logger.debug(`${userId} ${status}`);
             return res.json({ 
                 success: true, 
                 message: 'الحالة لم تتغير',
@@ -93,7 +104,6 @@ router.put('/status', async (req, res) => {
 
         // لا نسمح بخفض الحالة من in-game عبر تحديثات النشاط الدورية.
         if (currentUser.state === 'in-game' && (status === 'online' || status === 'offline')) {
-            logger.debug(`${userId} in-game ${status}`);
             return res.json({
                 success: true,
                 message: 'Status preserved as in-game',
@@ -133,10 +143,6 @@ router.put('/status', async (req, res) => {
                         timestamp: new Date()
                     });
                 }
-                
-                logger.debug(`${friends.length}`);
-            } else {
-                logger.debug(`${userId}`);
             }
         }
         
@@ -169,6 +175,7 @@ router.get('/me/courses', userOnly, getUserCourses);
 router.get('/', adminOnly, getUsers);
 router.post('/', adminOnly, createNewUser);
 router.get('/search', userOnly, searchUsersController);
+router.get('/stats', getSiteStats);
 
 // Individual user routes (Admin or owner)
 router.get('/:id', ownerOrAdmin('id'), getUser);
@@ -177,9 +184,6 @@ router.delete('/:id', ownerOrAdmin('id'), deleteUserAccount);
 
 // User statistics
 router.get('/:id/stats', ownerOrAdmin('id'), getUserStatsController);
-
-// موقع الإحصائيات العامة
-router.get('/stats', getSiteStats);
 
 // Session management routes
 router.get('/:id/sessions', ownerOrAdmin('id'), getUserSessionsController);

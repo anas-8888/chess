@@ -53,12 +53,12 @@ export const API_ENDPOINTS = {
   },
   USERS: {
     PROFILE: `${API_BASE_URL}/api/users/profile`,
-    UPDATE: `${API_BASE_URL}/api/users/update`,
+    UPDATE: `${API_BASE_URL}/api/users/profile`,
   },
   GAMES: {
-    CREATE: `${API_BASE_URL}/api/games/create`,
-    JOIN: `${API_BASE_URL}/api/games/join`,
-    MOVE: `${API_BASE_URL}/api/games/move`,
+    DETAILS: `${API_BASE_URL}/api/game/:id`,
+    STATE: `${API_BASE_URL}/api/game/:id/state`,
+    CONTROL_PLAYER: `${API_BASE_URL}/api/game/control-player`,
   },
   COURSES: {
     LIST: `${API_BASE_URL}/api/courses`,
@@ -70,8 +70,8 @@ export const API_ENDPOINTS = {
   },
   FRIENDS: {
     LIST: `${API_BASE_URL}/api/friends`,
-    ADD: `${API_BASE_URL}/api/friends/add`,
-    REMOVE: `${API_BASE_URL}/api/friends/remove`,
+    ADD: `${API_BASE_URL}/api/friends/request`,
+    REMOVE: `${API_BASE_URL}/api/friends/:userId`,
   },
   LEADERBOARD: {
     GLOBAL: `${API_BASE_URL}/api/leaderboard/global`,

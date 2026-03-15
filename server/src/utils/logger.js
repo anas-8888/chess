@@ -163,9 +163,30 @@ class Logger {
   }
 
   debug(message, data = null) {
-    if (this.shouldLog('debug') && this.debugMode && !this.isMessageRepeated(message, 'debug')) {
+    if (
+      this.shouldLog('debug') &&
+      this.debugMode &&
+      !this.isSuppressedDebugMessage(message) &&
+      !this.isMessageRepeated(message, 'debug')
+    ) {
       console.log(this.formatMessage('debug', message, data));
     }
+  }
+
+  isSuppressedDebugMessage(message) {
+    if (typeof message !== 'string') return false;
+
+    const normalized = message.trim();
+    if (/^\d+\s+in-game\s+(online|offline)$/i.test(normalized)) {
+      return true;
+    }
+    if (/^user\s+\d+\s+is\s+in-game;\s+skipping\s+transition\s+to\s+(online|offline)$/i.test(normalized)) {
+      return true;
+    }
+    if (/^user\s+\d+\s+is\s+already\s+(online|offline|in-game)$/i.test(normalized)) {
+      return true;
+    }
+    return false;
   }
 
   // تسجيل خاص للعمليات المتكررة (مثل عدد الأصدقاء)

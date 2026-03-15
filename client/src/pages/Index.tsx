@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Crown, Users, Zap, Trophy, Globe, Puzzle, MessageCircle, User } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import chessHero from "@/assets/chess-hero.jpg";
+import BrandLogo from "@/components/BrandLogo";
 
 const Index = () => {
   const { isAuthenticated, user } = useAuth();
@@ -17,8 +18,10 @@ const Index = () => {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Crown className="h-8 w-8 text-primary" />
-              <h1 className="text-2xl font-bold text-foreground font-cairo">شطرنج ذكي</h1>
+              <BrandLogo
+                variant="full"
+                imgClassName="h-16 w-auto drop-shadow-[0_0_14px_rgba(255,255,255,0.28)]"
+              />
             </div>
             <div className="flex items-center gap-4">
               {isAuthenticated ? (

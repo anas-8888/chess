@@ -8,6 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { apiClient } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSearchParams } from 'react-router-dom';
+import BrandLogo from '@/components/BrandLogo';
 
 const Auth = () => {
   const [loginData, setLoginData] = useState({ email: '', password: '' });
@@ -119,9 +120,9 @@ const Auth = () => {
     <div className="min-h-screen bg-gradient-hero flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-amiri font-bold text-white mb-2">
-            شطرنج العرب
-          </h1>
+          <div className="flex justify-center mb-2">
+            <BrandLogo variant="full" imgClassName="h-24 w-auto" />
+          </div>
           <p className="text-white/80 text-lg">
             منصة الشطرنج الذكية
           </p>

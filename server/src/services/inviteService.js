@@ -1,9 +1,27 @@
 import Invite from '../models/Invite.js';
 import User from '../models/User.js';
+import Game from '../models/Game.js';
 // import Friend from '../models/Friend.js'; // Removed unused import
 import { NotFoundError, ValidationError } from '../middlewares/errorHandler.js';
 import sequelize from '../models/index.js';
 import { Op } from 'sequelize';
+
+const ensureUsersHaveNoActiveGames = async userIds => {
+  const existingGame = await Game.findOne({
+    where: {
+      status: { [Op.in]: ['waiting', 'active'] },
+      [Op.or]: userIds.flatMap(userId => [
+        { white_player_id: userId },
+        { black_player_id: userId },
+      ]),
+    },
+    attributes: ['id'],
+  });
+
+  if (existingGame) {
+    throw new ValidationError('يوجد مباراة جارية بالفعل لأحد اللاعبين');
+  }
+};
 
 /**
  * Get all invites with pagination and filtering
@@ -240,6 +258,8 @@ export const createGameInvite = async (fromUserId, toUserId, gameType, playMetho
     throw new ValidationError('Invalid play method. Must be physical_board or phone');
   }
 
+  await ensureUsersHaveNoActiveGames([fromUserId, toUserId]);
+
   // Check if there's already a pending invite
   const existingInvite = await Invite.findOne({
     where: {
@@ -404,6 +424,8 @@ export const acceptInvite = async (inviteId, userId, playMethod = 'phone') => {
       },
     ],
   });
+
+  await ensureUsersHaveNoActiveGames([invite.from_user_id, invite.to_user_id]);
   
   // Create a new game
   const Game = await import('../models/Game.js');
@@ -523,6 +545,8 @@ export const startGame = async (inviteId, userId, playMethod) => {
   if (!['physical_board', 'phone'].includes(playMethod)) {
     throw new ValidationError('Invalid play method. Must be physical_board or phone');
   }
+
+  await ensureUsersHaveNoActiveGames([invite.from_user_id, invite.to_user_id]);
   
   // Import Game model
       const Game = await import('../models/Game.js');

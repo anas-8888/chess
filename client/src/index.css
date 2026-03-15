@@ -1,126 +1,114 @@
+@import url("https://fonts.googleapis.com/css2?family=Almarai:wght@400;700;800&family=IBM+Plex+Sans+Arabic:wght@400;500;700&family=Outfit:wght@400;500;600;700&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Arabic Chess Design System - Traditional Arabian colors with modern touch */
-
 @layer base {
   :root {
-    /* Base colors inspired by Arabian heritage */
-    --background: 45 15% 97%;
-    --foreground: 25 25% 15%;
+    /* Dark mode as default brand identity */
+    --background: 222 30% 19%; /* softened navy background */
+    --foreground: 214 32% 91%; /* #E2E8F0 */
 
-    --card: 45 20% 98%;
-    --card-foreground: 25 25% 15%;
+    --card: 215 28% 22%; /* lighter card navy */
+    --card-foreground: 214 32% 91%;
 
-    --popover: 45 20% 98%;
-    --popover-foreground: 25 25% 15%;
+    --popover: 215 28% 22%;
+    --popover-foreground: 214 32% 91%;
 
-    /* Arabian Gold & Deep Green palette */
-    --primary: 45 85% 45%;          /* Rich Arabian gold */
-    --primary-foreground: 25 25% 15%;
-    --primary-glow: 45 90% 65%;
+    --primary: 40 48% 57%; /* #C6A15B */
+    --primary-foreground: 222 47% 11%;
+    --primary-glow: 40 48% 67%;
 
-    --secondary: 160 25% 25%;        /* Deep emerald green */
-    --secondary-foreground: 45 15% 97%;
+    --secondary: 215 28% 22%;
+    --secondary-foreground: 214 32% 91%;
 
-    --muted: 45 10% 92%;
-    --muted-foreground: 25 15% 45%;
+    --muted: 215 24% 26%;
+    --muted-foreground: 214 20% 75%;
 
-    --accent: 15 75% 55%;            /* Warm copper accent */
-    --accent-foreground: 45 15% 97%;
+    --accent: 40 48% 57%;
+    --accent-foreground: 222 47% 11%;
 
     --destructive: 0 70% 55%;
-    --destructive-foreground: 45 15% 97%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 45 15% 88%;
-    --input: 45 15% 95%;
-    --ring: 45 85% 45%;
+    --border: 215 22% 34%;
+    --input: 215 22% 24%;
+    --ring: 40 48% 57%;
 
-    /* Chess-specific colors */
-    --chess-light: 45 25% 85%;       /* Light chess squares */
-    --chess-dark: 25 35% 35%;        /* Dark chess squares */
-    --chess-highlight: 45 85% 65%;   /* Move highlights */
-    --chess-check: 0 75% 60%;        /* Check indication */
+    /* Chess board brand tones */
+    --chess-light: 40 26% 82%; /* warm light square */
+    --chess-dark: 215 28% 24%; /* consistent dark square */
+    --chess-highlight: 40 48% 67%;
+    --chess-check: 0 70% 55%;
     
-    /* Gradients for beautiful effects */
     --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-glow)));
-    --gradient-secondary: linear-gradient(135deg, hsl(var(--secondary)), hsl(160 30% 35%));
-    --gradient-hero: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--secondary)) 100%);
+    --gradient-secondary: linear-gradient(135deg, hsl(var(--secondary)), hsl(215 28% 22%));
+    --gradient-hero: linear-gradient(180deg, hsl(var(--background)), hsl(215 38% 12%));
     
-    /* Shadows with Arabian touch */
-    --shadow-elegant: 0 10px 30px -10px hsl(var(--primary) / 0.3);
-    --shadow-card: 0 4px 20px hsl(45 20% 50% / 0.15);
-    --shadow-glow: 0 0 40px hsl(var(--primary-glow) / 0.4);
+    --shadow-elegant: 0 12px 28px -12px hsl(222 47% 6% / 0.55);
+    --shadow-card: 0 6px 22px hsl(222 47% 6% / 0.35);
+    --shadow-glow: 0 0 24px hsl(var(--primary) / 0.28);
     
-    /* Animations */
-    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-smooth: all 0.24s cubic-bezier(0.4, 0, 0.2, 1);
     --transition-chess: all 0.2s ease-out;
 
     --radius: 0.5rem;
 
-    --sidebar-background: 0 0% 98%;
-
-    --sidebar-foreground: 240 5.3% 26.1%;
-
-    --sidebar-primary: 240 5.9% 10%;
-
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-background: 222 30% 18%;
+    --sidebar-foreground: 214 32% 91%;
+    --sidebar-primary: 40 48% 57%;
+    --sidebar-primary-foreground: 222 47% 11%;
+    --sidebar-accent: 215 28% 22%;
+    --sidebar-accent-foreground: 214 32% 91%;
+    --sidebar-border: 215 25% 28%;
+    --sidebar-ring: 40 48% 57%;
   }
 
-  .dark {
-    /* Dark mode with Arabian night theme */
-    --background: 25 25% 8%;
-    --foreground: 45 15% 95%;
+  .light {
+    /* Optional light mode variant */
+    --background: 0 0% 100%; /* #FFFFFF */
+    --foreground: 222 47% 11%;
 
-    --card: 25 20% 12%;
-    --card-foreground: 45 15% 95%;
+    --card: 214 32% 91%; /* #E2E8F0 */
+    --card-foreground: 222 47% 11%;
 
-    --popover: 25 20% 12%;
-    --popover-foreground: 45 15% 95%;
+    --popover: 214 32% 91%;
+    --popover-foreground: 222 47% 11%;
 
-    --primary: 45 80% 60%;
-    --primary-foreground: 25 25% 8%;
-    --primary-glow: 45 85% 70%;
+    --primary: 40 48% 57%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 40 48% 63%;
 
-    --secondary: 160 30% 30%;
-    --secondary-foreground: 45 15% 95%;
+    --secondary: 215 32% 17%;
+    --secondary-foreground: 214 32% 91%;
 
-    --muted: 25 15% 18%;
-    --muted-foreground: 45 10% 65%;
+    --muted: 214 20% 96%;
+    --muted-foreground: 215 18% 35%;
 
-    --accent: 15 70% 60%;
-    --accent-foreground: 25 25% 8%;
+    --accent: 40 48% 57%;
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 65% 60%;
-    --destructive-foreground: 45 15% 95%;
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 25 15% 20%;
-    --input: 25 15% 16%;
-    --ring: 45 80% 60%;
+    --border: 214 24% 84%;
+    --input: 214 28% 95%;
+    --ring: 40 48% 57%;
 
-    /* Dark mode chess colors */
-    --chess-light: 45 20% 75%;
-    --chess-dark: 25 30% 25%;
-    --chess-highlight: 45 80% 70%;
-    --chess-check: 0 70% 65%;
+    --chess-light: 40 26% 82%;
+    --chess-dark: 215 28% 24%;
+    --chess-highlight: 40 48% 67%;
+    --chess-check: 0 70% 55%;
     
-    --sidebar-background: 25 20% 10%;
-    --sidebar-foreground: 45 15% 90%;
-    --sidebar-primary: 45 75% 55%;
-    --sidebar-primary-foreground: 25 25% 8%;
-    --sidebar-accent: 25 15% 15%;
-    --sidebar-accent-foreground: 45 15% 90%;
-    --sidebar-border: 25 15% 18%;
-    --sidebar-ring: 45 80% 60%;
+    --sidebar-background: 222 47% 11%;
+    --sidebar-foreground: 214 32% 91%;
+    --sidebar-primary: 40 48% 57%;
+    --sidebar-primary-foreground: 222 47% 11%;
+    --sidebar-accent: 215 32% 17%;
+    --sidebar-accent-foreground: 214 32% 91%;
+    --sidebar-border: 215 25% 28%;
+    --sidebar-ring: 40 48% 57%;
   }
 }
 
@@ -129,14 +117,18 @@
     @apply border-border;
   }
 
+  html {
+    direction: rtl;
+  }
+
   body {
-    @apply bg-background text-foreground font-cairo;
+    @apply bg-background text-foreground font-cairo antialiased;
     font-feature-settings: "kern" 1;
+    line-height: 1.65;
   }
   
-  /* Arabic RTL Typography */
   h1, h2, h3, h4, h5, h6 {
-    @apply font-amiri;
+    @apply font-amiri tracking-tight;
   }
   
   /* Chess piece animations */
@@ -155,27 +147,26 @@
     animation: fade-in 0.3s ease-out;
   }
   
-  /* Button variants for chess UI */
+  /* Legacy button classes kept, visuals updated to new identity */
   .btn-chess-primary {
-    background: var(--gradient-primary);
+    background: hsl(var(--primary));
     color: hsl(var(--primary-foreground));
-    border: none;
+    border: 1px solid hsl(var(--primary));
     border-radius: var(--radius);
     padding: 0.75rem 1.5rem;
-    font-weight: 600;
+    font-weight: 700;
     transition: var(--transition-smooth);
     box-shadow: var(--shadow-elegant);
   }
   
   .btn-chess-primary:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-glow);
+    filter: brightness(1.05);
   }
   
   .btn-chess-secondary {
-    background: var(--gradient-secondary);
+    background: hsl(var(--secondary));
     color: hsl(var(--secondary-foreground));
-    border: none;
+    border: 1px solid hsl(var(--border));
     border-radius: var(--radius);
     padding: 0.75rem 1.5rem;
     font-weight: 600;
@@ -197,20 +188,7 @@
   }
   
   @keyframes slide-in-right {
-    from {
-      transform: translateX(100%);
-    }
-    to {
-      transform: translateX(0);
-    }
-  }
-  
-  @keyframes pulse-glow {
-    0%, 100% {
-      box-shadow: 0 0 5px hsl(var(--primary) / 0.5);
-    }
-    50% {
-      box-shadow: 0 0 20px hsl(var(--primary) / 0.8);
-    }
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
   }
 }

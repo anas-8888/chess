@@ -44,6 +44,12 @@ router.post('/:id/cancel', inviteController.cancelInvite);
 // POST /api/invites/:id/start-game - Start game with method
 router.post('/:id/start-game', inviteController.startGame);
 
+// GET /api/invites/dashboard - Get pending invites for dashboard
+router.get('/dashboard', inviteController.getPendingInvitesForDashboard);
+
+// POST /api/invites/send - Send invite to friend
+router.post('/send', inviteController.sendInviteToFriend);
+
 // GET /api/invites/:id - Get invite by ID
 router.get('/:id', inviteIdValidation, inviteController.getById);
 
@@ -52,12 +58,6 @@ router.put('/:id', updateInviteValidation, inviteController.update);
 
 // DELETE /api/invites/:id - Delete invite
 router.delete('/:id', inviteIdValidation, inviteController.deleteInvite);
-
-// GET /api/invites/dashboard - Get pending invites for dashboard
-router.get('/dashboard', inviteController.getPendingInvitesForDashboard);
-
-// POST /api/invites/send - Send invite to friend
-router.post('/send', inviteController.sendInviteToFriend);
 
 // POST /api/invites/:id/accept - Accept invite for dashboard
 router.post('/:id/accept', inviteController.acceptInviteForDashboard);

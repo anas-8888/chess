@@ -25,6 +25,64 @@ export interface UserStats {
   rating: number;
 }
 
+export interface UserSession {
+  id?: string;
+  session_id?: string;
+  ip_address?: string;
+  user_agent?: string;
+  created_at: string;
+  expires_at?: string;
+  last_activity?: string;
+  is_current?: boolean;
+}
+
+export interface RecentGame {
+  id: number;
+  status: 'waiting' | 'active' | 'ended';
+  game_type: string;
+  started_at: string;
+  ended_at?: string | null;
+  opponent: string;
+  color: 'white' | 'black';
+  result: 'فوز' | 'خسارة' | 'تعادل' | 'جارية';
+}
+
+export interface GameMoveItem {
+  san: string;
+  playerId: number;
+  playerName: string;
+  timestamp: string;
+}
+
+export interface GameMovePair {
+  moveNumber: number;
+  white: GameMoveItem | null;
+  black: GameMoveItem | null;
+  fen: string | null;
+}
+
+export interface ActiveAiGameSession {
+  gameId: number;
+  playerColor: 'white' | 'black';
+  aiLevel: number;
+  initialTime: number;
+  whiteTimeLeft: number;
+  blackTimeLeft: number;
+  currentFen: string;
+  currentTurn: 'white' | 'black';
+  status: 'active' | 'ended' | 'waiting';
+  startedAt: string;
+  clockSyncedAt?: string;
+}
+
+export interface ActiveGameSummary {
+  id: number;
+  status: 'waiting' | 'active' | 'ended';
+  game_type: string;
+  color: 'white' | 'black';
+  started_at: string;
+}
+
 class UserService {
   private getAuthHeaders(): Record<string, string> {
     return authService.getAuthHeaders();
@@ -44,7 +102,12 @@ class UserService {
       }
 
       const data = await response.json();
-      return data.data || data;
+      const profile = data.data || data;
+      return {
+        ...profile,
+        avatar: profile.avatar || profile.thumbnail,
+        rating: profile.rating || profile.rank || 1200,
+      };
     } catch (error) {
       console.error('Error fetching user profile:', error);
       throw error;
@@ -75,10 +138,16 @@ class UserService {
   // Update user profile
   async updateProfile(updates: Partial<UserProfile>): Promise<UserProfile> {
     try {
+      const payload: Record<string, unknown> = { ...updates };
+      if (typeof updates.avatar === 'string') {
+        payload.thumbnail = updates.avatar;
+        delete payload.avatar;
+      }
+
       const response = await fetch(`${API_BASE_URL}/api/users/profile`, {
         method: 'PUT',
         headers: this.getAuthHeaders(),
-        body: JSON.stringify(updates),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -114,8 +183,7 @@ class UserService {
         return;
       }
 
-      const data = await response.json();
-      console.log('Status updated:', data);
+      await response.json();
     } catch (error) {
       console.error('Error updating status:', error);
       // Don't throw error to avoid breaking the app
@@ -187,6 +255,291 @@ class UserService {
     } catch (error) {
       console.error('Error getting current user status:', error);
       throw error;
+    }
+  }
+
+  async getProfileStats(): Promise<UserProfile> {
+    const response = await fetch(`${API_BASE_URL}/api/users/profile/stats`, {
+      method: 'GET',
+      headers: this.getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'فشل في جلب إحصائيات الملف الشخصي');
+    }
+
+    const data = await response.json();
+    const profile = data.data || data;
+    return {
+      ...profile,
+      avatar: profile.avatar || profile.thumbnail,
+      rating: profile.rating || profile.rank || 1200,
+    };
+  }
+
+  async getRecentGames(limit = 10): Promise<RecentGame[]> {
+    const response = await fetch(`${API_BASE_URL}/api/users/profile/recent-games?limit=${limit}`, {
+      method: 'GET',
+      headers: this.getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'فشل في جلب آخر المباريات');
+    }
+
+    const data = await response.json();
+    return data.data || [];
+  }
+
+  async getCurrentActiveGame(): Promise<ActiveGameSummary | null> {
+    const response = await fetch(`${API_BASE_URL}/api/users/games/active`, {
+      method: 'GET',
+      headers: this.getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'فشل في جلب المباراة الجارية');
+    }
+
+    const data = await response.json();
+    return data?.data || null;
+  }
+
+  async endCurrentGame(gameId: number): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/api/users/games/${gameId}/end`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'فشل في إنهاء المباراة');
+    }
+  }
+
+  async getGameMoves(gameId: number): Promise<GameMovePair[]> {
+    const response = await fetch(`${API_BASE_URL}/api/game/${gameId}/moves`, {
+      method: 'GET',
+      headers: this.getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'فشل في جلب سجل النقلات');
+    }
+
+    const data = await response.json();
+    return data?.data?.moves || [];
+  }
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/api/users/change-password`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'فشل في تغيير كلمة المرور');
+    }
+  }
+
+  async uploadAvatar(image: File | string): Promise<{ avatar: string; thumbnail: string }> {
+    const token = authService.getToken();
+    const authHeaders: Record<string, string> = token
+      ? { Authorization: `Bearer ${token}` }
+      : {};
+
+    const isFile = typeof image !== 'string';
+    const response = await fetch(`${API_BASE_URL}/api/users/profile/avatar`, {
+      method: 'POST',
+      headers: isFile
+        ? authHeaders
+        : {
+            ...authHeaders,
+            'Content-Type': 'application/json',
+          },
+      body: isFile ? image : JSON.stringify({ imageData: image }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'فشل في رفع الصورة');
+    }
+
+    const data = await response.json();
+    return data.data || data;
+  }
+
+  async getSessions(): Promise<UserSession[]> {
+    const response = await fetch(`${API_BASE_URL}/api/users/sessions`, {
+      method: 'GET',
+      headers: this.getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'فشل في جلب الجلسات');
+    }
+
+    const data = await response.json();
+    const rows = Array.isArray(data) ? data : [];
+    return rows.map((session: any) => ({
+      ...session,
+      id: session.id || session.session_id,
+    }));
+  }
+
+  async revokeSession(sessionId: string): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/api/users/sessions/revoke`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ sessionId }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'فشل في إنهاء الجلسة');
+    }
+  }
+
+  async revokeOtherSessions(): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/api/users/sessions/revoke-others`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({}),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'فشل في إنهاء الجلسات الأخرى');
+    }
+  }
+
+  async recordAiGameResult(payload: {
+    result: 'win' | 'loss' | 'draw';
+    playerColor: 'white' | 'black';
+    aiLevel?: number;
+    initialTime?: number;
+    whiteTimeLeft?: number;
+    blackTimeLeft?: number;
+    finalFen?: string;
+    startedAt?: string;
+    endedAt?: string;
+  }): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/api/game/ai/result`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'فشل في حفظ نتيجة مباراة الذكاء الاصطناعي');
+    }
+  }
+
+  async createAiGameSession(payload: {
+    playerColor: 'white' | 'black';
+    aiLevel?: number;
+    initialTime?: number;
+  }): Promise<{ gameId: number; aiUserId: number }> {
+    const response = await fetch(`${API_BASE_URL}/api/game/ai/session`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'فشل في إنشاء مباراة الذكاء الاصطناعي');
+    }
+
+    const data = await response.json();
+    return data.data;
+  }
+
+  async getActiveAiGameSession(): Promise<ActiveAiGameSession | null> {
+    const response = await fetch(`${API_BASE_URL}/api/game/ai/session/active`, {
+      method: 'GET',
+      headers: this.getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'فشل في جلب جلسة مباراة الذكاء الاصطناعي');
+    }
+
+    const data = await response.json();
+    return data?.data || null;
+  }
+
+  async syncGameClock(
+    gameId: number,
+    payload: {
+      whiteTimeLeft: number;
+      blackTimeLeft: number;
+      currentTurn: 'white' | 'black';
+    }
+  ): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/api/game/${gameId}/update-time`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'فشل في مزامنة وقت المباراة');
+    }
+  }
+
+  async recordAiGameMove(
+    gameId: number,
+    payload: {
+      from: string;
+      to: string;
+      promotion?: string;
+      san: string;
+      fenAfter: string;
+      movedBy: 'human' | 'ai';
+      nextTurn?: 'white' | 'black';
+    }
+  ): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/api/game/ai/${gameId}/move`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'فشل في حفظ النقلة');
+    }
+  }
+
+  async finalizeAiGame(
+    gameId: number,
+    payload: {
+      result: 'win' | 'loss' | 'draw';
+      finalFen: string;
+      whiteTimeLeft: number;
+      blackTimeLeft: number;
+    }
+  ): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/api/game/ai/${gameId}/finalize`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'فشل في إنهاء مباراة الذكاء الاصطناعي');
     }
   }
 }

@@ -158,13 +158,11 @@ export async function updateUserStatus(userId, status) {
     
     // التحقق من الحالة الحالية قبل التحديث
     if (user.state === status) {
-      logger.debug(`${userId} ${status}`);
       return;
     }
 
     // لا تخفض الحالة من in-game عبر تحديثات socket العادية.
     if (user.state === 'in-game' && (status === 'online' || status === 'offline')) {
-      logger.debug(`${userId} in-game ${status}`);
       return;
     }
     
@@ -565,12 +563,8 @@ export async function handleInviteResponse(socket, nsp, userId, { inviteId, resp
 // Game management helpers
 export async function startClock(nsp, gameId) {
   try {
-    logger.info(`=== STARTCLOCK CALLED for game ${gameId} ===`);
-    logger.info(`startClock called for game ${gameId} - checking if already running`);
-    
     // التحقق من وجود مؤقت نشط بالفعل
     if (gameTimers[gameId]) {
-      logger.info(`Clock already running for game ${gameId}, not starting again`);
       return;
     }
 
@@ -581,8 +575,6 @@ export async function startClock(nsp, gameId) {
       return;
     }
 
-    logger.info(`Game ${gameId} found - status: ${game.status}, white_time_left: ${game.white_time_left}, black_time_left: ${game.black_time_left}, current_turn: ${game.current_turn}`);
-
     // تخزين بيانات المؤقت في الذاكرة
     gameTimerData.set(gameId, {
       whiteTimeLeft: game.white_time_left,
@@ -591,68 +583,52 @@ export async function startClock(nsp, gameId) {
       game: game
     });
 
-    logger.info(`Timer data stored in memory for game ${gameId}:`, {
-      whiteTimeLeft: game.white_time_left,
-      blackTimeLeft: game.black_time_left,
-      currentTurn: game.current_turn
-    });
-
-    logger.info(`Setting up setInterval for game ${gameId} - will run every 1000ms`);
-    
     // إرسال تحديث فوري للمؤقت
-    logger.info(`=== EMITTING IMMEDIATE CLOCK UPDATE for game ${gameId} ===`);
     nsp.to(`game::${gameId}`).emit('clockUpdate', {
       whiteTimeLeft: game.white_time_left,
       blackTimeLeft: game.black_time_left,
       currentTurn: game.current_turn
     });
-    logger.info(`=== IMMEDIATE CLOCK UPDATE EMITTED for game ${gameId} ===`);
 
     // إنشاء المؤقت
     const timer = setInterval(async () => {
       try {
-        logger.info(`=== CLOCK TICK STARTED for game ${gameId} ===`);
-        logger.info(`Timer ID: ${timer}, Interval running for game ${gameId}`);
-        
         // الحصول على بيانات المؤقت من الذاكرة
         const timerData = gameTimerData.get(gameId);
         if (!timerData) {
-          logger.error(`Timer data not found for game ${gameId}, stopping clock`);
           clearInterval(timer);
           delete gameTimers[gameId];
           return;
         }
 
         const { whiteTimeLeft, blackTimeLeft, currentTurn } = timerData;
-        
-        logger.info(`Clock tick for game ${gameId} - current turn: ${currentTurn}`);
-        logger.info(`Game ${gameId} current state:`, { whiteTimeLeft, blackTimeLeft, currentTurn });
-        logger.info(`Room name: game::${gameId}`);
-        logger.info(`Active timers:`, Object.keys(gameTimers));
-        logger.info(`Timer data keys:`, Array.from(gameTimerData.keys()));
+
+        // إذا لم يبق أي عضو في غرفة اللعبة، أوقف المؤقت (لا نكمل العد في الخلفية)
+        const roomName = `game::${gameId}`;
+        const roomMembers = nsp.adapter.rooms.get(roomName);
+        const roomSize = roomMembers?.size || 0;
+        if (roomSize === 0) {
+          await stopClock(gameId);
+          return;
+        }
         
         // تخفيض وقت اللاعب الحالي
         let newWhiteTime = whiteTimeLeft;
         let newBlackTime = blackTimeLeft;
-        let newCurrentTurn = currentTurn;
         
         if (currentTurn === 'white') {
           newWhiteTime = Math.max(0, whiteTimeLeft - 1);
-          logger.info(`Decreased white time from ${whiteTimeLeft} to ${newWhiteTime}`);
           
           // التحقق من انتهاء الوقت
           if (newWhiteTime === 0) {
-            logger.info(`White player ran out of time in game ${gameId}`);
             await handleGameTimeout(nsp, gameId, 'white');
             return;
           }
         } else if (currentTurn === 'black') {
           newBlackTime = Math.max(0, blackTimeLeft - 1);
-          logger.info(`Decreased black time from ${blackTimeLeft} to ${newBlackTime}`);
           
           // التحقق من انتهاء الوقت
           if (newBlackTime === 0) {
-            logger.info(`Black player ran out of time in game ${gameId}`);
             await handleGameTimeout(nsp, gameId, 'black');
             return;
           }
@@ -663,12 +639,6 @@ export async function startClock(nsp, gameId) {
           ...timerData,
           whiteTimeLeft: newWhiteTime,
           blackTimeLeft: newBlackTime
-        });
-        
-        logger.info(`Updated timer data in memory for game ${gameId}:`, {
-          whiteTimeLeft: newWhiteTime,
-          blackTimeLeft: newBlackTime,
-          currentTurn: currentTurn
         });
         
         // تحديث قاعدة البيانات مع retry mechanism
@@ -686,11 +656,6 @@ export async function startClock(nsp, gameId) {
             });
             
             if (updateResult.success) {
-              logger.info(`Database updated successfully for game ${gameId}:`, {
-                whiteTimeLeft: newWhiteTime,
-                blackTimeLeft: newBlackTime,
-                currentTurn: currentTurn
-              });
               dbUpdateSuccess = true;
             } else {
               logger.error(`Failed to update database for game ${gameId}:`, updateResult.message);
@@ -709,14 +674,6 @@ export async function startClock(nsp, gameId) {
         }
         
         // إرسال التحديث للعملاء حتى لو فشل تحديث قاعدة البيانات
-        logger.info(`=== EMITTING CLOCK UPDATE for game ${gameId} ===`);
-        logger.info(`Emitting to room: game::${gameId}`);
-        logger.info(`Data being emitted:`, {
-          whiteTimeLeft: newWhiteTime,
-          blackTimeLeft: newBlackTime,
-          currentTurn: currentTurn
-        });
-        
         nsp.to(`game::${gameId}`).emit('clockUpdate', {
           whiteTimeLeft: newWhiteTime,
           blackTimeLeft: newBlackTime,
@@ -726,7 +683,6 @@ export async function startClock(nsp, gameId) {
         // Also emit to individual players to ensure delivery
         const game = await Game.findByPk(gameId);
         if (game && game.white_player_id) {
-          logger.info(`=== EMITTING CLOCK UPDATE to white player ${game.white_player_id} ===`);
           nsp.to(`user::${game.white_player_id}`).emit('clockUpdate', {
             whiteTimeLeft: newWhiteTime,
             blackTimeLeft: newBlackTime,
@@ -734,23 +690,16 @@ export async function startClock(nsp, gameId) {
           });
         }
         if (game && game.black_player_id) {
-          logger.info(`=== EMITTING CLOCK UPDATE to black player ${game.black_player_id} ===`);
           nsp.to(`user::${game.black_player_id}`).emit('clockUpdate', {
             whiteTimeLeft: newWhiteTime,
             blackTimeLeft: newBlackTime,
             currentTurn: currentTurn
           });
         }
-        
-        logger.info(`=== CLOCK UPDATE EMITTED for game ${gameId} ===`);
-        logger.info(`=== CLOCK TICK COMPLETED for game ${gameId} ===`);
-        
       } catch (error) {
         logger.error(`Error in clock tick for game ${gameId}:`, error);
-        logger.info(`=== CLOCK TICK FAILED for game ${gameId} ===`);
-        
+
         // إعادة تشغيل المؤقت في حالة الخطأ
-        logger.info(`Restarting clock for game ${gameId} due to error`);
         clearInterval(timer);
         delete gameTimers[gameId];
         setTimeout(() => {
@@ -763,7 +712,7 @@ export async function startClock(nsp, gameId) {
     
     // حفظ المؤقت
     gameTimers[gameId] = timer;
-    logger.info(`Clock started for game ${gameId} - timer ID: ${timer}`);
+    logger.info(`Clock started for game ${gameId}`);
     
   } catch (error) {
     logger.error(`Error starting clock for game ${gameId}:`, error);
@@ -772,14 +721,10 @@ export async function startClock(nsp, gameId) {
 
 export async function stopClock(gameId) {
   try {
-    logger.info(`stopClock called for game ${gameId} - checking if timer exists`);
-    
     if (gameTimers[gameId]) {
       clearInterval(gameTimers[gameId]);
       delete gameTimers[gameId];
       logger.info(`Clock stopped for game ${gameId}`);
-    } else {
-      logger.info(`No active timer found for game ${gameId}`);
     }
     
     // إزالة بيانات المؤقت من الذاكرة

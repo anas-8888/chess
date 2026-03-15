@@ -1,8 +1,28 @@
 import express from 'express';
-import { getGameDetails, updateGameTime, getGameMoves, getGameDuration, controlPlayer, getGameState } from '../controllers/gameController.js';
+import {
+  getGameDetails,
+  updateGameTime,
+  getGameMoves,
+  getGameDuration,
+  controlPlayer,
+  getGameState,
+  recordAiGameResult,
+  createAiGameSession,
+  getActiveAiGameSession,
+  recordAiGameMove,
+  finalizeAiGame,
+} from '../controllers/gameController.js';
 import { validateGameId, validateUpdateTime } from '../middlewares/validation/gameValidation.js';
+import { protect } from '../middlewares/authMiddleware.js';
 
 const router = express.Router();
+
+// تسجيل نتيجة مباراة الذكاء الاصطناعي
+router.post('/ai/result', protect, recordAiGameResult);
+router.post('/ai/session', protect, createAiGameSession);
+router.get('/ai/session/active', protect, getActiveAiGameSession);
+router.post('/ai/:gameId/move', protect, recordAiGameMove);
+router.post('/ai/:gameId/finalize', protect, finalizeAiGame);
 
 // الحصول على تفاصيل اللعبة
 router.get('/:id', validateGameId, getGameDetails);

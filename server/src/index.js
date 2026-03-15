@@ -35,12 +35,18 @@ import {
   scheduleSessionCleanup,
   cleanExpiredSessions,
 } from './services/authService.js';
+import {
+  cleanupExpiredGames,
+  scheduleGameCleanup,
+} from './services/gameCleanupService.js';
 
 // Clean expired sessions on startup
 cleanExpiredSessions();
+cleanupExpiredGames();
 
 // Schedule regular cleanup
 scheduleSessionCleanup();
+scheduleGameCleanup();
 
 // Import routes
 import authRoutes from './routes/authRoutes.js';
@@ -205,6 +211,7 @@ app.use('/css', express.static(path.join(__dirname, '../../public/css')));
 app.use('/js', express.static(path.join(__dirname, '../../public/js')));
 app.use('/img', express.static(path.join(__dirname, '../../public/img')));
 app.use('/admin', express.static(path.join(__dirname, '../../public/admin')));
+app.use('/thumbnails', express.static(path.join(__dirname, '../storage')));
 
 // Backward-compatible avatar path used by existing DB records.
 app.get('/img/default-avatar.png', (req, res, next) => {

@@ -44,7 +44,9 @@ const PublicRoute: React.FC<PublicRouteProps> = ({
 
   // If authenticated, redirect to dashboard or intended page
   if (isAuthenticated) {
-    const from = location.state?.from?.pathname || '/dashboard';
+    const currentUser = authService.getCurrentUser();
+    const defaultPath = currentUser?.type === 'admin' ? '/admin' : '/dashboard';
+    const from = location.state?.from?.pathname || defaultPath;
     return <Navigate to={from} replace />;
   }
 

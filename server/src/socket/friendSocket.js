@@ -15,6 +15,7 @@ import {
   sendFriendsStatusToUser,
   handleGameMove,
   startClock,
+  stopClock,
   handleGameEnd
 } from './socketHelpers.js';
 import logger from '../utils/logger.js';
@@ -27,15 +28,12 @@ async function updateUserStatus(userId, status) {
   try {
     const user = await User.findByPk(userId);
     if (user && user.state === 'in-game' && (status === 'online' || status === 'offline')) {
-      logger.debug(`User ${userId} is in-game; skipping transition to ${status}`);
       return false;
     }
     if (user && user.state !== status) {
       await user.update({ state: status });
-      logger.debug(`Updated user ${userId} status to ${status}`);
       return true;
     } else if (user && user.state === status) {
-      logger.debug(`User ${userId} is already ${status}`);
       return false;
     } else {
       logger.error(`User not found: ${userId}`);
@@ -303,30 +301,16 @@ export function initFriendSocket(io) {
     // Handle player connection to game room
     socket.on('joinGameRoom', async ({ gameId }) => {
       try {
-        logger.info('=== FRIEND SOCKET: Received joinGameRoom request ===');
-        logger.info('Player joined game room:', { userId, gameId });
-        
-        // التحقق من أن socket.join يتم تنفيذه بنجاح
-        logger.info(`Attempting to join room game::${gameId} for user ${userId}`);
         socket.join(`game::${gameId}`);
-        logger.info(`Successfully joined room game::${gameId} for user ${userId}`);
-        
-        // التحقق من الغرف التي ينتمي إليها العميل
-        logger.info(`User ${userId} is now in rooms:`, Array.from(socket.rooms));
         
         // Check if game exists and is active
         const game = await Game.findByPk(gameId);
-        logger.info(`Game ${gameId} status: ${game?.status}`);
         
         if (game && game.status === 'active') {
           // Start clock if not already running
-          logger.info(`=== JOIN GAME ROOM: Starting clock for game ${gameId} ===`);
           await startClock(nsp, gameId);
-          logger.info(`=== JOIN GAME ROOM: Clock started for game ${gameId} ===`);
         } else if (!game) {
           logger.error(`Game ${gameId} not found when player joined`);
-        } else if (game.status !== 'active') {
-          logger.info(`Game ${gameId} is not active (status: ${game.status})`);
         }
         
         socket.to(`game::${gameId}`).emit('playerConnected', { 
@@ -334,18 +318,6 @@ export function initFriendSocket(io) {
           gameId,
           timestamp: new Date()
         });
-        
-        logger.info('=== FRIEND SOCKET: joinGameRoom completed successfully ===');
-        
-        // Add a final verification after a short delay
-        setTimeout(() => {
-          const finalRoomMembers = nsp.adapter.rooms.get(`game::${gameId}`);
-          const finalIsInRoom = socket.rooms.has(`game::${gameId}`);
-          logger.info(`=== FRIEND SOCKET: Final room verification after delay ===`);
-          logger.info(`=== FRIEND SOCKET: Socket still in room: ${finalIsInRoom}`);
-          logger.info(`=== FRIEND SOCKET: Final room members:`, finalRoomMembers?.size || 0);
-          logger.info(`=== FRIEND SOCKET: Final room members details:`, finalRoomMembers ? Array.from(finalRoomMembers) : []);
-        }, 1000);
         
       } catch (error) {
         logger.error('Failed to join game room:', error);
@@ -358,6 +330,12 @@ export function initFriendSocket(io) {
         logger.debug('Player left game room:', { userId, gameId });
         
         socket.leave(`game::${gameId}`);
+
+        const roomName = `game::${gameId}`;
+        const roomMembers = nsp.adapter.rooms.get(roomName);
+        if (!roomMembers || roomMembers.size === 0) {
+          await stopClock(gameId);
+        }
         
         socket.to(`game::${gameId}`).emit('playerDisconnected', { 
           userId, 
