@@ -19,7 +19,7 @@ export const getGameDetails = async (req, res) => {
     res.json(result);
 
   } catch (error) {
-    logger.error(':', error);
+    logger.error('Failed to get game details:', error);
     res.status(500).json({
       success: false,
       message: 'خطأ في الخادم'
@@ -42,7 +42,7 @@ export const getGamesList = async (req, res) => {
       }
     });
   } catch (error) {
-    logger.error(':', error);
+    logger.error('Failed to get games list:', error);
     res.status(500).json({
       success: false,
       message: 'خطأ في الخادم'
@@ -65,7 +65,7 @@ export const updateGameTime = async (req, res) => {
     res.json(result);
 
   } catch (error) {
-    logger.error(':', error);
+    logger.error('Failed to update game time:', error);
     res.status(500).json({
       success: false,
       message: 'خطأ في الخادم'
@@ -153,7 +153,7 @@ export const getGameMoves = async (req, res) => {
     });
 
   } catch (error) {
-    logger.error(':', error);
+    logger.error('Failed to fetch game moves:', error);
     res.status(500).json({
       success: false,
       message: 'خطأ في جلب النقلات'
@@ -175,7 +175,7 @@ export const getGameDuration = async (req, res) => {
     res.json(result);
 
   } catch (error) {
-    logger.error(':', error);
+    logger.error('Failed to get game duration:', error);
     res.status(500).json({
       success: false,
       message: 'خطأ في الخادم'
@@ -358,7 +358,7 @@ export const controlPlayer = async (req, res) => {
     }
 
   } catch (error) {
-    logger.error(':', error);
+    logger.error('Player control operation failed:', error);
     res.status(500).json({
       success: false,
       message: 'خطأ في الخادم'
@@ -430,7 +430,7 @@ export const getGameState = async (req, res) => {
     });
 
   } catch (error) {
-    logger.error(':', error);
+    logger.error('Failed to get game state:', error);
     res.status(500).json({
       success: false,
       message: 'خطأ في الخادم'

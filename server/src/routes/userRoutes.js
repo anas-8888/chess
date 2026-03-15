@@ -147,7 +147,7 @@ router.put('/status', async (req, res) => {
         });
         
     } catch (error) {
-        logger.error(':', error);
+        logger.error('Failed to update current user status:', error);
         res.status(500).json({ 
             success: false, 
             message: 'خطأ في تحديث الحالة',

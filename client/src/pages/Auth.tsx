@@ -7,7 +7,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { apiClient } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
-import { testApiConnection, testEnvironment } from '@/utils/test-api';
 import { useSearchParams } from 'react-router-dom';
 
 const Auth = () => {
@@ -31,20 +30,6 @@ const Auth = () => {
       setActiveTab(tab);
     }
   }, [searchParams]);
-
-  // Test API connection on component mount
-  React.useEffect(() => {
-    testEnvironment();
-    testApiConnection().then(isConnected => {
-      if (!isConnected) {
-        toast({
-          title: "تحذير",
-          description: "لا يمكن الاتصال بالخادم. تأكد من تشغيل الباك-إند.",
-          variant: "destructive",
-        });
-      }
-    });
-  }, [toast]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

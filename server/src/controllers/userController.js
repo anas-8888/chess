@@ -208,7 +208,7 @@ export const searchUsersController = asyncHandler(async (req, res) => {
 
     res.status(200).json(limitedUsers);
   } catch (error) {
-    logger.error(':', error);
+    logger.error('User search failed:', error);
     res.status(500).json(formatError('فشل البحث عن المستخدمين'));
   }
 });
@@ -435,7 +435,7 @@ export const getProfileWithStats = asyncHandler(async (req, res) => {
 
     res.status(200).json(response);
   } catch (error) {
-    logger.error(':', error);
+    logger.error('Failed to fetch profile statistics:', error);
     res.status(500).json(formatError('خطأ في جلب إحصائيات المستخدم'));
   }
 });
@@ -548,7 +548,7 @@ export const getUserTokenAndLastGame = asyncHandler(async (req, res) => {
     });
 
   } catch (error) {
-    logger.error(':', error);
+    logger.error('Failed to get user token and latest game:', error);
     res.status(500).json({
       success: false,
       message: 'خطأ في الخادم'

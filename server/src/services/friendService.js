@@ -11,10 +11,10 @@ export async function getFriends(userId) {
     // التحقق من وجود المستخدم
     const user = await User.findByPk(userId);
     if (!user) {
-      logger.debug(':', userId);
+      logger.debug('User not found:', userId);
       return [];
     }
-    logger.debug(':', user.username);
+    logger.debug('User found:', user.username);
 
     // جلب علاقات الصداقة
     const friends = await Friend.findAll({
@@ -45,8 +45,8 @@ export async function getFriends(userId) {
       })
     );
 
-    logger.debug(':', friends.length);
-    logger.debug(':', friends.map(f => ({
+    logger.debug('Friendship relations count:', friends.length);
+    logger.debug('Friendship relations:', friends.map(f => ({
       id: f.id,
       user_id: f.user_id,
       friend_user_id: f.friend_user_id,
@@ -55,7 +55,7 @@ export async function getFriends(userId) {
 
     // معالجة النتائج
     const mappedFriends = friendData.map(({ friendship, friendUser, isUserInitiator }) => {
-      logger.debug(':', {
+      logger.debug('Processing friend:', {
         friendId: friendUser.user_id,
         username: friendUser.username,
         isInitiator: isUserInitiator
@@ -74,12 +74,12 @@ export async function getFriends(userId) {
       };
     });
 
-    logger.debug(':', mappedFriends);
+    logger.debug('Mapped friends:', mappedFriends);
     logger.debug('=== ===');
 
     return mappedFriends;
   } catch (error) {
-    logger.error(':', error);
+    logger.error('Failed to fetch friends:', error);
     throw error;
   }
 }
@@ -193,7 +193,7 @@ export async function rejectFriendRequest(friendshipId, userId) {
 
 export async function deleteFriend(userId, friendUserId) {
   try {
-    logger.debug(':', { userId, friendUserId });
+    logger.debug('Deleting friend:', { userId, friendUserId });
 
     // التحقق من وجود المستخدمين
     const [user, friend] = await Promise.all([
@@ -205,7 +205,7 @@ export async function deleteFriend(userId, friendUserId) {
       throw new Error('One or both users not found');
     }
 
-    logger.debug(':', {
+    logger.debug('User lookup result:', {
       userExists: !!user,
       friendExists: !!friend,
       userUsername: user?.username,
@@ -227,7 +227,7 @@ export async function deleteFriend(userId, friendUserId) {
       throw new Error('Friendship not found or not accepted');
     }
 
-    logger.debug(':', friendship ? {
+    logger.debug('Friendship lookup result:', friendship ? {
       id: friendship.id,
       user_id: friendship.user_id,
       friend_user_id: friendship.friend_user_id,
@@ -237,7 +237,7 @@ export async function deleteFriend(userId, friendUserId) {
     // حذف علاقة الصداقة
     await friendship.destroy();
 
-    logger.debug('Log message');
+    logger.debug('Friendship deleted successfully');
 
     return {
       success: true,

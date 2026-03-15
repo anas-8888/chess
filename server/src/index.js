@@ -415,27 +415,27 @@ app.get('/api/stats', async (req, res) => {
     
     try {
       totalUsers = await User.count();
-      } catch (error) {
-    logger.error(':', error);
-  }
+    } catch (error) {
+      logger.error('Failed to count users:', error);
+    }
     
     try {
       totalGames = await Game.count();
-      } catch (error) {
-    logger.error(':', error);
-  }
+    } catch (error) {
+      logger.error('Failed to count games:', error);
+    }
     
     try {
       totalPuzzles = await Puzzle.count();
-      } catch (error) {
-    logger.error(':', error);
-  }
+    } catch (error) {
+      logger.error('Failed to count puzzles:', error);
+    }
     
     try {
       totalCourses = await Course.count();
-      } catch (error) {
-    logger.error(':', error);
-  }
+    } catch (error) {
+      logger.error('Failed to count courses:', error);
+    }
     
     res.json({
       success: true,
@@ -447,7 +447,7 @@ app.get('/api/stats', async (req, res) => {
       }
     });
   } catch (error) {
-    logger.error(':', error);
+    logger.error('Failed to fetch site stats:', error);
     // إرجاع بيانات افتراضية في حالة الخطأ
     res.json({
       success: true,
@@ -579,7 +579,7 @@ app.get('/api/search', async (req, res) => {
       data: results.slice(0, 10) // إرجاع أول 10 نتائج فقط
     });
   } catch (error) {
-    logger.error(':', error);
+    logger.error('Search endpoint failed:', error);
     res.json({
       success: true,
       data: []

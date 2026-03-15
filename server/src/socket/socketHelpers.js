@@ -29,7 +29,7 @@ const LOG_CONFIG = {
 // Function to update logging configuration
 export function updateLogConfig(newConfig) {
   Object.assign(LOG_CONFIG, newConfig);
-  logger.info('Log message', LOG_CONFIG);
+  logger.info('Logging configuration updated', LOG_CONFIG);
 }
 
 // Function to get current log config
@@ -44,7 +44,7 @@ export function disableDetailedLogging() {
     showStatusUpdates: false,
     showStats: false
   });
-  logger.info('Log message');
+  logger.info('All verbose logging disabled');
 }
 
 // Function to enable minimal logging (only important events)
@@ -54,7 +54,7 @@ export function enableMinimalLogging() {
     showStatusUpdates: true,  // إظهار فقط تحديثات الحالة المهمة
     showStats: false
   });
-  logger.info('( )');
+  logger.info('Simple logging enabled (important events only)');
 }
 
 // Authentication helper
@@ -91,16 +91,16 @@ export function addUserConnection(userId, socketId) {
   // تحديث حالة المستخدم إلى online عند أول اتصال
   if (totalConnections === 1) {
     updateUserStatus(userId, 'online').catch(error => {
-      logger.error('online', error);
+      logger.error('Failed to set user status to online:', error);
     });
   }
   
   // طباعة رسالة فقط عند أول اتصال أو عند تغيير عدد الاتصالات
   if (LOG_CONFIG.showDetailedConnections) {
     if (totalConnections === 1) {
-      logger.debug(`${userId} (${socketId})`);
+      logger.debug(`New user connection: user=${userId}, socket=${socketId}`);
     } else {
-      logger.debug(`${userId} - : ${totalConnections}`);
+      logger.debug(`Additional connection for user ${userId}; total connections: ${totalConnections}`);
     }
   }
 }
@@ -118,10 +118,10 @@ export function removeUserConnection(userId, socketId) {
       
       // تحديث حالة المستخدم إلى offline عند قطع آخر اتصال
       updateUserStatus(userId, 'offline').catch(error => {
-        logger.error('offline', error);
+        logger.error('Failed to set user status to offline:', error);
       });
     } else if (LOG_CONFIG.showDetailedConnections) {
-      logger.debug(`➖ ${userId} - : ${remainingConnections}`);
+      logger.debug(`Connection removed for user ${userId}; remaining connections: ${remainingConnections}`);
     }
   }
 }
@@ -138,21 +138,21 @@ export function isUserOnline(userId) {
 export async function updateUserStatus(userId, status) {
   try {
     if (!userId || !status) {
-      logger.error(':', { userId, status });
+      logger.error('Incomplete user status payload:', { userId, status });
       return;
     }
     
     // التحقق من صحة الحالة حسب نموذج User
     const validStatuses = ['online', 'offline', 'in-game'];
     if (!validStatuses.includes(status)) {
-      logger.error(':', status);
+      logger.error('Invalid user status:', status);
       return;
     }
     
     // التحقق من وجود المستخدم أولاً
     const user = await User.findByPk(userId);
     if (!user) {
-      logger.error(':', userId);
+      logger.error('User not found:', userId);
       return;
     }
     
@@ -180,11 +180,11 @@ export async function updateUserStatus(userId, status) {
     // طباعة رسائل محسنة فقط إذا كان مفعلاً
     if (LOG_CONFIG.showStatusUpdates) {
       if (status === 'online' && connectionsCount > 0) {
-        logger.info(`🟢 ${userId} (${connectionsCount} )`);
+        logger.info(`🟢 User ${userId} is online (${connectionsCount} connections)`);
       } else if (status === 'offline') {
-        logger.info(`🔴 ${userId}`);
+        logger.info(`🔴 User ${userId} is offline`);
       } else if (status === 'in-game') {
-        logger.info(`🎮 ${userId}`);
+        logger.info(`🎮 User ${userId} is in game`);
       }
     }
     
@@ -192,7 +192,7 @@ export async function updateUserStatus(userId, status) {
     await broadcastFriendStatusUpdate(userId, status);
     
     // تسجيل التحديث مرة واحدة فقط
-    logger.debug(`${userId} ${oldStatus} ${status}`);
+    logger.debug(`User ${userId} status changed from ${oldStatus} to ${status}`);
   } catch (error) {
     logger.error('Error updating user status:', error);
   }
@@ -230,9 +230,9 @@ export async function sendFriendsStatusToUser(socket, userId) {
       }
     }
     
-    logger.debug(`📡 ${friends.length} ${userId}`);
+    logger.debug(`📡 Sent status for ${friends.length} friends to user ${userId}`);
   } catch (error) {
-    logger.error(':', error);
+    logger.error('Failed to send friends status:', error);
   }
 }
 
@@ -277,12 +277,12 @@ async function broadcastFriendStatusUpdate(userId, status) {
     }
     
     if (sentCount > 0) {
-      logger.debug(`📡 ${userId} (${status}) ${sentCount}`);
+      logger.debug(`📡 Sent status update for user ${userId} (${status}) to ${sentCount} friends`);
     } else {
       logger.debug(`${userId} (${status})`);
     }
   } catch (error) {
-    logger.error(':', error);
+    logger.error('Failed to broadcast friend status update:', error);
   }
 }
 
@@ -311,7 +311,7 @@ export async function createGame(invite) {
       started_at: new Date()
     });
     
-    logger.info(':', {
+    logger.info('Game created:', {
       gameId: game.id,
       whiteUserId: whiteUserId,
       blackUserId: blackUserId,
@@ -325,7 +325,7 @@ export async function createGame(invite) {
     
     return game;
   } catch (error) {
-    logger.error(':', error);
+    logger.error('Failed to create game:', error);
     throw error;
   }
 }
@@ -358,7 +358,7 @@ export async function createGameWithMethods(invite) {
       started_at: new Date()
     });
     
-    logger.info(':', {
+    logger.info('Game created with play methods:', {
       gameId: game.id,
       whiteUserId: whiteUserId,
       blackUserId: blackUserId,
@@ -373,7 +373,7 @@ export async function createGameWithMethods(invite) {
     
     return game;
   } catch (error) {
-    logger.error(':', error);
+    logger.error('Failed to create game with play methods:', error);
     throw error;
   }
 }
@@ -381,7 +381,7 @@ export async function createGameWithMethods(invite) {
 // Invite management helpers
 export async function handleGameInvite(socket, nsp, userId, { toUserId, gameType, playMethod }) {
   try {
-    logger.info(':', { fromUserId: userId, toUserId, gameType, playMethod });
+    logger.info('Sending game invite:', { fromUserId: userId, toUserId, gameType, playMethod });
 
     // فحص البيانات المطلوبة
     if (!toUserId || !gameType || !playMethod) {
@@ -460,16 +460,16 @@ export async function handleGameInvite(socket, nsp, userId, { toUserId, gameType
     // Confirm to sender
     socket.emit('gameInviteSent', { success: true, inviteId: invite.id });
     
-    logger.info(':', invite.id);
+    logger.info('Game invite sent:', invite.id);
   } catch (error) {
-    logger.error(':', error);
+    logger.error('Failed to send game invite:', error);
     socket.emit('error', { message: error.message || 'فشل في إرسال الدعوة' });
   }
 }
 
 export async function handleInviteResponse(socket, nsp, userId, { inviteId, response }) {
   try {
-    logger.info(':', { inviteId, response, userId });
+    logger.info('Game invite response:', { inviteId, response, userId });
     
     // فحص البيانات المطلوبة
     if (!inviteId || !response) {
@@ -557,7 +557,7 @@ export async function handleInviteResponse(socket, nsp, userId, { inviteId, resp
     // Remove invite from recipient's list
     socket.emit('inviteRemoved', { inviteId });
   } catch (error) {
-    logger.error(':', error);
+    logger.error('Failed to process game invite response:', error);
     socket.emit('error', { message: error.message });
   }
 }
@@ -1123,7 +1123,7 @@ export async function cleanupExpiredInvites(nsp) {
       logger.info(`${expiredInvites.length}`);
     }
   } catch (error) {
-    logger.error(':', error);
+    logger.error('Failed to cleanup expired invites:', error);
   }
 }
 
@@ -1156,21 +1156,21 @@ export function logConnectionStats() {
   
   if (hasChanged && LOG_CONFIG.showStats) {
     if (stats.totalUsers > 0) {
-      logger.info('📊 :', {
-        مستخدمين: stats.totalUsers,
-        اتصالات: stats.totalConnections
+      logger.info('📊 Connection statistics:', {
+        users: stats.totalUsers,
+        connections: stats.totalConnections
       });
       
       // طباعة تفاصيل المستخدمين فقط إذا كان هناك أكثر من مستخدم واحد
       if (stats.userDetails.length > 1) {
-        logger.info('👥 :');
+        logger.info('👥 Connected users details:');
         stats.userDetails.forEach(user => {
           const icon = user.connectionsCount > 1 ? '📱' : '💻';
           logger.debug(`${icon} ${user.userId}: ${user.connectionsCount}`);
         });
       }
     } else {
-      logger.info('😴');
+      logger.info('😴 No connected users');
     }
     
     // تحديث الإحصائيات السابقة
@@ -1184,7 +1184,7 @@ export async function updateUserStatusAfterResign(gameId, resignedUserId) {
     // البحث عن المباراة
     const game = await Game.findByPk(gameId);
     if (!game) {
-      logger.error(':', gameId);
+      logger.error('Game not found:', gameId);
       return;
     }
     
@@ -1195,7 +1195,7 @@ export async function updateUserStatusAfterResign(gameId, resignedUserId) {
     ]);
     
     if (!resignedUser || !otherUser) {
-      logger.error(':', { resignedUserId, otherUserId: game.white_player_id === resignedUserId ? game.black_player_id : game.white_player_id });
+      logger.error('Player lookup failed after resign:', { resignedUserId, otherUserId: game.white_player_id === resignedUserId ? game.black_player_id : game.white_player_id });
       return;
     }
     
@@ -1251,7 +1251,7 @@ export async function updateUserStatusAfterResign(gameId, resignedUserId) {
       logger.debug(`ℹ️ ${gameId} -`);
     }
   } catch (error) {
-    logger.error(':', error);
+    logger.error('Failed to update user status after resign:', error);
   }
 }
 
@@ -1261,7 +1261,7 @@ export async function updateUserStatusAfterGameEnd(gameId) {
     // البحث عن المباراة
     const game = await Game.findByPk(gameId);
     if (!game) {
-      logger.error(':', gameId);
+      logger.error('Game not found:', gameId);
       return;
     }
     
@@ -1272,7 +1272,7 @@ export async function updateUserStatusAfterGameEnd(gameId) {
     ]);
     
     if (!whiteUser || !blackUser) {
-      logger.error(':', { whiteUserId: game.white_player_id, blackUserId: game.black_player_id });
+      logger.error('Player lookup failed after game end:', { whiteUserId: game.white_player_id, blackUserId: game.black_player_id });
       return;
     }
     
@@ -1326,6 +1326,6 @@ export async function updateUserStatusAfterGameEnd(gameId) {
       logger.debug(`ℹ️ ${gameId} -`);
     }
   } catch (error) {
-    logger.error(':', error);
+    logger.error('Failed to update user status after game end:', error);
   }
 }

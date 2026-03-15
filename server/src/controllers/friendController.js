@@ -12,19 +12,19 @@ import {
 export const getMyFriends = asyncHandler(async (req, res) => {
   const userId = req.user.user_id;
   
-      logger.debug(':', userId);
+      logger.debug('Fetching friends for user:', userId);
   
   try {
     const friends = await friendService.getUserFriends(userId);
     
-    logger.debug(':', friends.length);
+    logger.debug('Friends count:', friends.length);
     
     return res.status(200).json(formatResponse(friends, {
       message: friends.length === 0 ? 'لا توجد أصدقاء حالياً. أضف أصدقاء جدد!' : `تم العثور على ${friends.length} صديق`,
       count: friends.length
     }));
   } catch (error) {
-    logger.error(':', error);
+    logger.error('Failed to fetch friends:', error);
     return res.status(500).json(formatError('فشل في جلب قائمة الأصدقاء', error.message));
   }
 });
@@ -52,7 +52,7 @@ export const sendFriendRequest = asyncHandler(async (req, res) => {
   // تحويل string إلى number
   const toUserIdNumber = parseInt(toUserId);
   
-  logger.debug(':', { fromUserId, toUserId: toUserIdNumber });
+  logger.debug('Sending friend request:', { fromUserId, toUserId: toUserIdNumber });
   
   const result = await friendService.sendFriendRequest(fromUserId, toUserIdNumber);
   
@@ -66,10 +66,10 @@ export const sendFriendRequest = asyncHandler(async (req, res) => {
         requestId: result.id,
         message: 'طلب صداقة جديد'
       });
-      logger.debug('Log message');
+      logger.debug('Friend request notification sent');
     }
   } catch (error) {
-    logger.error(':', error);
+    logger.error('Failed to send friend request notification:', error);
   }
   
   return res.status(201).json(formatResponse(result, 'تم إرسال طلب الصداقة بنجاح'));
@@ -110,7 +110,7 @@ export const updateFriendRequest = asyncHandler(async (req, res) => {
   // تحديد الـ action من الـ URL path
   const action = req.path.includes('/accept/') ? 'accept' : 'reject';
   
-  console.log('Processing friend request:', { userId, friendUserId: friendUserIdNumber, action });
+  logger.debug('Processing friend request:', { userId, friendUserId: friendUserIdNumber, action });
   
   const result = await friendService.updateFriendRequest(userId, friendUserIdNumber, action);
   
@@ -132,11 +132,11 @@ export const deleteFriend = asyncHandler(async (req, res) => {
   // تحويل string إلى number
   const friendUserIdNumber = parseInt(friendUserId);
   
-  console.log('Removing friend:', { userId, friendUserId: friendUserIdNumber });
+  logger.debug('Removing friend:', { userId, friendUserId: friendUserIdNumber });
   
   const result = await friendService.deleteFriend(userId, friendUserIdNumber);
   
-  console.log('Friend removal result:', result);
+  logger.debug('Friend removal result:', result);
   
   return res.status(200).json(formatResponse(result, 'تم حذف الصديق بنجاح'));
 });

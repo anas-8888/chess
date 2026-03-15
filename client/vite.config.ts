@@ -10,7 +10,9 @@ export default defineConfig(async ({ mode }) => {
     const { default: react } = await import("@vitejs/plugin-react-swc");
     plugins.push(react());
   } catch {
-    console.warn("[vite] SWC plugin is unavailable. Starting without SWC.");
+    if (mode === "development") {
+      console.warn("[vite] SWC plugin is unavailable. Starting without SWC.");
+    }
   }
 
   if (mode === "development") {
@@ -25,7 +27,44 @@ export default defineConfig(async ({ mode }) => {
     build: {
       outDir: path.resolve(__dirname, "../server/public_html"),
       emptyOutDir: true,
+      minify: "esbuild",
+      rollupOptions: {
+        onwarn(warning, warn) {
+          if (warning.code === "MODULE_LEVEL_DIRECTIVE") {
+            return;
+          }
+          warn(warning);
+        },
+        output: {
+          manualChunks(id) {
+            if (!id.includes("node_modules")) return;
+
+            if (id.includes("react") || id.includes("scheduler")) {
+              return "vendor-react";
+            }
+
+            if (id.includes("react-router")) {
+              return "vendor-router";
+            }
+
+            if (id.includes("socket.io-client")) {
+              return "vendor-socket";
+            }
+
+            if (id.includes("@tanstack")) {
+              return "vendor-query";
+            }
+
+            if (id.includes("@radix-ui")) {
+              return "vendor-radix";
+            }
+
+            return "vendor-misc";
+          },
+        },
+      },
     },
+    esbuild: mode === "production" ? { drop: ["console", "debugger"] } : undefined,
     plugins,
     resolve: {
       alias: {

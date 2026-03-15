@@ -27,22 +27,22 @@ async function updateUserStatus(userId, status) {
   try {
     const user = await User.findByPk(userId);
     if (user && user.state === 'in-game' && (status === 'online' || status === 'offline')) {
-      logger.debug(`${userId} in-game ${status}`);
+      logger.debug(`User ${userId} is in-game; skipping transition to ${status}`);
       return false;
     }
     if (user && user.state !== status) {
       await user.update({ state: status });
-      logger.debug(`${userId} ${status}`);
+      logger.debug(`Updated user ${userId} status to ${status}`);
       return true;
     } else if (user && user.state === status) {
-      logger.debug(`${userId} ${status}`);
+      logger.debug(`User ${userId} is already ${status}`);
       return false;
     } else {
-      logger.error(`${userId}`);
+      logger.error(`User not found: ${userId}`);
       return false;
     }
   } catch (error) {
-    logger.error('Log message', error);
+    logger.error('Failed to update user status:', error);
     return false;
   }
 }
@@ -70,17 +70,17 @@ async function cleanupExpiredInvites(nsp) {
           }
         }
       );
-      logger.info(`${expiredInvites.length}`);
+      logger.info(`Cleaned ${expiredInvites.length} expired invites`);
     }
   } catch (error) {
-    logger.error('Log message', error);
+    logger.error('Failed to clean expired invites:', error);
   }
 }
 
 // دالة لتسجيل إحصائيات الاتصالات
 function logConnectionStats() {
   const totalConnections = activeConnections.size;
-  logger.info(`: ${totalConnections}`);
+  logger.info(`Connection stats: ${totalConnections} active connections`);
 }
 
 export function initFriendSocket(io) {
@@ -92,7 +92,7 @@ export function initFriendSocket(io) {
   // Cleanup expired invites every 5 minutes
   setInterval(() => {
     cleanupExpiredInvites(nsp).catch(error => {
-      logger.error(':', error);
+      logger.error('Periodic invite cleanup failed:', error);
     });
   }, 5 * 60 * 1000); // 5 minutes
 
@@ -113,7 +113,7 @@ export function initFriendSocket(io) {
     try {
       userId = authenticateSocket(socket);
     } catch (error) {
-      logger.error(':', error.message);
+      logger.error('Authentication error:', error.message);
       socket.emit('error', { message: 'Authentication required' });
       socket.disconnect();
       return;
@@ -160,7 +160,7 @@ export function initFriendSocket(io) {
 
     // إرسال حالة الأصدقاء للمستخدم الجديد
     sendFriendsStatusToUser(socket, userId).catch(error => {
-      logger.error(':', error);
+      logger.error('Failed to send friends status on connect:', error);
     });
 
     // Game invite events
@@ -176,7 +176,7 @@ export function initFriendSocket(io) {
     // Handle game start with method
     socket.on('startGameWithMethod', async ({ inviteId, method }) => {
       try {
-        logger.info(':', { inviteId, method, userId });
+        logger.info('Starting game with method:', { inviteId, method, userId });
         
         if (!inviteId || !method) {
           return socket.emit('error', { message: 'بيانات بدء اللعبة غير مكتملة' });
@@ -257,7 +257,7 @@ export function initFriendSocket(io) {
         nsp.to(`user::${invite.to_user_id}`).emit('gameStarted', gameData);
 
       } catch (error) {
-        logger.error(':', error);
+        logger.error('Failed to start game:', error);
         socket.emit('error', { message: error.message });
       }
     });
@@ -265,7 +265,7 @@ export function initFriendSocket(io) {
     // Join user room for receiving invites
     socket.on('joinUserRoom', () => {
       socket.join(`user::${userId}`);
-      logger.debug(':', userId);
+      logger.debug('User joined personal room:', userId);
     });
 
     // Handle disconnect
@@ -279,7 +279,7 @@ export function initFriendSocket(io) {
       try {
         const user = await User.findByPk(userId);
         if (!user) {
-          logger.error(':', userId);
+          logger.error('User not found on disconnect:', userId);
           return;
         }
         
@@ -287,16 +287,16 @@ export function initFriendSocket(io) {
         if (!isUserOnline(userId)) {
           // لا تحديث الحالة إذا كان المستخدم في مباراة
           if (user.state !== 'in-game') {
-            logger.debug(`${userId} offline`);
+            logger.debug(`User ${userId} has no active sockets; updating to offline`);
             await updateUserStatus(userId, 'offline');
           } else {
-            logger.debug(`${userId} in-game`);
+            logger.debug(`User ${userId} is in-game; keeping status as in-game`);
           }
         } else {
-          logger.debug(`${userId}`);
+          logger.debug(`User ${userId} is still connected from another socket`);
         }
       } catch (error) {
-        logger.error(':', error);
+        logger.error('Failed to update status on disconnect:', error);
       }
     });
     
@@ -304,7 +304,7 @@ export function initFriendSocket(io) {
     socket.on('joinGameRoom', async ({ gameId }) => {
       try {
         logger.info('=== FRIEND SOCKET: Received joinGameRoom request ===');
-        logger.info(':', { userId, gameId });
+        logger.info('Player joined game room:', { userId, gameId });
         
         // التحقق من أن socket.join يتم تنفيذه بنجاح
         logger.info(`Attempting to join room game::${gameId} for user ${userId}`);
@@ -348,14 +348,14 @@ export function initFriendSocket(io) {
         }, 1000);
         
       } catch (error) {
-        logger.error(':', error);
+        logger.error('Failed to join game room:', error);
       }
     });
     
     // Handle player disconnection from game room
     socket.on('leaveGameRoom', async ({ gameId }) => {
       try {
-        logger.debug(':', { userId, gameId });
+        logger.debug('Player left game room:', { userId, gameId });
         
         socket.leave(`game::${gameId}`);
         
@@ -366,38 +366,35 @@ export function initFriendSocket(io) {
         });
         
       } catch (error) {
-        logger.error(':', error);
+        logger.error('Failed to leave game room:', error);
       }
     });
 
     // معالجة الحركة
     socket.on('move', async (moveData) => {
-      console.log('=== FRIEND SOCKET: Received move ===');
-      console.log('Move data:', moveData);
+      logger.debug('Received move event', moveData);
       
       try {
         await handleGameMove(nsp, moveData.gameId, moveData);
       } catch (error) {
-        console.error('Error handling move:', error);
+        logger.error('Error handling move:', error);
       }
     });
 
     // معالجة الاستسلام
     socket.on('resign', async (data) => {
-      console.log('=== FRIEND SOCKET: Received resign ===');
-      console.log('Resign data:', data);
-      console.log('Socket userId:', socket.userId);
+      logger.debug('Received resign event', { data, socketUserId: socket.userId });
       
       try {
         const { gameId } = data;
         const game = await Game.findByPk(gameId);
         
         if (!game) {
-          console.error(`Game ${gameId} not found for resign`);
+          logger.error(`Game ${gameId} not found for resign`);
           return;
         }
         
-        console.log('Game found:', {
+        logger.debug('Game found for resign:', {
           gameId: game.id,
           whitePlayerId: game.white_player_id,
           blackPlayerId: game.black_player_id,
@@ -408,7 +405,7 @@ export function initFriendSocket(io) {
         const resignedPlayer = socket.userId === game.white_player_id ? 'white' : 'black';
         const winner = resignedPlayer === 'white' ? 'black' : 'white';
         
-        console.log('Resign analysis:', {
+        logger.debug('Resign analysis:', {
           resignedPlayer,
           winner,
           socketUserId: socket.userId,
@@ -419,10 +416,10 @@ export function initFriendSocket(io) {
         // معالجة انتهاء اللعبة
         await handleGameEnd(nsp, gameId, 'resign', winner);
         
-        console.log('=== FRIEND SOCKET: Resign handled successfully ===');
+        logger.info('Resign handled successfully');
         
       } catch (error) {
-        console.error('Error handling resign:', error);
+        logger.error('Error handling resign:', error);
       }
     });
 
