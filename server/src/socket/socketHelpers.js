@@ -29,7 +29,7 @@ const LOG_CONFIG = {
 // Function to update logging configuration
 export function updateLogConfig(newConfig) {
   Object.assign(LOG_CONFIG, newConfig);
-  logger.info('تم تحديث إعدادات التسجيل', LOG_CONFIG);
+  logger.info('Log message', LOG_CONFIG);
 }
 
 // Function to get current log config
@@ -44,7 +44,7 @@ export function disableDetailedLogging() {
     showStatusUpdates: false,
     showStats: false
   });
-  logger.info('تم تعطيل جميع الرسائل التفصيلية');
+  logger.info('Log message');
 }
 
 // Function to enable minimal logging (only important events)
@@ -54,7 +54,7 @@ export function enableMinimalLogging() {
     showStatusUpdates: true,  // إظهار فقط تحديثات الحالة المهمة
     showStats: false
   });
-  logger.info('تم تفعيل التسجيل البسيط (الأحداث المهمة فقط)');
+  logger.info('( )');
 }
 
 // Authentication helper
@@ -91,16 +91,16 @@ export function addUserConnection(userId, socketId) {
   // تحديث حالة المستخدم إلى online عند أول اتصال
   if (totalConnections === 1) {
     updateUserStatus(userId, 'online').catch(error => {
-      logger.error('خطأ في تحديث حالة المستخدم إلى online', error);
+      logger.error('online', error);
     });
   }
   
   // طباعة رسالة فقط عند أول اتصال أو عند تغيير عدد الاتصالات
   if (LOG_CONFIG.showDetailedConnections) {
     if (totalConnections === 1) {
-      logger.debug(`اتصال جديد للمستخدم ${userId} (${socketId})`);
+      logger.debug(`${userId} (${socketId})`);
     } else {
-      logger.debug(`اتصال إضافي للمستخدم ${userId} - إجمالي الاتصالات: ${totalConnections}`);
+      logger.debug(`${userId} - : ${totalConnections}`);
     }
   }
 }
@@ -114,14 +114,14 @@ export function removeUserConnection(userId, socketId) {
     // إذا لم يتبق أي اتصالات، احذف المستخدم من القائمة وتحديث الحالة إلى offline
     if (remainingConnections === 0) {
       activeUsers.delete(userId);
-      logger.debug(`❌ تم قطع جميع اتصالات المستخدم ${userId}`);
+      logger.debug(`❌ ${userId}`);
       
       // تحديث حالة المستخدم إلى offline عند قطع آخر اتصال
       updateUserStatus(userId, 'offline').catch(error => {
-        logger.error('خطأ في تحديث حالة المستخدم إلى offline', error);
+        logger.error('offline', error);
       });
     } else if (LOG_CONFIG.showDetailedConnections) {
-      logger.debug(`➖ اتصال أقل للمستخدم ${userId} - الاتصالات المتبقية: ${remainingConnections}`);
+      logger.debug(`➖ ${userId} - : ${remainingConnections}`);
     }
   }
 }
@@ -138,27 +138,33 @@ export function isUserOnline(userId) {
 export async function updateUserStatus(userId, status) {
   try {
     if (!userId || !status) {
-      logger.error('بيانات تحديث حالة المستخدم غير مكتملة:', { userId, status });
+      logger.error(':', { userId, status });
       return;
     }
     
     // التحقق من صحة الحالة حسب نموذج User
     const validStatuses = ['online', 'offline', 'in-game'];
     if (!validStatuses.includes(status)) {
-      logger.error('حالة مستخدم غير صحيحة:', status);
+      logger.error(':', status);
       return;
     }
     
     // التحقق من وجود المستخدم أولاً
     const user = await User.findByPk(userId);
     if (!user) {
-      logger.error('المستخدم غير موجود:', userId);
+      logger.error(':', userId);
       return;
     }
     
     // التحقق من الحالة الحالية قبل التحديث
     if (user.state === status) {
-      logger.debug(`المستخدم ${userId} حالته ${status} بالفعل، تخطي التحديث`);
+      logger.debug(`${userId} ${status}`);
+      return;
+    }
+
+    // لا تخفض الحالة من in-game عبر تحديثات socket العادية.
+    if (user.state === 'in-game' && (status === 'online' || status === 'offline')) {
+      logger.debug(`${userId} in-game ${status}`);
       return;
     }
     
@@ -174,11 +180,11 @@ export async function updateUserStatus(userId, status) {
     // طباعة رسائل محسنة فقط إذا كان مفعلاً
     if (LOG_CONFIG.showStatusUpdates) {
       if (status === 'online' && connectionsCount > 0) {
-        logger.info(`🟢 المستخدم ${userId} متصل الآن (${connectionsCount} اتصال)`);
+        logger.info(`🟢 ${userId} (${connectionsCount} )`);
       } else if (status === 'offline') {
-        logger.info(`🔴 المستخدم ${userId} غير متصل`);
+        logger.info(`🔴 ${userId}`);
       } else if (status === 'in-game') {
-        logger.info(`🎮 المستخدم ${userId} في مباراة`);
+        logger.info(`🎮 ${userId}`);
       }
     }
     
@@ -186,7 +192,7 @@ export async function updateUserStatus(userId, status) {
     await broadcastFriendStatusUpdate(userId, status);
     
     // تسجيل التحديث مرة واحدة فقط
-    logger.debug(`تم تحديث حالة المستخدم ${userId} من ${oldStatus} إلى ${status}`);
+    logger.debug(`${userId} ${oldStatus} ${status}`);
   } catch (error) {
     logger.error('Error updating user status:', error);
   }
@@ -224,9 +230,9 @@ export async function sendFriendsStatusToUser(socket, userId) {
       }
     }
     
-    logger.debug(`📡 تم إرسال حالة ${friends.length} صديق للمستخدم ${userId}`);
+    logger.debug(`📡 ${friends.length} ${userId}`);
   } catch (error) {
-    logger.error('خطأ في إرسال حالة الأصدقاء:', error);
+    logger.error(':', error);
   }
 }
 
@@ -249,7 +255,7 @@ async function broadcastFriendStatusUpdate(userId, status) {
     
     // التحقق من وجود أصدقاء قبل الإرسال
     if (friends.length === 0) {
-      logger.debug(`المستخدم ${userId} ليس له أصدقاء، تخطي إرسال تحديث الحالة`);
+      logger.debug(`${userId}`);
       return;
     }
     
@@ -271,12 +277,12 @@ async function broadcastFriendStatusUpdate(userId, status) {
     }
     
     if (sentCount > 0) {
-      logger.debug(`📡 تم إرسال تحديث حالة المستخدم ${userId} (${status}) لـ ${sentCount} صديق`);
+      logger.debug(`📡 ${userId} (${status}) ${sentCount}`);
     } else {
-      logger.debug(`لم يتم إرسال أي تحديثات للمستخدم ${userId} (${status})`);
+      logger.debug(`${userId} (${status})`);
     }
   } catch (error) {
-    logger.error('خطأ في إرسال تحديث حالة الأصدقاء:', error);
+    logger.error(':', error);
   }
 }
 
@@ -305,7 +311,7 @@ export async function createGame(invite) {
       started_at: new Date()
     });
     
-    logger.info('تم إنشاء مباراة جديدة:', {
+    logger.info(':', {
       gameId: game.id,
       whiteUserId: whiteUserId,
       blackUserId: blackUserId,
@@ -319,7 +325,7 @@ export async function createGame(invite) {
     
     return game;
   } catch (error) {
-    logger.error('خطأ في إنشاء المباراة:', error);
+    logger.error(':', error);
     throw error;
   }
 }
@@ -352,7 +358,7 @@ export async function createGameWithMethods(invite) {
       started_at: new Date()
     });
     
-    logger.info('تم إنشاء مباراة جديدة مع طريقتي اللعب:', {
+    logger.info(':', {
       gameId: game.id,
       whiteUserId: whiteUserId,
       blackUserId: blackUserId,
@@ -367,7 +373,7 @@ export async function createGameWithMethods(invite) {
     
     return game;
   } catch (error) {
-    logger.error('خطأ في إنشاء المباراة مع طريقتي اللعب:', error);
+    logger.error(':', error);
     throw error;
   }
 }
@@ -375,7 +381,7 @@ export async function createGameWithMethods(invite) {
 // Invite management helpers
 export async function handleGameInvite(socket, nsp, userId, { toUserId, gameType, playMethod }) {
   try {
-    logger.info('إرسال دعوة لعب:', { fromUserId: userId, toUserId, gameType, playMethod });
+    logger.info(':', { fromUserId: userId, toUserId, gameType, playMethod });
 
     // فحص البيانات المطلوبة
     if (!toUserId || !gameType || !playMethod) {
@@ -454,16 +460,16 @@ export async function handleGameInvite(socket, nsp, userId, { toUserId, gameType
     // Confirm to sender
     socket.emit('gameInviteSent', { success: true, inviteId: invite.id });
     
-    logger.info('تم إرسال دعوة بنجاح:', invite.id);
+    logger.info(':', invite.id);
   } catch (error) {
-    logger.error('خطأ في إرسال دعوة لعب:', error);
+    logger.error(':', error);
     socket.emit('error', { message: error.message || 'فشل في إرسال الدعوة' });
   }
 }
 
 export async function handleInviteResponse(socket, nsp, userId, { inviteId, response }) {
   try {
-    logger.info('رد على دعوة لعب:', { inviteId, response, userId });
+    logger.info(':', { inviteId, response, userId });
     
     // فحص البيانات المطلوبة
     if (!inviteId || !response) {
@@ -551,7 +557,7 @@ export async function handleInviteResponse(socket, nsp, userId, { inviteId, resp
     // Remove invite from recipient's list
     socket.emit('inviteRemoved', { inviteId });
   } catch (error) {
-    logger.error('خطأ في الرد على دعوة لعب:', error);
+    logger.error(':', error);
     socket.emit('error', { message: error.message });
   }
 }
@@ -1114,10 +1120,10 @@ export async function cleanupExpiredInvites(nsp) {
         });
       }
       
-      logger.info(`تم تحديث ${expiredInvites.length} دعوة منتهية الصلاحية`);
+      logger.info(`${expiredInvites.length}`);
     }
   } catch (error) {
-    logger.error('خطأ في تنظيف الدعوات المنتهية:', error);
+    logger.error(':', error);
   }
 }
 
@@ -1150,21 +1156,21 @@ export function logConnectionStats() {
   
   if (hasChanged && LOG_CONFIG.showStats) {
     if (stats.totalUsers > 0) {
-      logger.info('📊 إحصائيات الاتصالات:', {
+      logger.info('📊 :', {
         مستخدمين: stats.totalUsers,
         اتصالات: stats.totalConnections
       });
       
       // طباعة تفاصيل المستخدمين فقط إذا كان هناك أكثر من مستخدم واحد
       if (stats.userDetails.length > 1) {
-        logger.info('👥 تفاصيل المستخدمين:');
+        logger.info('👥 :');
         stats.userDetails.forEach(user => {
           const icon = user.connectionsCount > 1 ? '📱' : '💻';
-          logger.debug(`  ${icon} المستخدم ${user.userId}: ${user.connectionsCount} اتصال`);
+          logger.debug(`${icon} ${user.userId}: ${user.connectionsCount}`);
         });
       }
     } else {
-      logger.info('😴 لا يوجد مستخدمين متصلين حالياً');
+      logger.info('😴');
     }
     
     // تحديث الإحصائيات السابقة
@@ -1178,7 +1184,7 @@ export async function updateUserStatusAfterResign(gameId, resignedUserId) {
     // البحث عن المباراة
     const game = await Game.findByPk(gameId);
     if (!game) {
-      logger.error('المباراة غير موجودة:', gameId);
+      logger.error(':', gameId);
       return;
     }
     
@@ -1189,7 +1195,7 @@ export async function updateUserStatusAfterResign(gameId, resignedUserId) {
     ]);
     
     if (!resignedUser || !otherUser) {
-      logger.error('أحد اللاعبين غير موجود:', { resignedUserId, otherUserId: game.white_player_id === resignedUserId ? game.black_player_id : game.white_player_id });
+      logger.error(':', { resignedUserId, otherUserId: game.white_player_id === resignedUserId ? game.black_player_id : game.white_player_id });
       return;
     }
     
@@ -1240,12 +1246,12 @@ export async function updateUserStatusAfterResign(gameId, resignedUserId) {
     
     if (updatePromises.length > 0) {
       await Promise.all(updatePromises);
-      logger.info(`🔄 تم تحديث حالة اللاعبين بعد الانسحاب من المباراة ${gameId}`);
+      logger.info(`🔄 ${gameId}`);
     } else {
-      logger.debug(`ℹ️ لا حاجة لتحديث حالة اللاعبين بعد الانسحاب من المباراة ${gameId} - لديهم مباريات أخرى نشطة`);
+      logger.debug(`ℹ️ ${gameId} -`);
     }
   } catch (error) {
-    logger.error('خطأ في تحديث حالة المستخدمين بعد الانسحاب:', error);
+    logger.error(':', error);
   }
 }
 
@@ -1255,7 +1261,7 @@ export async function updateUserStatusAfterGameEnd(gameId) {
     // البحث عن المباراة
     const game = await Game.findByPk(gameId);
     if (!game) {
-      logger.error('المباراة غير موجودة:', gameId);
+      logger.error(':', gameId);
       return;
     }
     
@@ -1266,7 +1272,7 @@ export async function updateUserStatusAfterGameEnd(gameId) {
     ]);
     
     if (!whiteUser || !blackUser) {
-      logger.error('أحد اللاعبين غير موجود:', { whiteUserId: game.white_player_id, blackUserId: game.black_player_id });
+      logger.error(':', { whiteUserId: game.white_player_id, blackUserId: game.black_player_id });
       return;
     }
     
@@ -1315,11 +1321,11 @@ export async function updateUserStatusAfterGameEnd(gameId) {
     
     if (updatePromises.length > 0) {
       await Promise.all(updatePromises);
-      logger.info(`🔄 تم تحديث حالة اللاعبين بعد انتهاء المباراة ${gameId}`);
+      logger.info(`🔄 ${gameId}`);
     } else {
-      logger.debug(`ℹ️ لا حاجة لتحديث حالة اللاعبين بعد انتهاء المباراة ${gameId} - لديهم مباريات أخرى نشطة`);
+      logger.debug(`ℹ️ ${gameId} -`);
     }
   } catch (error) {
-    logger.error('خطأ في تحديث حالة المستخدمين بعد انتهاء المباراة:', error);
+    logger.error(':', error);
   }
 }

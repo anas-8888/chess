@@ -72,7 +72,7 @@ router.get('/incoming', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('خطأ في جلب الطلبات الواردة:', error);
+    console.error('Error fetching incoming requests:', error);
     return res.status(500).json({
       success: false,
       message: 'فشل في جلب الطلبات الواردة'
@@ -121,7 +121,7 @@ router.post('/request/:requestId/accept', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('خطأ في قبول طلب الصداقة:', error);
+    console.error('Error accepting friend request:', error);
     return res.status(500).json({
       success: false,
       message: 'فشل في قبول طلب الصداقة'
@@ -167,7 +167,7 @@ router.post('/request/:requestId/reject', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('خطأ في رفض طلب الصداقة:', error);
+    console.error('Error rejecting friend request:', error);
     return res.status(500).json({
       success: false,
       message: 'فشل في رفض طلب الصداقة'
@@ -224,7 +224,7 @@ router.get('/check/:userId', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('خطأ في التحقق من علاقة الصداقة:', error);
+    console.error('Error checking friendship status:', error);
     res.status(500).json({
       success: false,
       message: 'فشل في التحقق من علاقة الصداقة'

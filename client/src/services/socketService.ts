@@ -1,4 +1,5 @@
 import { io, Socket } from 'socket.io-client';
+import { SOCKET_BASE_URL } from '@/config/urls';
 
 class SocketService {
   private socket: Socket | null = null;
@@ -19,7 +20,7 @@ class SocketService {
     }
 
     // Connect directly to the namespace
-    this.socket = io('http://localhost:3000/friends', {
+    this.socket = io(`${SOCKET_BASE_URL}/friends`, {
       auth: {
         token
       },

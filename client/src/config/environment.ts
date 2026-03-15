@@ -1,7 +1,9 @@
+import { API_BASE_URL } from '@/config/urls';
+
 // Environment Configuration
 export const ENV = {
   // API Configuration
-  API_URL: import.meta.env.VITE_API_URL || 'http://localhost:3000',
+  API_URL: API_BASE_URL,
   
   // App Configuration
   APP_NAME: 'شطرنج العرب',

@@ -143,7 +143,7 @@ SESSION_POLICY=single
 MAX_SESSIONS=5
 
 # CORS Configuration
-ALLOWED_ORIGINS=http://localhost:8080,http://localhost:3000
+ALLOWED_ORIGINS=http://localhost:8080,http://localhost:3003
 
 # Rate Limiting
 RATE_LIMIT_WINDOW_MS=900000

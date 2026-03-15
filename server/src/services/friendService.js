@@ -5,16 +5,16 @@ import logger from '../utils/logger.js';
 
 export async function getFriends(userId) {
   try {
-    logger.debug('=== بدء جلب الأصدقاء للمستخدم ===');
+    logger.debug('=== ===');
     logger.debug('user_id:', userId, 'type:', typeof userId);
 
     // التحقق من وجود المستخدم
     const user = await User.findByPk(userId);
     if (!user) {
-      logger.debug('المستخدم غير موجود:', userId);
+      logger.debug(':', userId);
       return [];
     }
-    logger.debug('المستخدم موجود:', user.username);
+    logger.debug(':', user.username);
 
     // جلب علاقات الصداقة
     const friends = await Friend.findAll({
@@ -45,8 +45,8 @@ export async function getFriends(userId) {
       })
     );
 
-    logger.debug('عدد علاقات الصداقة الموجودة:', friends.length);
-    logger.debug('تفاصيل علاقات الصداقة:', friends.map(f => ({
+    logger.debug(':', friends.length);
+    logger.debug(':', friends.map(f => ({
       id: f.id,
       user_id: f.user_id,
       friend_user_id: f.friend_user_id,
@@ -55,7 +55,7 @@ export async function getFriends(userId) {
 
     // معالجة النتائج
     const mappedFriends = friendData.map(({ friendship, friendUser, isUserInitiator }) => {
-      logger.debug('معالجة صديق:', {
+      logger.debug(':', {
         friendId: friendUser.user_id,
         username: friendUser.username,
         isInitiator: isUserInitiator
@@ -74,12 +74,12 @@ export async function getFriends(userId) {
       };
     });
 
-    logger.debug('الأصدقاء المعالجون:', mappedFriends);
-    logger.debug('=== انتهاء جلب الأصدقاء ===');
+    logger.debug(':', mappedFriends);
+    logger.debug('=== ===');
 
     return mappedFriends;
   } catch (error) {
-    logger.error('خطأ في جلب الأصدقاء:', error);
+    logger.error(':', error);
     throw error;
   }
 }
@@ -193,7 +193,7 @@ export async function rejectFriendRequest(friendshipId, userId) {
 
 export async function deleteFriend(userId, friendUserId) {
   try {
-    logger.debug('بدء حذف الصديق:', { userId, friendUserId });
+    logger.debug(':', { userId, friendUserId });
 
     // التحقق من وجود المستخدمين
     const [user, friend] = await Promise.all([
@@ -205,7 +205,7 @@ export async function deleteFriend(userId, friendUserId) {
       throw new Error('One or both users not found');
     }
 
-    logger.debug('نتائج البحث عن المستخدمين:', {
+    logger.debug(':', {
       userExists: !!user,
       friendExists: !!friend,
       userUsername: user?.username,
@@ -227,7 +227,7 @@ export async function deleteFriend(userId, friendUserId) {
       throw new Error('Friendship not found or not accepted');
     }
 
-    logger.debug('نتيجة البحث عن الصداقة:', friendship ? {
+    logger.debug(':', friendship ? {
       id: friendship.id,
       user_id: friendship.user_id,
       friend_user_id: friendship.friend_user_id,
@@ -237,7 +237,7 @@ export async function deleteFriend(userId, friendUserId) {
     // حذف علاقة الصداقة
     await friendship.destroy();
 
-    logger.debug('تم حذف الصداقة بنجاح');
+    logger.debug('Log message');
 
     return {
       success: true,

@@ -5,7 +5,7 @@
 قم بإنشاء ملف `.env` في مجلد `client` وأضف المتغير التالي:
 
 ```env
-VITE_API_URL=http://localhost:3000
+VITE_API_URL=http://localhost:3003
 ```
 
 ## تشغيل المشروع

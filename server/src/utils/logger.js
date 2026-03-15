@@ -53,12 +53,95 @@ class Logger {
   formatMessage(level, message, data = null) {
     const timestamp = new Date().toISOString();
     const prefix = `[${timestamp}] [${level.toUpperCase()}]`;
+    const normalizedMessage = this.normalizeToEnglish(message);
+    const normalizedData = this.normalizeDataToEnglish(data);
     
-    if (data && this.debugMode) {
-      return `${prefix} ${message} ${JSON.stringify(data, null, 2)}`;
+    if (normalizedData && this.debugMode) {
+      return `${prefix} ${normalizedMessage} ${JSON.stringify(normalizedData, null, 2)}`;
     }
     
-    return `${prefix} ${message}`;
+    return `${prefix} ${normalizedMessage}`;
+  }
+
+  normalizeToEnglish(input) {
+    if (typeof input !== 'string') {
+      return input;
+    }
+
+    if (!/[\u0600-\u06FF]/.test(input)) {
+      return input;
+    }
+
+    const phraseMap = [
+      ['تم تحديث إعدادات التسجيل', 'Logging configuration updated'],
+      ['تم تعطيل جميع الرسائل التفصيلية', 'All verbose log messages disabled'],
+      ['تم تفعيل التسجيل البسيط (الأحداث المهمة فقط)', 'Simple logging enabled (important events only)'],
+      ['خطأ في تحديث حالة المستخدم إلى online', 'Failed to update user status to online'],
+      ['خطأ في تحديث حالة المستخدم إلى offline', 'Failed to update user status to offline'],
+      ['خطأ في إرسال حالة الأصدقاء:', 'Failed to send friends status:'],
+      ['خطأ في إرسال تحديث حالة الأصدقاء:', 'Failed to send friends status update:'],
+      ['المستخدم غير موجود:', 'User not found:'],
+      ['بيانات تحديث حالة المستخدم غير مكتملة:', 'User status update payload is incomplete:'],
+      ['حالة مستخدم غير صحيحة:', 'Invalid user status:'],
+      ['تم إنشاء مباراة جديدة:', 'New game created:'],
+      ['تم إنشاء مباراة جديدة مع طريقتي اللعب:', 'New game created with play methods:'],
+      ['إرسال دعوة لعب:', 'Sending game invite:'],
+      ['تم إرسال دعوة بنجاح:', 'Game invite sent successfully:'],
+      ['رد على دعوة لعب:', 'Game invite response:'],
+      ['خطأ في إنشاء المباراة:', 'Failed to create game:'],
+      ['خطأ في إنشاء المباراة مع طريقتي اللعب:', 'Failed to create game with play methods:'],
+      ['خطأ في إرسال دعوة لعب:', 'Failed to send game invite:'],
+      ['خطأ في الرد على دعوة لعب:', 'Failed to respond to game invite:'],
+      ['خطأ في تنظيف الدعوات المنتهية:', 'Failed to clean expired invites:'],
+      ['إحصائيات الاتصالات:', 'Connection stats:'],
+      ['لا يوجد مستخدمين متصلين حالياً', 'No users are currently connected'],
+      ['خطأ في المصادقة:', 'Authentication error:'],
+      ['انضمام لاعب لغرفة المباراة:', 'Player joined game room:'],
+      ['خطأ في الانضمام لغرفة المباراة:', 'Failed to join game room:'],
+      ['مغادرة لاعب لغرفة المباراة:', 'Player left game room:'],
+      ['خطأ في مغادرة غرفة المباراة:', 'Failed to leave game room:'],
+      ['خطأ في تحديث حالة المستخدم:', 'Failed to update user status:'],
+      ['تم تحديث حالة المستخدم', 'User status updated'],
+      ['تم إرسال تحديث الحالة لـ', 'Status update sent to'],
+      ['خطأ في', 'Error in'],
+    ];
+
+    let message = input;
+    for (const [ar, en] of phraseMap) {
+      message = message.split(ar).join(en);
+    }
+
+    // If unmatched Arabic remains, keep original text to avoid broken/empty logs.
+    if (/[\u0600-\u06FF]/.test(message)) {
+      return input;
+    }
+
+    message = message.replace(/\s{2,}/g, ' ').trim();
+    return message || input;
+  }
+
+  normalizeDataToEnglish(data) {
+    if (data == null) {
+      return data;
+    }
+
+    if (typeof data === 'string') {
+      return this.normalizeToEnglish(data);
+    }
+
+    if (Array.isArray(data)) {
+      return data.map(item => this.normalizeDataToEnglish(item));
+    }
+
+    if (typeof data === 'object') {
+      const output = {};
+      for (const [key, value] of Object.entries(data)) {
+        output[key] = this.normalizeDataToEnglish(value);
+      }
+      return output;
+    }
+
+    return data;
   }
 
   error(message, data = null) {

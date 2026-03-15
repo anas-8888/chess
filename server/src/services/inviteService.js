@@ -585,7 +585,7 @@ export const startGame = async (inviteId, userId, playMethod) => {
 
     }
   } catch (error) {
-    console.error('خطأ في إرسال إشعارات rejoin_game:', error);
+    console.error('Error sending rejoin_game notifications:', error);
   }
 
   return {
@@ -697,7 +697,7 @@ export const cancelInvite = async (inviteId, userId) => {
   
     }
   } catch (error) {
-    console.error('خطأ في إرسال إشعار إلغاء الدعوة:', error);
+    console.error('Error sending invite cancellation notification:', error);
   }
   
   return {

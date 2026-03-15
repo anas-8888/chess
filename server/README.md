@@ -78,7 +78,7 @@ npm start
 
 7. **فتح المتصفح**
 ```
-http://localhost:3000
+http://localhost:3003
 ```
 
 ## هيكل المشروع

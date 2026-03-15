@@ -1,4 +1,5 @@
 import { apiClient } from '@/services/api';
+import { API_BASE_URL } from '@/config/urls';
 
 // Test function to verify API connection
 export async function testApiConnection() {
@@ -11,9 +12,10 @@ export async function testApiConnection() {
         email: 'test@test.com',
         password: 'wrongpassword'
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       // If we get an authentication error, the API is working
-      if (error.message.includes('بيانات الدخول') || error.message.includes('401')) {
+      if (errorMessage.includes('بيانات الدخول') || errorMessage.includes('401')) {
         console.log('✅ API connection successful');
         return true;
       }
@@ -30,7 +32,7 @@ export async function testApiConnection() {
 // Test function to check environment variables
 export function testEnvironment() {
   console.log('Environment check:');
-  console.log('- API URL:', import.meta.env.VITE_API_URL || 'http://localhost:3000 (default)');
+  console.log('- API URL:', API_BASE_URL);
   console.log('- Development mode:', import.meta.env.DEV);
   console.log('- Production mode:', import.meta.env.PROD);
 } 

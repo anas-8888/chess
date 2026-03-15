@@ -19,7 +19,7 @@ export const getGameDetails = async (req, res) => {
     res.json(result);
 
   } catch (error) {
-    logger.error('خطأ في جلب تفاصيل اللعبة:', error);
+    logger.error(':', error);
     res.status(500).json({
       success: false,
       message: 'خطأ في الخادم'
@@ -42,7 +42,7 @@ export const getGamesList = async (req, res) => {
       }
     });
   } catch (error) {
-    logger.error('خطأ في جلب قائمة الألعاب:', error);
+    logger.error(':', error);
     res.status(500).json({
       success: false,
       message: 'خطأ في الخادم'
@@ -65,7 +65,7 @@ export const updateGameTime = async (req, res) => {
     res.json(result);
 
   } catch (error) {
-    logger.error('خطأ في تحديث وقت اللعبة:', error);
+    logger.error(':', error);
     res.status(500).json({
       success: false,
       message: 'خطأ في الخادم'
@@ -153,7 +153,7 @@ export const getGameMoves = async (req, res) => {
     });
 
   } catch (error) {
-    logger.error('خطأ في جلب نقلات اللعبة:', error);
+    logger.error(':', error);
     res.status(500).json({
       success: false,
       message: 'خطأ في جلب النقلات'
@@ -175,7 +175,7 @@ export const getGameDuration = async (req, res) => {
     res.json(result);
 
   } catch (error) {
-    logger.error('خطأ في جلب مدة اللعبة:', error);
+    logger.error(':', error);
     res.status(500).json({
       success: false,
       message: 'خطأ في الخادم'
@@ -358,7 +358,7 @@ export const controlPlayer = async (req, res) => {
     }
 
   } catch (error) {
-    logger.error('خطأ في التحكم في اللاعب:', error);
+    logger.error(':', error);
     res.status(500).json({
       success: false,
       message: 'خطأ في الخادم'
@@ -430,7 +430,7 @@ export const getGameState = async (req, res) => {
     });
 
   } catch (error) {
-    logger.error('خطأ في جلب حالة اللعبة:', error);
+    logger.error(':', error);
     res.status(500).json({
       success: false,
       message: 'خطأ في الخادم'

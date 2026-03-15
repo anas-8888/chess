@@ -128,7 +128,7 @@ export const createGameInvite = asyncHandler(async (req, res) => {
   
   const { to_user_id, game_type, play_method } = validation.data;
   
-  console.log('إنشاء دعوة لعب:', { fromUserId, to_user_id, game_type, play_method });
+  console.log('Creating game invite:', { fromUserId, to_user_id, game_type, play_method });
   
   const invite = await inviteService.createGameInvite(fromUserId, to_user_id, game_type, play_method);
   
@@ -219,7 +219,7 @@ export const getRecentInvites = asyncHandler(async (req, res) => {
     const invites = await inviteService.getRecentInvites(userId, sinceDate);
     return res.status(200).json(formatResponse({ invites }, 'تم جلب الدعوات الحديثة بنجاح'));
   } catch (error) {
-    console.error('خطأ في جلب الدعوات الحديثة:', error);
+    console.error('Error fetching recent invites:', error);
     return res.status(500).json(formatError('خطأ في جلب الدعوات الحديثة'));
   }
 });
@@ -240,7 +240,7 @@ export const cancelInvite = asyncHandler(async (req, res) => {
     const result = await inviteService.cancelInvite(inviteId, userId);
     return res.status(200).json(formatResponse(result, 'تم إلغاء الدعوة بنجاح'));
   } catch (error) {
-    console.error('خطأ في إلغاء الدعوة:', error);
+    console.error('Error canceling invite:', error);
     if (error.message.includes('غير موجودة')) {
       return res.status(404).json(formatError(error.message));
     } else if (error.message.includes('غير مصرح')) {
@@ -302,7 +302,7 @@ export const getPendingInvitesForDashboard = asyncHandler(async (req, res) => {
       message: dashboardInvites.length === 0 ? 'لا توجد دعوات معلقة' : `تم العثور على ${dashboardInvites.length} دعوة معلقة`
     });
   } catch (error) {
-    console.error('خطأ في جلب الدعوات المعلقة للـ Dashboard:', error);
+    console.error('Error fetching pending invites for dashboard:', error);
     return res.status(500).json({
       success: false,
       message: 'فشل في جلب الدعوات المعلقة'
@@ -330,7 +330,7 @@ export const acceptInvite = asyncHandler(async (req, res) => {
       game: result.game
     }, 'تم قبول الدعوة وإنشاء اللعبة بنجاح'));
   } catch (error) {
-    console.error('خطأ في قبول الدعوة:', error);
+    console.error('Error accepting invite:', error);
     
     if (error.message.includes('الدعوة غير موجودة') || 
         error.message.includes('غير مصرح') ||
@@ -372,7 +372,7 @@ export const acceptInviteForDashboard = asyncHandler(async (req, res) => {
       message: 'تم قبول الدعوة بنجاح'
     });
   } catch (error) {
-    console.error('خطأ في قبول الدعوة:', error);
+    console.error('Error accepting invite:', error);
     return res.status(500).json({
       success: false,
       message: 'فشل في قبول الدعوة'
@@ -402,7 +402,7 @@ export const declineInviteForDashboard = asyncHandler(async (req, res) => {
       message: 'تم رفض الدعوة بنجاح'
     });
   } catch (error) {
-    console.error('خطأ في رفض الدعوة:', error);
+    console.error('Error rejecting invite:', error);
     return res.status(500).json({
       success: false,
       message: 'فشل في رفض الدعوة'
@@ -435,7 +435,7 @@ export const sendInviteToFriend = asyncHandler(async (req, res) => {
       message: 'تم إرسال الدعوة بنجاح'
     });
   } catch (error) {
-    console.error('خطأ في إرسال الدعوة:', error);
+    console.error('Error sending invite:', error);
     return res.status(500).json({
       success: false,
       message: 'فشل في إرسال الدعوة'

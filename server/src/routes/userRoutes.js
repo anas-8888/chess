@@ -83,11 +83,21 @@ router.put('/status', async (req, res) => {
         
         // إذا كانت الحالة نفسها، لا حاجة للتحديث
         if (currentUser.state === status) {
-            logger.debug(`المستخدم ${userId} حالته ${status} بالفعل، تخطي التحديث`);
+            logger.debug(`${userId} ${status}`);
             return res.json({ 
                 success: true, 
                 message: 'الحالة لم تتغير',
                 status: status
+            });
+        }
+
+        // لا نسمح بخفض الحالة من in-game عبر تحديثات النشاط الدورية.
+        if (currentUser.state === 'in-game' && (status === 'online' || status === 'offline')) {
+            logger.debug(`${userId} in-game ${status}`);
+            return res.json({
+                success: true,
+                message: 'Status preserved as in-game',
+                status: currentUser.state
             });
         }
         
@@ -97,7 +107,7 @@ router.put('/status', async (req, res) => {
             { where: { user_id: userId } }
         );
         
-        logger.info(`تم تحديث حالة المستخدم ${userId} من ${currentUser.state} إلى ${status}`);
+        logger.info(`${userId} ${currentUser.state} ${status}`);
         
         // إرسال تحديث real-time للأصدقاء فقط إذا تغيرت الحالة
         const io = global.io;
@@ -124,9 +134,9 @@ router.put('/status', async (req, res) => {
                     });
                 }
                 
-                logger.debug(`تم إرسال تحديث الحالة لـ ${friends.length} صديق`);
+                logger.debug(`${friends.length}`);
             } else {
-                logger.debug(`المستخدم ${userId} ليس له أصدقاء، تخطي إرسال تحديث الحالة`);
+                logger.debug(`${userId}`);
             }
         }
         
@@ -137,7 +147,7 @@ router.put('/status', async (req, res) => {
         });
         
     } catch (error) {
-        logger.error('خطأ في تحديث حالة المستخدم:', error);
+        logger.error(':', error);
         res.status(500).json({ 
             success: false, 
             message: 'خطأ في تحديث الحالة',

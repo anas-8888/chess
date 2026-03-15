@@ -252,6 +252,12 @@ const GameRoom = () => {
   const [showResignConfirmModal, setShowResignConfirmModal] = useState(false);
 
   const { toast } = useToast();
+  const getValidGameIdFromUrl = useCallback((): string | null => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const rawGameId = urlParams.get('game_id') || urlParams.get('id');
+    if (!rawGameId) return null;
+    return /^\d+$/.test(rawGameId) ? rawGameId : null;
+  }, []);
 
   // دالة لعرض مودال انتهاء اللعبة
   const showGameEndModal = useCallback((reason: string, winner?: string) => {
@@ -272,12 +278,15 @@ const GameRoom = () => {
         setError(null);
         
         // الحصول على معرف اللعبة من الـ URL
-        const urlParams = new URLSearchParams(window.location.search);
-        const gameId = urlParams.get('game_id') || urlParams.get('id') || '1'; // افتراضياً لعبة رقم 1
+        const gameId = getValidGameIdFromUrl();
+        if (!gameId) {
+          setError('Invalid or missing game ID in URL');
+          return;
+        }
         
         console.log('Fetching game data for game ID:', gameId);
         
-        const response = await api.get(`/game/${gameId}`);
+        const response = await api.get(`/api/game/${gameId}`);
         
         if (response.data.success) {
           const data = response.data.data;
@@ -285,7 +294,7 @@ const GameRoom = () => {
           
           // جلب مدة اللعبة
           try {
-            const durationResponse = await api.get(`/game/${gameId}/duration`);
+            const durationResponse = await api.get(`/api/game/${gameId}/duration`);
             if (durationResponse.data.success) {
               data.duration = durationResponse.data.data.formattedDuration;
             }
@@ -340,12 +349,14 @@ const GameRoom = () => {
     // جلب النقلات من الباك إند
     const fetchGameMoves = async () => {
       try {
-        const urlParams = new URLSearchParams(window.location.search);
-        const gameId = urlParams.get('game_id') || urlParams.get('id') || '1';
+        const gameId = getValidGameIdFromUrl();
+        if (!gameId) {
+          return;
+        }
         
         console.log('Fetching game moves for game ID:', gameId);
         
-        const response = await api.get(`/game/${gameId}/moves`);
+        const response = await api.get(`/api/game/${gameId}/moves`);
         
         if (response.data.success) {
           const movesData = response.data.data.moves;
@@ -372,7 +383,7 @@ const GameRoom = () => {
     
     fetchGameData();
     fetchGameMoves();
-  }, []);
+  }, [getValidGameIdFromUrl]);
 
   // Handler functions using useCallback to maintain stable references
   const handleClockUpdate = useCallback((data: { whiteTimeLeft: number; blackTimeLeft: number; currentTurn: string }) => {
@@ -637,8 +648,11 @@ const GameRoom = () => {
   useEffect(() => {
     if (!user || !token) return;
 
-                        const urlParams = new URLSearchParams(window.location.search);
-                  const gameId = urlParams.get('game_id') || urlParams.get('id') || '1';
+    const gameId = getValidGameIdFromUrl();
+    if (!gameId) {
+      setError('Invalid or missing game ID in URL');
+      return;
+    }
 
     // Connect to WebSocket
     socketService.connect(token);
@@ -665,7 +679,7 @@ const GameRoom = () => {
       socketService.offMoveConfirmed();
       socketService.disconnect();
     };
-  }, [user, token, handleClockUpdate, handleTurnUpdate, handleOpponentMove, handleGameTimeout, handleGameEnd, handleMoveConfirmed]);
+  }, [user, token, handleClockUpdate, handleTurnUpdate, handleOpponentMove, handleGameTimeout, handleGameEnd, handleMoveConfirmed, getValidGameIdFromUrl]);
 
   const handleMove = useCallback((from: Square, to: Square, promotion?: string) => {
     console.log('=== FULL SYNC: GAME ROOM: Handling move ===');
@@ -768,8 +782,16 @@ const GameRoom = () => {
         }));
 
         // Send move to server via WebSocket
-        const urlParams = new URLSearchParams(window.location.search);
-        const gameId = urlParams.get('game_id') || urlParams.get('id') || '1';
+        const gameId = getValidGameIdFromUrl();
+        if (!gameId) {
+          toast({
+            title: "معرف مباراة غير صالح",
+            description: "لا يمكن إرسال الحركة بدون معرف مباراة صالح",
+            variant: "destructive"
+          });
+          setIsProcessingMove(false);
+          return false;
+        }
         
         const moveData = {
           gameId,

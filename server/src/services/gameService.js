@@ -63,7 +63,7 @@ export const getGameDetailsService = async (gameId) => {
     };
 
   } catch (error) {
-    logger.error('خطأ في service جلب تفاصيل اللعبة:', error);
+    logger.error('service :', error);
     return {
       success: false,
       message: 'خطأ في الخادم'
@@ -101,7 +101,7 @@ export const updateGameTimeService = async (gameId, { whiteTimeLeft, blackTimeLe
     };
 
   } catch (error) {
-    logger.error('خطأ في service تحديث وقت اللعبة:', error);
+    logger.error('service :', error);
     return {
       success: false,
       message: 'خطأ في الخادم'
@@ -145,7 +145,7 @@ export const getGameDurationService = async (gameId) => {
     };
 
   } catch (error) {
-    logger.error('خطأ في service جلب مدة اللعبة:', error);
+    logger.error('service :', error);
     return {
       success: false,
       message: 'خطأ في الخادم'

@@ -1,4 +1,5 @@
 import { authService } from './authService';
+import { API_BASE_URL } from '@/config/urls';
 
 export interface UserProfile {
   id: string;
@@ -32,7 +33,7 @@ class UserService {
   // Get current user profile
   async getCurrentUserProfile(): Promise<UserProfile> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/users/profile`, {
+      const response = await fetch(`${API_BASE_URL}/api/users/profile`, {
         method: 'GET',
         headers: this.getAuthHeaders(),
       });
@@ -53,7 +54,7 @@ class UserService {
   // Get user statistics
   async getUserStats(): Promise<UserStats> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/users/stats`, {
+      const response = await fetch(`${API_BASE_URL}/api/users/stats`, {
         method: 'GET',
         headers: this.getAuthHeaders(),
       });
@@ -74,7 +75,7 @@ class UserService {
   // Update user profile
   async updateProfile(updates: Partial<UserProfile>): Promise<UserProfile> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/users/profile`, {
+      const response = await fetch(`${API_BASE_URL}/api/users/profile`, {
         method: 'PUT',
         headers: this.getAuthHeaders(),
         body: JSON.stringify(updates),
@@ -96,7 +97,7 @@ class UserService {
   // Update user status
   async updateStatus(status: 'online' | 'offline' | 'in-game'): Promise<void> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/users/status`, {
+      const response = await fetch(`${API_BASE_URL}/api/users/status`, {
         method: 'PUT',
         headers: {
           ...this.getAuthHeaders(),
@@ -125,7 +126,7 @@ class UserService {
   // Search users
   async searchUsers(query: string): Promise<any[]> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/users/search?q=${encodeURIComponent(query)}`, {
+      const response = await fetch(`${API_BASE_URL}/api/users/search?q=${encodeURIComponent(query)}`, {
         method: 'GET',
         headers: {
           ...this.getAuthHeaders(),
@@ -148,7 +149,7 @@ class UserService {
   // Get user by ID
   async getUserById(userId: string): Promise<UserProfile> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/users/${userId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/users/${userId}`, {
         method: 'GET',
         headers: this.getAuthHeaders(),
       });
@@ -169,7 +170,7 @@ class UserService {
   // Get current user status
   async getCurrentUserStatus(): Promise<{ user_id: string; state: string }> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/users/status`, {
+      const response = await fetch(`${API_BASE_URL}/api/users/status`, {
         method: 'GET',
         headers: {
           ...this.getAuthHeaders(),

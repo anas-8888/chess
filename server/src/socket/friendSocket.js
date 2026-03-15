@@ -26,19 +26,23 @@ const activeConnections = new Map();
 async function updateUserStatus(userId, status) {
   try {
     const user = await User.findByPk(userId);
+    if (user && user.state === 'in-game' && (status === 'online' || status === 'offline')) {
+      logger.debug(`${userId} in-game ${status}`);
+      return false;
+    }
     if (user && user.state !== status) {
       await user.update({ state: status });
-      logger.debug(`تم تحديث حالة المستخدم ${userId} إلى ${status}`);
+      logger.debug(`${userId} ${status}`);
       return true;
     } else if (user && user.state === status) {
-      logger.debug(`المستخدم ${userId} في الحالة ${status} بالفعل`);
+      logger.debug(`${userId} ${status}`);
       return false;
     } else {
-      logger.error(`المستخدم ${userId} غير موجود`);
+      logger.error(`${userId}`);
       return false;
     }
   } catch (error) {
-    logger.error('خطأ في تحديث حالة المستخدم', error);
+    logger.error('Log message', error);
     return false;
   }
 }
@@ -66,17 +70,17 @@ async function cleanupExpiredInvites(nsp) {
           }
         }
       );
-      logger.info(`تم تنظيف ${expiredInvites.length} دعوة منتهية`);
+      logger.info(`${expiredInvites.length}`);
     }
   } catch (error) {
-    logger.error('خطأ في تنظيف الدعوات المنتهية', error);
+    logger.error('Log message', error);
   }
 }
 
 // دالة لتسجيل إحصائيات الاتصالات
 function logConnectionStats() {
   const totalConnections = activeConnections.size;
-  logger.info(`إحصائيات الاتصالات: ${totalConnections} اتصال نشط`);
+  logger.info(`: ${totalConnections}`);
 }
 
 export function initFriendSocket(io) {
@@ -88,7 +92,7 @@ export function initFriendSocket(io) {
   // Cleanup expired invites every 5 minutes
   setInterval(() => {
     cleanupExpiredInvites(nsp).catch(error => {
-      logger.error('خطأ في تنظيف الدعوات المنتهية:', error);
+      logger.error(':', error);
     });
   }, 5 * 60 * 1000); // 5 minutes
 
@@ -109,7 +113,7 @@ export function initFriendSocket(io) {
     try {
       userId = authenticateSocket(socket);
     } catch (error) {
-      logger.error('خطأ في المصادقة:', error.message);
+      logger.error(':', error.message);
       socket.emit('error', { message: 'Authentication required' });
       socket.disconnect();
       return;
@@ -134,7 +138,7 @@ export function initFriendSocket(io) {
         });
 
         if (activeGame) {
-          logger.debug(`تم العثور على مباراة جارية للمستخدم ${userId}: ${activeGame.id}`);
+          logger.debug(`${userId}: ${activeGame.id}`);
           socket.emit('rejoin_game', {
             gameId: activeGame.id,
             whiteUserId: activeGame.white_player_id,
@@ -154,12 +158,9 @@ export function initFriendSocket(io) {
     // إعداد ping/pong للتحقق من الاتصال
     // setupPingPong(socket, userId); // This line was removed from imports, so it's removed here.
 
-    // تحديث حالة المستخدم إلى online
-    await updateUserStatus(userId, 'online');
-    
     // إرسال حالة الأصدقاء للمستخدم الجديد
     sendFriendsStatusToUser(socket, userId).catch(error => {
-      logger.error('خطأ في إرسال حالة الأصدقاء:', error);
+      logger.error(':', error);
     });
 
     // Game invite events
@@ -175,7 +176,7 @@ export function initFriendSocket(io) {
     // Handle game start with method
     socket.on('startGameWithMethod', async ({ inviteId, method }) => {
       try {
-        logger.info('بدء اللعبة بطريقة:', { inviteId, method, userId });
+        logger.info(':', { inviteId, method, userId });
         
         if (!inviteId || !method) {
           return socket.emit('error', { message: 'بيانات بدء اللعبة غير مكتملة' });
@@ -256,7 +257,7 @@ export function initFriendSocket(io) {
         nsp.to(`user::${invite.to_user_id}`).emit('gameStarted', gameData);
 
       } catch (error) {
-        logger.error('خطأ في بدء اللعبة:', error);
+        logger.error(':', error);
         socket.emit('error', { message: error.message });
       }
     });
@@ -264,7 +265,7 @@ export function initFriendSocket(io) {
     // Join user room for receiving invites
     socket.on('joinUserRoom', () => {
       socket.join(`user::${userId}`);
-      logger.debug('انضم المستخدم للغرفة الشخصية:', userId);
+      logger.debug(':', userId);
     });
 
     // Handle disconnect
@@ -278,7 +279,7 @@ export function initFriendSocket(io) {
       try {
         const user = await User.findByPk(userId);
         if (!user) {
-          logger.error('المستخدم غير موجود عند قطع الاتصال:', userId);
+          logger.error(':', userId);
           return;
         }
         
@@ -286,16 +287,16 @@ export function initFriendSocket(io) {
         if (!isUserOnline(userId)) {
           // لا تحديث الحالة إذا كان المستخدم في مباراة
           if (user.state !== 'in-game') {
-            logger.debug(`المستخدم ${userId} لم يتبق له اتصالات، تحديث الحالة إلى offline`);
+            logger.debug(`${userId} offline`);
             await updateUserStatus(userId, 'offline');
           } else {
-            logger.debug(`المستخدم ${userId} في مباراة، الحفاظ على الحالة كـ in-game`);
+            logger.debug(`${userId} in-game`);
           }
         } else {
-          logger.debug(`المستخدم ${userId} لا يزال متصل من أماكن أخرى، عدم تحديث الحالة`);
+          logger.debug(`${userId}`);
         }
       } catch (error) {
-        logger.error('خطأ في تحديث حالة المستخدم عند قطع الاتصال:', error);
+        logger.error(':', error);
       }
     });
     
@@ -303,7 +304,7 @@ export function initFriendSocket(io) {
     socket.on('joinGameRoom', async ({ gameId }) => {
       try {
         logger.info('=== FRIEND SOCKET: Received joinGameRoom request ===');
-        logger.info('انضمام لاعب لغرفة المباراة:', { userId, gameId });
+        logger.info(':', { userId, gameId });
         
         // التحقق من أن socket.join يتم تنفيذه بنجاح
         logger.info(`Attempting to join room game::${gameId} for user ${userId}`);
@@ -347,14 +348,14 @@ export function initFriendSocket(io) {
         }, 1000);
         
       } catch (error) {
-        logger.error('خطأ في الانضمام لغرفة المباراة:', error);
+        logger.error(':', error);
       }
     });
     
     // Handle player disconnection from game room
     socket.on('leaveGameRoom', async ({ gameId }) => {
       try {
-        logger.debug('مغادرة لاعب لغرفة المباراة:', { userId, gameId });
+        logger.debug(':', { userId, gameId });
         
         socket.leave(`game::${gameId}`);
         
@@ -365,7 +366,7 @@ export function initFriendSocket(io) {
         });
         
       } catch (error) {
-        logger.error('خطأ في مغادرة غرفة المباراة:', error);
+        logger.error(':', error);
       }
     });
 

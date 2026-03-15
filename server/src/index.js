@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import session from 'express-session';
+import config from '../config/index.js';
 import { errorHandler, notFound } from './middlewares/errorHandler.js';
 import logger from './utils/logger.js';
 import { optionalAuth, globalAuthMiddleware } from './middlewares/authMiddleware.js';
@@ -14,6 +15,8 @@ import fs from 'fs';
 // Get current directory
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const frontendDistDir = path.join(__dirname, '../public_html');
+const frontendIndexFile = path.join(frontendDistDir, 'index.html');
 
 // Setup global io variable
 global.io = null;
@@ -50,6 +53,7 @@ import friendRoutes from './routes/friendRoutes.js';
 import gameRoutes from './routes/gameRoutes.js';
 
 const app = express();
+app.set('trust proxy', 1);
 
 // Security middleware
 app.use(
@@ -95,7 +99,7 @@ app.use(
           "wss:", 
           "ws:",
           "https://localhost:3000",
-          "http://localhost:3000"
+          "http://localhost:3003"
         ],
         mediaSrc: [
           "'self'",
@@ -112,7 +116,7 @@ app.use(
 // CORS configuration - Allow all origins for development
 app.use(
   cors({
-    origin: ['http://localhost:8080', 'http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:8080', 'http://127.0.0.1:3000'],
+    origin: config.cors.allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
@@ -168,11 +172,47 @@ app.use('/.well-known/appspecific/*', (req, res) => {
 // Global authentication middleware for all routes
 app.use(globalAuthMiddleware);
 
+// Serve built React frontend from server/public_html
+app.use(express.static(frontendDistDir, { index: false }));
+app.get('*', (req, res, next) => {
+  const isSpaRoute =
+    req.method === 'GET' &&
+    !req.path.startsWith('/api') &&
+    !req.path.startsWith('/health') &&
+    !req.path.startsWith('/socket.io') &&
+    !path.extname(req.path);
+
+  if (!isSpaRoute) {
+    return next();
+  }
+
+  if (fs.existsSync(frontendIndexFile)) {
+    return res.sendFile(frontendIndexFile);
+  }
+
+  return res.status(503).json({
+    success: false,
+    message: 'Frontend build is missing. Run client build to generate server/public_html.',
+    timestamp: new Date().toISOString(),
+    path: req.originalUrl,
+    method: req.method,
+  });
+});
+
 // Serve static files
 app.use('/css', express.static(path.join(__dirname, '../../public/css')));
 app.use('/js', express.static(path.join(__dirname, '../../public/js')));
 app.use('/img', express.static(path.join(__dirname, '../../public/img')));
 app.use('/admin', express.static(path.join(__dirname, '../../public/admin')));
+
+// Backward-compatible avatar path used by existing DB records.
+app.get('/img/default-avatar.png', (req, res, next) => {
+  const fallbackAvatar = path.join(frontendDistDir, 'placeholder.svg');
+  if (fs.existsSync(fallbackAvatar)) {
+    return res.sendFile(fallbackAvatar);
+  }
+  return next();
+});
 
 // Serve favicon.ico
 app.get('/favicon.ico', (req, res) => {
@@ -356,7 +396,6 @@ app.use('/api/invites', inviteRoutes);
 app.use('/api/boards', userBoardRoutes);
 app.use('/api/friends', friendRoutes);
 app.use('/api/game', gameRoutes);
-app.use('/game', gameRoutes);
 
 // Stats endpoint
 app.get('/api/stats', async (req, res) => {
@@ -377,25 +416,25 @@ app.get('/api/stats', async (req, res) => {
     try {
       totalUsers = await User.count();
       } catch (error) {
-    logger.error('خطأ في عد المستخدمين:', error);
+    logger.error(':', error);
   }
     
     try {
       totalGames = await Game.count();
       } catch (error) {
-    logger.error('خطأ في عد الألعاب:', error);
+    logger.error(':', error);
   }
     
     try {
       totalPuzzles = await Puzzle.count();
       } catch (error) {
-    logger.error('خطأ في عد الألغاز:', error);
+    logger.error(':', error);
   }
     
     try {
       totalCourses = await Course.count();
       } catch (error) {
-    logger.error('خطأ في عد الكورسات:', error);
+    logger.error(':', error);
   }
     
     res.json({
@@ -408,7 +447,7 @@ app.get('/api/stats', async (req, res) => {
       }
     });
   } catch (error) {
-    logger.error('خطأ في جلب الإحصائيات:', error);
+    logger.error(':', error);
     // إرجاع بيانات افتراضية في حالة الخطأ
     res.json({
       success: true,
@@ -540,7 +579,7 @@ app.get('/api/search', async (req, res) => {
       data: results.slice(0, 10) // إرجاع أول 10 نتائج فقط
     });
   } catch (error) {
-    logger.error('خطأ في البحث:', error);
+    logger.error(':', error);
     res.json({
       success: true,
       data: []

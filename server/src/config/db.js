@@ -13,15 +13,11 @@ const dbConfig = {
   connectionLimit: 10,
   queueLimit: 0,
   connectTimeout: 60000,
-  acquireTimeout: 60000,
   charset: 'utf8mb4',
   timezone: '+00:00',
   dateStrings: true,
   supportBigNumbers: true,
-  bigNumberStrings: true,
-  ssl: config.nodeEnv === 'production' ? {
-    rejectUnauthorized: false
-  } : false
+  bigNumberStrings: true
 };
 
 // إنشاء pool واحد موحد

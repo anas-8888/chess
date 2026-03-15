@@ -1,4 +1,5 @@
 import { authService } from './authService';
+import { API_BASE_URL } from '@/config/urls';
 
 export interface Friend {
   id: string;
@@ -38,7 +39,7 @@ class FriendService {
   // Get friends list
   async getFriends(): Promise<Friend[]> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/friends`, {
+      const response = await fetch(`${API_BASE_URL}/api/friends`, {
         method: 'GET',
         headers: this.getAuthHeaders(),
       });
@@ -68,7 +69,7 @@ class FriendService {
   // Get friend requests
   async getFriendRequests(): Promise<FriendRequest[]> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/friends/requests`, {
+      const response = await fetch(`${API_BASE_URL}/api/friends/requests`, {
         method: 'GET',
         headers: this.getAuthHeaders(),
       });
@@ -89,7 +90,7 @@ class FriendService {
   // Get incoming friend requests
   async getIncomingRequests(): Promise<any[]> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/friends/incoming`, {
+      const response = await fetch(`${API_BASE_URL}/api/friends/incoming`, {
         method: 'GET',
         headers: this.getAuthHeaders(),
       });
@@ -110,7 +111,7 @@ class FriendService {
   // Send friend request
   async sendFriendRequest(userId: string): Promise<void> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/friends/request`, {
+      const response = await fetch(`${API_BASE_URL}/api/friends/request`, {
         method: 'POST',
         headers: this.getAuthHeaders(),
         body: JSON.stringify({ toUserId: userId }),
@@ -129,7 +130,7 @@ class FriendService {
   // Accept friend request (by request ID)
   async acceptFriendRequest(requestId: string): Promise<void> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/friends/request/${requestId}/accept`, {
+      const response = await fetch(`${API_BASE_URL}/api/friends/request/${requestId}/accept`, {
         method: 'POST',
         headers: this.getAuthHeaders(),
       });
@@ -147,7 +148,7 @@ class FriendService {
   // Reject friend request (by request ID)
   async rejectFriendRequest(requestId: string): Promise<void> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/friends/request/${requestId}/reject`, {
+      const response = await fetch(`${API_BASE_URL}/api/friends/request/${requestId}/reject`, {
         method: 'POST',
         headers: this.getAuthHeaders(),
       });
@@ -165,7 +166,7 @@ class FriendService {
   // Remove friend
   async removeFriend(friendId: string): Promise<void> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/friends/${friendId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/friends/${friendId}`, {
         method: 'DELETE',
         headers: this.getAuthHeaders(),
       });
@@ -183,7 +184,7 @@ class FriendService {
   // Search users
   async searchUsers(query: string): Promise<Friend[]> {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/users/search?q=${encodeURIComponent(query)}`, {
+      const response = await fetch(`${API_BASE_URL}/api/users/search?q=${encodeURIComponent(query)}`, {
         method: 'GET',
         headers: this.getAuthHeaders(),
       });

@@ -68,7 +68,7 @@ const AIGame = () => {
     name: 'الذكاء الاصطناعي',
     rating: 1500,
     color: 'black',
-    avatar: '/ai-avatar.png'
+    avatar: '/placeholder.svg'
   });
 
   // Human Player configuration

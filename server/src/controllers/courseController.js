@@ -220,7 +220,7 @@ export const enrollInCourse = async (req, res) => {
     
     res.status(200).json(formatSuccessResponse(enrollment, 'تم التسجيل في الكورس بنجاح'));
   } catch (error) {
-    console.error('خطأ في تسجيل الكورس:', error);
+    console.error('Error registering course:', error);
     
     // رسائل خطأ مخصصة حسب نوع الخطأ
     let errorMessage = error.message;
@@ -291,7 +291,7 @@ export const checkCourseEnrollment = async (req, res) => {
     // إرجاع البيانات مباشرة بدون تغليفها
     res.status(200).json({ isEnrolled });
   } catch (error) {
-    console.error('خطأ في فحص حالة التسجيل:', error);
+    console.error('Error checking enrollment status:', error);
     res.status(500).json(formatDetailedError('حدث خطأ في فحص حالة التسجيل', error));
   }
 };
