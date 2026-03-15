@@ -51,6 +51,7 @@ import inviteRoutes from './routes/inviteRoutes.js';
 import userBoardRoutes from './routes/userBoardRoutes.js';
 import friendRoutes from './routes/friendRoutes.js';
 import gameRoutes from './routes/gameRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -396,6 +397,7 @@ app.use('/api/invites', inviteRoutes);
 app.use('/api/boards', userBoardRoutes);
 app.use('/api/friends', friendRoutes);
 app.use('/api/game', gameRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Stats endpoint
 app.get('/api/stats', async (req, res) => {

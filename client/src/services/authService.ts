@@ -8,6 +8,7 @@ export interface User {
   avatar?: string;
   rating: number;
   email: string;
+  type?: 'user' | 'admin';
 }
 
 export interface AuthState {
@@ -139,7 +140,8 @@ class AuthService {
             username: data.data.username,
             rating: data.data.rank || 1200,
             email: data.data.email,
-            avatar: data.data.thumbnail
+            avatar: data.data.thumbnail,
+            type: data.data.type,
           };
           this.saveToStorage();
           return true;

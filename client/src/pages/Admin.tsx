@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,224 +8,269 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  Home, 
-  Shield, 
-  Users, 
-  GamepadIcon, 
-  Mail, 
-  Search, 
-  Ban, 
+import { API_BASE_URL } from "@/config/urls";
+import { authService } from "@/services/authService";
+import {
+  Home,
+  Shield,
+  Users,
+  GamepadIcon,
+  Mail,
+  Search,
+  Ban,
   CheckCircle,
   XCircle,
   Trash2,
   Eye,
   BarChart3,
-  Activity
+  Activity,
 } from "lucide-react";
+
+type AdminStats = {
+  totalUsers: number;
+  onlineUsers: number;
+  activeGames: number;
+  pendingInvites: number;
+  bannedUsers: number;
+  gamesPlayedToday: number;
+};
+
+type AdminUser = {
+  id: number;
+  username: string;
+  email: string;
+  avatar: string | null;
+  status: "online" | "offline" | "in-game";
+  rating: number;
+  gamesPlayed: number;
+  type: "user" | "admin";
+  banned: boolean;
+  joinedAt: string;
+  lastActiveAt: string;
+};
+
+type AdminGame = {
+  id: number;
+  whitePlayer: string;
+  blackPlayer: string;
+  status: "waiting" | "active" | "ended";
+  initialTime: number;
+  startedAt: string;
+  endedAt: string | null;
+  moves: number;
+  gameType: string;
+};
+
+type AdminInvite = {
+  id: number;
+  fromUsername: string;
+  toUsername: string;
+  timeControl: number;
+  status: string;
+  createdAt: string;
+  expiresAt: string | null;
+  gameType: string;
+};
+
+type AdminEnvelope<T> = {
+  success: boolean;
+  message: string;
+  data: T;
+};
+
+type Paginated<T> = {
+  items: T[];
+};
+
+const defaultStats: AdminStats = {
+  totalUsers: 0,
+  onlineUsers: 0,
+  activeGames: 0,
+  pendingInvites: 0,
+  bannedUsers: 0,
+  gamesPlayedToday: 0,
+};
+
+const toArabicRelative = (isoDate?: string | null): string => {
+  if (!isoDate) return "غير متوفر";
+  const date = new Date(isoDate);
+  if (Number.isNaN(date.getTime())) return "غير متوفر";
+
+  const now = Date.now();
+  const diffMinutes = Math.floor((now - date.getTime()) / 60000);
+  if (diffMinutes <= 0) return "الآن";
+  if (diffMinutes < 60) return `منذ ${diffMinutes} دقيقة`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `منذ ${diffHours} ساعة`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 30) return `منذ ${diffDays} يوم`;
+
+  return date.toLocaleDateString("ar-SA");
+};
+
+const formatDate = (isoDate?: string | null): string => {
+  if (!isoDate) return "غير متوفر";
+  const date = new Date(isoDate);
+  if (Number.isNaN(date.getTime())) return "غير متوفر";
+  return date.toLocaleDateString("ar-SA");
+};
+
+const formatTimeControl = (seconds: number): string => {
+  if (!seconds || seconds <= 0) return "-";
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}+0`;
+};
 
 const Admin = () => {
   const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [users, setUsers] = useState<any[]>([]);
-  const [games, setGames] = useState<any[]>([]);
-  const [invites, setInvites] = useState<any[]>([]);
-  const [stats, setStats] = useState<any>({});
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [games, setGames] = useState<AdminGame[]>([]);
+  const [invites, setInvites] = useState<AdminInvite[]>([]);
+  const [stats, setStats] = useState<AdminStats>(defaultStats);
 
-  // Mock data
-  const mockUsers = [
-    {
-      id: 1,
-      username: "أحمد محمد",
-      email: "ahmed@example.com",
-      avatar: "/placeholder.svg",
-      status: "online",
-      rating: 1245,
-      gamesPlayed: 150,
-      joinedAt: "2024-01-15",
-      banned: false,
-      lastActive: "الآن"
-    },
-    {
-      id: 2,
-      username: "سارة أحمد",
-      email: "sara@example.com",
-      avatar: "/placeholder.svg",
-      status: "in-game",
-      rating: 1156,
-      gamesPlayed: 89,
-      joinedAt: "2024-02-20",
-      banned: false,
-      lastActive: "منذ 5 دقائق"
-    },
-    {
-      id: 3,
-      username: "محمد سبام",
-      email: "spam@example.com",
-      avatar: "/placeholder.svg",
-      status: "offline",
-      rating: 800,
-      gamesPlayed: 15,
-      joinedAt: "2024-03-01",
-      banned: true,
-      lastActive: "منذ يومين"
+  const token = authService.getToken();
+
+  const fetchAdmin = async <T,>(path: string, options: RequestInit = {}): Promise<T> => {
+    if (!token) {
+      throw new Error("لم يتم العثور على جلسة تسجيل دخول");
     }
-  ];
 
-  const mockGames = [
-    {
-      id: "game_001",
-      whitePlayer: "أحمد محمد",
-      blackPlayer: "سارة أحمد",
-      status: "active",
-      startedAt: "منذ 15 دقيقة",
-      timeControl: "10+0",
-      moves: 23
-    },
-    {
-      id: "game_002",
-      whitePlayer: "عمر خالد",
-      blackPlayer: "ليلى محمد",
-      status: "finished",
-      startedAt: "منذ ساعة",
-      timeControl: "5+3",
-      moves: 45,
-      result: "1-0"
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...(options.headers || {}),
+      },
+    });
+
+    const body = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const message = body?.message || "فشل في تنفيذ الطلب";
+      const error = new Error(message) as Error & { status?: number };
+      error.status = response.status;
+      throw error;
     }
-  ];
 
-  const mockInvites = [
-    {
-      id: 1,
-      from: "يوسف أحمد",
-      to: "فاطمة سالم",
-      timeControl: "15+10",
-      status: "pending",
-      createdAt: "منذ 5 دقائق",
-      expiresAt: "خلال 5 دقائق"
-    }
-  ];
-
-  const mockStats = {
-    totalUsers: 1247,
-    onlineUsers: 89,
-    activeGames: 23,
-    pendingInvites: 7,
-    bannedUsers: 12,
-    gamesPlayedToday: 156
+    return body as T;
   };
 
-  useEffect(() => {
-    checkAdminAccess();
-    loadAdminData();
-  }, []);
-
   const checkAdminAccess = async () => {
-    // REST: GET /api/me -> check if user has admin role
-    const userRole = "admin"; // Mock: assume user is admin
-    if (userRole !== "admin") {
+    try {
+      const response = await fetchAdmin<AdminEnvelope<{ type: "admin" | "user" }>>("/api/admin/access");
+      if (response?.data?.type !== "admin") {
+        throw new Error("ليس لديك صلاحيات مدير");
+      }
+    } catch (error) {
       toast({
         title: "غير مصرح",
-        description: "ليس لديك صلاحية للوصول لهذه الصفحة",
-        variant: "destructive"
+        description: "ليس لديك صلاحية للوصول إلى لوحة الإدارة",
+        variant: "destructive",
       });
-      // Redirect to dashboard
-      return;
+      window.location.href = "/dashboard";
+      throw error;
     }
   };
 
   const loadAdminData = async () => {
-    try {
-      // REST: GET /api/admin/users -> fetch all users
-      setUsers(mockUsers);
-      
-      // REST: GET /api/admin/games -> fetch all games
-      setGames(mockGames);
-      
-      // REST: GET /api/admin/invites -> fetch all invites
-      setInvites(mockInvites);
-      
-      // REST: GET /api/admin/stats -> fetch admin statistics
-      setStats(mockStats);
-    } catch (error) {
-      toast({
-        title: "خطأ",
-        description: "لم نتمكن من تحميل بيانات الإدارة",
-        variant: "destructive"
+    const [statsResponse, usersResponse, gamesResponse, invitesResponse] = await Promise.all([
+      fetchAdmin<AdminEnvelope<AdminStats>>("/api/admin/stats"),
+      fetchAdmin<AdminEnvelope<Paginated<AdminUser>>>(`/api/admin/users?limit=200&search=${encodeURIComponent(searchTerm)}`),
+      fetchAdmin<AdminEnvelope<Paginated<AdminGame>>>("/api/admin/games?limit=200"),
+      fetchAdmin<AdminEnvelope<Paginated<AdminInvite>>>("/api/admin/invites?limit=200"),
+    ]);
+
+    setStats(statsResponse.data || defaultStats);
+    setUsers(usersResponse.data?.items || []);
+    setGames(gamesResponse.data?.items || []);
+    setInvites(invitesResponse.data?.items || []);
+  };
+
+  useEffect(() => {
+    const bootstrap = async () => {
+      setLoading(true);
+      try {
+        await checkAdminAccess();
+        await loadAdminData();
+      } catch {
+        // handled in helpers
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    bootstrap();
+  }, []);
+
+  useEffect(() => {
+    if (!loading) {
+      loadAdminData().catch(() => {
+        toast({
+          title: "خطأ",
+          description: "تعذر تحديث بيانات الإدارة",
+          variant: "destructive",
+        });
       });
     }
-  };
+  }, [searchTerm]);
 
   const banUser = async (userId: number) => {
     try {
-      // REST: POST /api/admin/users/${userId}/ban -> ban user
-      setUsers(prev => prev.map(user => 
-        user.id === userId ? { ...user, banned: true } : user
-      ));
-      toast({
-        title: "تم حظر المستخدم",
-        description: "تم حظر المستخدم بنجاح"
-      });
+      await fetchAdmin(`/api/admin/users/${userId}/ban`, { method: "POST" });
+      await loadAdminData();
+      toast({ title: "تم", description: "تم حظر المستخدم بنجاح" });
     } catch (error) {
       toast({
         title: "خطأ",
-        description: "لم نتمكن من حظر المستخدم",
-        variant: "destructive"
+        description: (error as Error).message || "فشل في حظر المستخدم",
+        variant: "destructive",
       });
     }
   };
 
   const unbanUser = async (userId: number) => {
     try {
-      // REST: POST /api/admin/users/${userId}/unban -> unban user
-      setUsers(prev => prev.map(user => 
-        user.id === userId ? { ...user, banned: false } : user
-      ));
-      toast({
-        title: "تم إلغاء الحظر",
-        description: "تم إلغاء حظر المستخدم بنجاح"
-      });
+      await fetchAdmin(`/api/admin/users/${userId}/unban`, { method: "POST" });
+      await loadAdminData();
+      toast({ title: "تم", description: "تم إلغاء حظر المستخدم بنجاح" });
     } catch (error) {
       toast({
         title: "خطأ",
-        description: "لم نتمكن من إلغاء حظر المستخدم",
-        variant: "destructive"
+        description: (error as Error).message || "فشل في إلغاء الحظر",
+        variant: "destructive",
       });
     }
   };
 
-  const endGame = async (gameId: string) => {
+  const endGame = async (gameId: number) => {
     try {
-      // REST: POST /api/admin/games/${gameId}/end -> force end game
-      setGames(prev => prev.map(game => 
-        game.id === gameId ? { ...game, status: "ended" } : game
-      ));
-      toast({
-        title: "تم إنهاء المباراة",
-        description: "تم إنهاء المباراة قسرياً"
-      });
+      await fetchAdmin(`/api/admin/games/${gameId}/end`, { method: "POST" });
+      await loadAdminData();
+      toast({ title: "تم", description: "تم إنهاء المباراة بنجاح" });
     } catch (error) {
       toast({
         title: "خطأ",
-        description: "لم نتمكن من إنهاء المباراة",
-        variant: "destructive"
+        description: (error as Error).message || "فشل في إنهاء المباراة",
+        variant: "destructive",
       });
     }
   };
 
   const deleteInvite = async (inviteId: number) => {
     try {
-      // REST: DELETE /api/admin/invites/${inviteId} -> delete invite
-      setInvites(prev => prev.filter(invite => invite.id !== inviteId));
-      toast({
-        title: "تم حذف الدعوة",
-        description: "تم حذف الدعوة بنجاح"
-      });
+      await fetchAdmin(`/api/admin/invites/${inviteId}`, { method: "DELETE" });
+      await loadAdminData();
+      toast({ title: "تم", description: "تم حذف الدعوة بنجاح" });
     } catch (error) {
       toast({
         title: "خطأ",
-        description: "لم نتمكن من حذف الدعوة",
-        variant: "destructive"
+        description: (error as Error).message || "فشل في حذف الدعوة",
+        variant: "destructive",
       });
     }
   };
@@ -237,20 +282,31 @@ const Admin = () => {
       case "in-game":
         return <Badge className="bg-yellow-500 text-white">في مباراة</Badge>;
       case "offline":
-        return <Badge variant="secondary">غير متصل</Badge>;
       default:
-        return <Badge variant="outline">{status}</Badge>;
+        return <Badge variant="secondary">غير متصل</Badge>;
     }
   };
 
-  const filteredUsers = users.filter(user =>
-    user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredUsers = useMemo(
+    () =>
+      users.filter(
+        user =>
+          user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          user.email.toLowerCase().includes(searchTerm.toLowerCase())
+      ),
+    [users, searchTerm]
   );
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-subtle flex items-center justify-center" dir="rtl">
+        جاري تحميل لوحة الإدارة...
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-subtle" dir="rtl">
-      {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
@@ -265,7 +321,6 @@ const Admin = () => {
                 <h1 className="text-xl font-bold text-foreground font-cairo">لوحة الإدارة</h1>
               </div>
             </div>
-
             <Badge variant="outline" className="text-primary border-primary">
               <Shield className="ml-1 h-3 w-3" />
               مدير
@@ -275,55 +330,13 @@ const Admin = () => {
       </header>
 
       <div className="container mx-auto px-4 py-8">
-        {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-          <Card>
-            <CardContent className="p-4 text-center">
-              <Users className="h-8 w-8 text-primary mx-auto mb-2" />
-              <div className="text-2xl font-bold">{stats.totalUsers}</div>
-              <div className="text-xs text-muted-foreground">إجمالي المستخدمين</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4 text-center">
-              <Activity className="h-8 w-8 text-green-500 mx-auto mb-2" />
-              <div className="text-2xl font-bold">{stats.onlineUsers}</div>
-              <div className="text-xs text-muted-foreground">متصل الآن</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4 text-center">
-              <GamepadIcon className="h-8 w-8 text-yellow-500 mx-auto mb-2" />
-              <div className="text-2xl font-bold">{stats.activeGames}</div>
-              <div className="text-xs text-muted-foreground">مباريات نشطة</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4 text-center">
-              <Mail className="h-8 w-8 text-blue-500 mx-auto mb-2" />
-              <div className="text-2xl font-bold">{stats.pendingInvites}</div>
-              <div className="text-xs text-muted-foreground">دعوات معلقة</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4 text-center">
-              <Ban className="h-8 w-8 text-red-500 mx-auto mb-2" />
-              <div className="text-2xl font-bold">{stats.bannedUsers}</div>
-              <div className="text-xs text-muted-foreground">محظورين</div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4 text-center">
-              <BarChart3 className="h-8 w-8 text-purple-500 mx-auto mb-2" />
-              <div className="text-2xl font-bold">{stats.gamesPlayedToday}</div>
-              <div className="text-xs text-muted-foreground">مباريات اليوم</div>
-            </CardContent>
-          </Card>
+          <Card><CardContent className="p-4 text-center"><Users className="h-8 w-8 text-primary mx-auto mb-2" /><div className="text-2xl font-bold">{stats.totalUsers}</div><div className="text-xs text-muted-foreground">إجمالي المستخدمين</div></CardContent></Card>
+          <Card><CardContent className="p-4 text-center"><Activity className="h-8 w-8 text-green-500 mx-auto mb-2" /><div className="text-2xl font-bold">{stats.onlineUsers}</div><div className="text-xs text-muted-foreground">متصل الآن</div></CardContent></Card>
+          <Card><CardContent className="p-4 text-center"><GamepadIcon className="h-8 w-8 text-yellow-500 mx-auto mb-2" /><div className="text-2xl font-bold">{stats.activeGames}</div><div className="text-xs text-muted-foreground">مباريات نشطة</div></CardContent></Card>
+          <Card><CardContent className="p-4 text-center"><Mail className="h-8 w-8 text-blue-500 mx-auto mb-2" /><div className="text-2xl font-bold">{stats.pendingInvites}</div><div className="text-xs text-muted-foreground">دعوات معلقة</div></CardContent></Card>
+          <Card><CardContent className="p-4 text-center"><Ban className="h-8 w-8 text-red-500 mx-auto mb-2" /><div className="text-2xl font-bold">{stats.bannedUsers}</div><div className="text-xs text-muted-foreground">محظورين</div></CardContent></Card>
+          <Card><CardContent className="p-4 text-center"><BarChart3 className="h-8 w-8 text-purple-500 mx-auto mb-2" /><div className="text-2xl font-bold">{stats.gamesPlayedToday}</div><div className="text-xs text-muted-foreground">مباريات اليوم</div></CardContent></Card>
         </div>
 
         <Tabs defaultValue="users" className="space-y-6">
@@ -335,7 +348,6 @@ const Admin = () => {
           </TabsList>
 
           <TabsContent value="users" className="space-y-6">
-            {/* Search */}
             <Card>
               <CardContent className="p-4">
                 <div className="relative">
@@ -343,14 +355,13 @@ const Admin = () => {
                   <Input
                     placeholder="ابحث في المستخدمين..."
                     value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onChange={e => setSearchTerm(e.target.value)}
                     className="pr-10"
                   />
                 </div>
               </CardContent>
             </Card>
 
-            {/* Users Table */}
             <Card>
               <CardHeader>
                 <CardTitle className="font-cairo">قائمة المستخدمين</CardTitle>
@@ -362,6 +373,7 @@ const Admin = () => {
                     <TableRow>
                       <TableHead>المستخدم</TableHead>
                       <TableHead>الحالة</TableHead>
+                      <TableHead>الدور</TableHead>
                       <TableHead>التقييم</TableHead>
                       <TableHead>المباريات</TableHead>
                       <TableHead>تاريخ الانضمام</TableHead>
@@ -370,12 +382,12 @@ const Admin = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredUsers.map((user) => (
+                    {filteredUsers.map(user => (
                       <TableRow key={user.id}>
                         <TableCell>
                           <div className="flex items-center gap-3">
                             <Avatar className="h-8 w-8">
-                              <AvatarImage src={user.avatar} />
+                              <AvatarImage src={user.avatar || "/placeholder.svg"} />
                               <AvatarFallback>{user.username[0]}</AvatarFallback>
                             </Avatar>
                             <div>
@@ -384,36 +396,23 @@ const Admin = () => {
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          {user.banned ? (
-                            <Badge variant="destructive">محظور</Badge>
-                          ) : (
-                            getStatusBadge(user.status)
-                          )}
-                        </TableCell>
+                        <TableCell>{user.banned ? <Badge variant="destructive">محظور</Badge> : getStatusBadge(user.status)}</TableCell>
+                        <TableCell>{user.type === "admin" ? <Badge variant="outline">مدير</Badge> : <Badge variant="secondary">مستخدم</Badge>}</TableCell>
                         <TableCell>{user.rating}</TableCell>
                         <TableCell>{user.gamesPlayed}</TableCell>
-                        <TableCell>{user.joinedAt}</TableCell>
-                        <TableCell>{user.lastActive}</TableCell>
+                        <TableCell>{formatDate(user.joinedAt)}</TableCell>
+                        <TableCell>{toArabicRelative(user.lastActiveAt)}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <Button variant="ghost" size="icon">
+                            <Button variant="ghost" size="icon" disabled>
                               <Eye className="h-4 w-4" />
                             </Button>
-                            {user.banned ? (
-                              <Button 
-                                onClick={() => unbanUser(user.id)}
-                                variant="outline" 
-                                size="icon"
-                              >
+                            {user.type === "admin" ? null : user.banned ? (
+                              <Button onClick={() => unbanUser(user.id)} variant="outline" size="icon">
                                 <CheckCircle className="h-4 w-4" />
                               </Button>
                             ) : (
-                              <Button 
-                                onClick={() => banUser(user.id)}
-                                variant="outline" 
-                                size="icon"
-                              >
+                              <Button onClick={() => banUser(user.id)} variant="outline" size="icon">
                                 <Ban className="h-4 w-4" />
                               </Button>
                             )}
@@ -431,7 +430,7 @@ const Admin = () => {
             <Card>
               <CardHeader>
                 <CardTitle className="font-cairo">إدارة المباريات</CardTitle>
-                <CardDescription>مراقبة والتحكم في المباريات الجارية</CardDescription>
+                <CardDescription>مراقبة والتحكم في المباريات</CardDescription>
               </CardHeader>
               <CardContent>
                 <Table>
@@ -440,14 +439,15 @@ const Admin = () => {
                       <TableHead>معرف المباراة</TableHead>
                       <TableHead>اللاعبون</TableHead>
                       <TableHead>الحالة</TableHead>
-                      <TableHead>التحكم في الوقت</TableHead>
-                      <TableHead>بدأت منذ</TableHead>
+                      <TableHead>الوقت</TableHead>
+                      <TableHead>البداية</TableHead>
+                      <TableHead>النوع</TableHead>
                       <TableHead>الحركات</TableHead>
                       <TableHead>الإجراءات</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {games.map((game) => (
+                    {games.map(game => (
                       <TableRow key={game.id}>
                         <TableCell className="font-mono text-sm">{game.id}</TableCell>
                         <TableCell>
@@ -456,25 +456,18 @@ const Admin = () => {
                             <div>{game.blackPlayer} (أسود)</div>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <Badge variant={game.status === "active" ? "default" : "secondary"}>
-                            {game.status === "active" ? "جارية" : "منتهية"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{game.timeControl}</TableCell>
-                        <TableCell>{game.startedAt}</TableCell>
+                        <TableCell><Badge variant={game.status === "active" ? "default" : "secondary"}>{game.status === "active" ? "جارية" : game.status === "ended" ? "منتهية" : "بانتظار البدء"}</Badge></TableCell>
+                        <TableCell>{formatTimeControl(game.initialTime)}</TableCell>
+                        <TableCell>{toArabicRelative(game.startedAt)}</TableCell>
+                        <TableCell>{game.gameType}</TableCell>
                         <TableCell>{game.moves}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <Button variant="ghost" size="icon">
+                            <Button variant="ghost" size="icon" disabled>
                               <Eye className="h-4 w-4" />
                             </Button>
-                            {game.status === "active" && (
-                              <Button 
-                                onClick={() => endGame(game.id)}
-                                variant="outline" 
-                                size="icon"
-                              >
+                            {game.status !== "ended" && (
+                              <Button onClick={() => endGame(game.id)} variant="outline" size="icon">
                                 <XCircle className="h-4 w-4" />
                               </Button>
                             )}
@@ -492,7 +485,7 @@ const Admin = () => {
             <Card>
               <CardHeader>
                 <CardTitle className="font-cairo">إدارة الدعوات</CardTitle>
-                <CardDescription>مراقبة الدعوات المعلقة</CardDescription>
+                <CardDescription>مراقبة الدعوات المعلقة والمنتهية</CardDescription>
               </CardHeader>
               <CardContent>
                 <Table>
@@ -500,30 +493,24 @@ const Admin = () => {
                     <TableRow>
                       <TableHead>من</TableHead>
                       <TableHead>إلى</TableHead>
-                      <TableHead>التحكم في الوقت</TableHead>
+                      <TableHead>الوقت</TableHead>
                       <TableHead>الحالة</TableHead>
-                      <TableHead>تم الإنشاء</TableHead>
-                      <TableHead>تنتهي</TableHead>
+                      <TableHead>تاريخ الإنشاء</TableHead>
+                      <TableHead>انتهاء الصلاحية</TableHead>
                       <TableHead>الإجراءات</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {invites.map((invite) => (
+                    {invites.map(invite => (
                       <TableRow key={invite.id}>
-                        <TableCell>{invite.from}</TableCell>
-                        <TableCell>{invite.to}</TableCell>
-                        <TableCell>{invite.timeControl}</TableCell>
+                        <TableCell>{invite.fromUsername}</TableCell>
+                        <TableCell>{invite.toUsername}</TableCell>
+                        <TableCell>{invite.timeControl} دقيقة</TableCell>
+                        <TableCell><Badge variant="secondary">{invite.status}</Badge></TableCell>
+                        <TableCell>{toArabicRelative(invite.createdAt)}</TableCell>
+                        <TableCell className="text-red-500">{toArabicRelative(invite.expiresAt)}</TableCell>
                         <TableCell>
-                          <Badge variant="secondary">معلقة</Badge>
-                        </TableCell>
-                        <TableCell>{invite.createdAt}</TableCell>
-                        <TableCell className="text-red-500">{invite.expiresAt}</TableCell>
-                        <TableCell>
-                          <Button 
-                            onClick={() => deleteInvite(invite.id)}
-                            variant="outline" 
-                            size="icon"
-                          >
+                          <Button onClick={() => deleteInvite(invite.id)} variant="outline" size="icon">
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </TableCell>
@@ -539,8 +526,8 @@ const Admin = () => {
             <Card>
               <CardContent className="text-center py-12">
                 <Shield className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2 font-cairo">لا توجد بلاغات</h3>
-                <p className="text-muted-foreground">لا توجد بلاغات جديدة تحتاج للمراجعة</p>
+                <h3 className="text-lg font-semibold mb-2 font-cairo">لا توجد بلاغات حالياً</h3>
+                <p className="text-muted-foreground">يمكن إضافة نظام البلاغات لاحقاً حسب متطلباتك</p>
               </CardContent>
             </Card>
           </TabsContent>

@@ -437,6 +437,12 @@ const Dashboard = () => {
             </div>
 
             <div className="flex items-center gap-2">
+              {authUser?.type === 'admin' && (
+                <Button variant="outline" onClick={() => navigate('/admin')}>
+                  <Crown className="w-4 h-4 ml-2" />
+                  لوحة الإدارة
+                </Button>
+              )}
               <Button variant="ghost" size="icon">
                 <Settings className="w-5 h-5" />
               </Button>

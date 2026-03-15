@@ -171,6 +171,10 @@ export async function authenticateUser(data) {
   if (user.deleted_at) {
     throw new Error('تم حذف الحساب');
   }
+
+  if (user.is_banned) {
+    throw new Error('تم حظر هذا الحساب من قبل الإدارة');
+  }
   
   const isPasswordValid = await bcrypt.compare(password, user.password_hash);
   if (!isPasswordValid) {
@@ -283,12 +287,16 @@ export async function validateSession(token) {
   if (!user || user.deleted_at) {
     throw new Error('المستخدم غير موجود');
   }
+  if (user.is_banned) {
+    throw new Error('تم حظر هذا الحساب من قبل الإدارة');
+  }
   return {
     user_id: user.user_id,
     username: user.username,
     type: user.type,
     rank: user.rank,
     email: user.email,
+    is_banned: Boolean(user.is_banned),
   };
 }
 

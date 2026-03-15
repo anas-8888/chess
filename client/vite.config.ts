@@ -39,11 +39,14 @@ export default defineConfig(async ({ mode }) => {
           manualChunks(id) {
             if (!id.includes("node_modules")) return;
 
-            if (id.includes("react") || id.includes("scheduler")) {
+            if (
+              /node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id) ||
+              id.includes("react/jsx-runtime")
+            ) {
               return "vendor-react";
             }
 
-            if (id.includes("react-router")) {
+            if (/node_modules[\\/]react-router|node_modules[\\/]react-router-dom/.test(id)) {
               return "vendor-router";
             }
 

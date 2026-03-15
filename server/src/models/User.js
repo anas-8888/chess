@@ -26,6 +26,19 @@ const User = sequelize.define(
         isIn: [['user', 'admin']],
       },
     },
+    is_banned: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    banned_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    banned_reason: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+    },
     email: {
       type: DataTypes.STRING(100),
       allowNull: false,

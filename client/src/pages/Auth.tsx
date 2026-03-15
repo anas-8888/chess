@@ -52,8 +52,9 @@ const Auth = () => {
         description: "مرحباً بك في شطرنج العرب",
       });
       
-      // Navigate to dashboard after successful login
-      window.location.href = '/dashboard';
+      // Redirect by role
+      const nextPath = response.user?.type === 'admin' ? '/admin' : '/dashboard';
+      window.location.href = nextPath;
       
     } catch (error: any) {
       toast({
@@ -99,8 +100,9 @@ const Auth = () => {
         description: "مرحباً بك في شطرنج العرب",
       });
       
-      // Navigate to dashboard after successful registration
-      window.location.href = '/dashboard';
+      // Redirect by role
+      const nextPath = response.user?.type === 'admin' ? '/admin' : '/dashboard';
+      window.location.href = nextPath;
       
     } catch (error: any) {
       toast({

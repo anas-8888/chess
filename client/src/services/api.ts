@@ -9,6 +9,8 @@ export interface AuthResponse {
     username: string;
     avatar?: string;
     rating: number;
+    email: string;
+    type: 'user' | 'admin';
   };
 }
 

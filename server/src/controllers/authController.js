@@ -46,7 +46,9 @@ export const register = asyncHandler(async (req, res) => {
         id: result.user.user_id,
         username: result.user.username,
         avatar: result.user.thumbnail,
-        rating: result.user.rank
+        rating: result.user.rank,
+        email: result.user.email,
+        type: result.user.type,
       }
     });
   } catch (error) {
@@ -94,7 +96,9 @@ export const login = asyncHandler(async (req, res) => {
         id: result.user.user_id,
         username: result.user.username,
         avatar: result.user.thumbnail,
-        rating: result.user.rank
+        rating: result.user.rank,
+        email: result.user.email,
+        type: result.user.type,
       }
     });
   } catch (error) {
