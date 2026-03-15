@@ -22,6 +22,7 @@ import AILoading from "./pages/AILoading";
 import Settings from "./pages/Settings";
 import MyStatistics from "./pages/MyStatistics";
 import NotFound from "./pages/NotFound";
+import ActiveGameSticky from "./components/ActiveGameSticky";
 
 const queryClient = new QueryClient();
 
@@ -32,6 +33,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <ActiveGameSticky />
           <Routes>
             {/* Public Routes (no authentication required) */}
             <Route path="/" element={<Index />} />
@@ -61,3 +63,5 @@ const App = () => (
 );
 
 export default App;
+
+

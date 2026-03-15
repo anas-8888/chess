@@ -39,6 +39,15 @@ interface AIPlayer {
   avatar: string;
 }
 
+interface ApiConflictError extends Error {
+  status?: number;
+  code?: string;
+  data?: {
+    existingGameId?: number;
+    gameId?: number;
+  };
+}
+
 const AIGame = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -46,9 +55,21 @@ const AIGame = () => {
   const gameStartTimeRef = useRef<string>(new Date().toISOString());
   const resultSavedRef = useRef(false);
   const clockSyncInFlightRef = useRef(false);
+  const startCountdownIntervalRef = useRef<number | null>(null);
   const [persistedGameId, setPersistedGameId] = useState<number | null>(null);
   const [showNewGameConfirm, setShowNewGameConfirm] = useState(false);
+  const [showResignConfirm, setShowResignConfirm] = useState(false);
   const [restartingGame, setRestartingGame] = useState(false);
+  const [closingConflictingGame, setClosingConflictingGame] = useState(false);
+  const [activeGameConflict, setActiveGameConflict] = useState<{
+    open: boolean;
+    gameId: number | null;
+    message: string;
+  }>({
+    open: false,
+    gameId: null,
+    message: '',
+  });
   const storageSessionKey = useMemo(() => `ai_active_game_id_${user?.id || 'guest'}`, [user?.id]);
   
   const [game, setGame] = useState(new Chess());
@@ -65,10 +86,11 @@ const AIGame = () => {
   const [moves, setMoves] = useState<GameMove[]>([]);
   const [playerColor, setPlayerColor] = useState<'white' | 'black'>('white');
   const [aiThinking, setAiThinking] = useState(false);
+  const [startCountdown, setStartCountdown] = useState<number | null>(null);
   const [gameTime, setGameTime] = useState({
     white: 600, // 10 minutes
     black: 600,
-    isRunning: true,
+    isRunning: false,
     lastUpdate: Date.now()
   });
 
@@ -96,6 +118,48 @@ const AIGame = () => {
       san: pair.black?.san || pair.white?.san || '',
       fen: pair.fen || '',
     }));
+  }, []);
+
+  const startPreGameCountdown = useCallback(() => {
+    if (startCountdownIntervalRef.current !== null) {
+      window.clearInterval(startCountdownIntervalRef.current);
+      startCountdownIntervalRef.current = null;
+    }
+
+    setStartCountdown(3);
+    setGameTime(prev => ({
+      ...prev,
+      isRunning: false,
+      lastUpdate: Date.now(),
+    }));
+
+    startCountdownIntervalRef.current = window.setInterval(() => {
+      setStartCountdown(prev => {
+        if (prev === null) return null;
+        if (prev <= 1) {
+          if (startCountdownIntervalRef.current !== null) {
+            window.clearInterval(startCountdownIntervalRef.current);
+            startCountdownIntervalRef.current = null;
+          }
+          setGameTime(current => ({
+            ...current,
+            isRunning: true,
+            lastUpdate: Date.now(),
+          }));
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (startCountdownIntervalRef.current !== null) {
+        window.clearInterval(startCountdownIntervalRef.current);
+        startCountdownIntervalRef.current = null;
+      }
+    };
   }, []);
 
   const restoreAiSession = useCallback(async (session: ActiveAiGameSession) => {
@@ -141,6 +205,7 @@ const AIGame = () => {
       isRunning: session.status === 'active',
       lastUpdate: Date.now(),
     });
+    setStartCountdown(null);
 
     gameStartTimeRef.current = session.startedAt || new Date().toISOString();
     resultSavedRef.current = session.status !== 'active';
@@ -172,20 +237,61 @@ const AIGame = () => {
         aiLevel: aiPlayer.rating,
         initialTime: 600,
       });
+      setActiveGameConflict({ open: false, gameId: null, message: '' });
       setPersistedGameId(session.gameId);
       localStorage.setItem(storageSessionKey, String(session.gameId));
       gameStartTimeRef.current = new Date().toISOString();
       resultSavedRef.current = false;
+      startPreGameCountdown();
     } catch (error) {
+      const conflictError = error as ApiConflictError;
       console.error('Failed to create AI game session:', error);
       setPersistedGameId(null);
+
+      if (conflictError.status === 409 || conflictError.code === 'ACTIVE_GAME_EXISTS') {
+        const existingGameId = Number(conflictError.data?.existingGameId || conflictError.data?.gameId || 0) || null;
+        setActiveGameConflict({
+          open: true,
+          gameId: existingGameId,
+          message: conflictError.message || 'يوجد لديك مباراة غير مغلقة. يرجى إغلاقها أولاً.',
+        });
+        return;
+      }
+
       toast({
         title: 'تحذير',
         description: 'تعذر تهيئة حفظ المباراة على الخادم',
         variant: 'destructive',
       });
     }
-  }, [playerColor, aiPlayer.rating, storageSessionKey, toast]);
+  }, [playerColor, aiPlayer.rating, storageSessionKey, toast, startPreGameCountdown]);
+
+  const handleCloseConflictingGame = useCallback(async () => {
+    if (!activeGameConflict.gameId) {
+      setActiveGameConflict({ open: false, gameId: null, message: '' });
+      return;
+    }
+
+    setClosingConflictingGame(true);
+    try {
+      await userService.endCurrentGame(activeGameConflict.gameId);
+      setActiveGameConflict({ open: false, gameId: null, message: '' });
+      toast({
+        title: 'تم إغلاق المباراة',
+        description: 'تم إغلاق المباراة غير المغلقة. يمكنك الآن بدء مباراة جديدة.',
+      });
+      await initializeAiPersistence();
+    } catch (error) {
+      const typedError = error as Error;
+      toast({
+        title: 'تعذر إغلاق المباراة',
+        description: typedError.message || 'فشل إغلاق المباراة الجارية.',
+        variant: 'destructive',
+      });
+    } finally {
+      setClosingConflictingGame(false);
+    }
+  }, [activeGameConflict.gameId, initializeAiPersistence, toast]);
 
   useEffect(() => {
     let cancelled = false;
@@ -337,6 +443,7 @@ const AIGame = () => {
       ...prev,
       isRunning: false
     }));
+    setStartCountdown(null);
 
     let message = '';
     switch (reason) {
@@ -367,7 +474,7 @@ const AIGame = () => {
 
   // Simple AI move generation
   const generateAIMove = useCallback(async () => {
-    if (gameState.currentTurn !== aiPlayer.color || gameState.status !== 'active') {
+    if (startCountdown !== null || gameState.currentTurn !== aiPlayer.color || gameState.status !== 'active') {
       return;
     }
 
@@ -525,14 +632,14 @@ const AIGame = () => {
     } finally {
       setAiThinking(false);
     }
-  }, [game, gameState, aiPlayer.color, playerColor, handleGameEnd, toast, persistedGameId]);
+  }, [game, gameState, aiPlayer.color, playerColor, handleGameEnd, toast, persistedGameId, startCountdown]);
 
   // Trigger AI move when it's AI's turn
   useEffect(() => {
-    if (gameState.currentTurn === aiPlayer.color && gameState.status === 'active' && !aiThinking) {
+    if (startCountdown === null && gameState.currentTurn === aiPlayer.color && gameState.status === 'active' && !aiThinking) {
       generateAIMove();
     }
-  }, [gameState.currentTurn, gameState.status, aiThinking, generateAIMove]);
+  }, [gameState.currentTurn, gameState.status, aiThinking, generateAIMove, startCountdown]);
 
   const handleMove = useCallback((from: Square, to: Square, promotion?: string) => {
     // Check if it's player's turn
@@ -664,6 +771,11 @@ const AIGame = () => {
   }, [game, gameState, playerColor, aiPlayer.color, handleGameEnd, toast, persistedGameId]);
 
   const handleResign = () => {
+    setShowResignConfirm(true);
+  };
+
+  const handleConfirmResign = () => {
+    setShowResignConfirm(false);
     syncClockToServer();
     const winner = playerColor === 'white' ? 'black' : 'white';
     handleGameEnd({ reason: 'resign', winner });
@@ -694,7 +806,7 @@ const AIGame = () => {
     setGameTime({
       white: 600,
       black: 600,
-      isRunning: true,
+      isRunning: false,
       lastUpdate: Date.now()
     });
     setAiThinking(false);
@@ -800,13 +912,7 @@ const AIGame = () => {
                   جاري استعادة المباراة...
                 </Badge>
               )}
-              {aiThinking && (
-                <Badge variant="outline" className="bg-primary/10 text-primary animate-pulse">
-                  <Brain className="w-3 h-3 ml-1" />
-                  يفكر...
-                </Badge>
-              )}
-            </div>
+</div>
 
             <div className="flex items-center gap-2">
               <Button variant="outline" onClick={handleNewGame}>
@@ -932,17 +1038,12 @@ const AIGame = () => {
                   <Brain className="w-4 h-4 ml-1" />
                   ضد الذكاء الاصطناعي
                 </Badge>
-                {aiThinking && (
-                  <p className="text-sm text-muted-foreground animate-pulse">
-                    الذكاء الاصطناعي يفكر...
-                  </p>
-                )}
-              </div>
+</div>
               <ChessBoard
                 game={game}
                 onMove={handleMove}
                 orientation={playerColor}
-                allowMoves={!loading && gameState.status === 'active' && gameState.currentTurn === playerColor && !aiThinking}
+                allowMoves={!loading && startCountdown === null && gameState.status === 'active' && gameState.currentTurn === playerColor && !aiThinking}
               />
             </Card>
           </div>
@@ -997,6 +1098,16 @@ const AIGame = () => {
         </div>
       </div>
 
+
+      {startCountdown !== null && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 backdrop-blur-sm">
+          <div className="text-center">
+            <div className="text-[11rem] leading-none font-black text-white drop-shadow-[0_0_32px_rgba(255,255,255,0.5)]">
+              {startCountdown}
+            </div>
+          </div>
+        </div>
+      )}
       {/* Game End Modal */}
       {gameState.status === 'finished' && gameState.winner && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -1040,6 +1151,60 @@ const AIGame = () => {
         </div>
       )}
 
+      {activeGameConflict.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="mx-4 w-full max-w-md rounded-lg bg-card p-6 shadow-lg">
+            <h2 className="mb-2 text-xl font-bold">يوجد مباراة غير مغلقة</h2>
+            <p className="mb-4 text-sm text-muted-foreground">
+              {activeGameConflict.message || 'يوجد لديك مباراة غير مغلقة. يرجى إغلاقها أولاً.'}
+            </p>
+
+            {activeGameConflict.gameId && (
+              <div className="mb-5 rounded-md border border-border bg-muted/40 p-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">رقم المباراة:</span>
+                  <span className="font-semibold text-primary">#{activeGameConflict.gameId}</span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setActiveGameConflict({ open: false, gameId: null, message: '' })}
+                disabled={closingConflictingGame}
+              >
+                إلغاء
+              </Button>
+              <Button className="flex-1" onClick={handleCloseConflictingGame} disabled={closingConflictingGame}>
+                {closingConflictingGame ? 'جارٍ الإغلاق...' : 'إغلاق المباراة الجارية'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showResignConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="mx-4 w-full max-w-md rounded-lg bg-card p-6 shadow-lg">
+            <h2 className="mb-2 text-xl font-bold">تأكيد الاستسلام</h2>
+            <p className="mb-4 text-sm text-muted-foreground">هل أنت متأكد أنك تريد الاستسلام؟ سيتم احتساب المباراة كخسارة.</p>
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setShowResignConfirm(false)}
+              >
+                إلغاء
+              </Button>
+              <Button variant="destructive" className="flex-1" onClick={handleConfirmResign}>
+                تأكيد الاستسلام
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       {showNewGameConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="mx-4 w-full max-w-md rounded-lg bg-card p-6 shadow-lg">
@@ -1074,3 +1239,4 @@ const AIGame = () => {
 };
 
 export default AIGame; 
+

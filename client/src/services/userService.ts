@@ -456,7 +456,15 @@ class UserService {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || 'فشل في إنشاء مباراة الذكاء الاصطناعي');
+      const apiError = new Error(errorData.message || 'فشل في إنشاء مباراة الذكاء الاصطناعي') as Error & {
+        status?: number;
+        code?: string;
+        data?: unknown;
+      };
+      apiError.status = response.status;
+      apiError.code = errorData.code;
+      apiError.data = errorData.data;
+      throw apiError;
     }
 
     const data = await response.json();

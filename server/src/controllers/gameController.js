@@ -608,7 +608,8 @@ export const createAiGameSession = async (req, res) => {
     if (existingActiveGame) {
       return res.status(409).json({
         success: false,
-        message: 'يوجد مباراة جارية بالفعل',
+        code: 'ACTIVE_GAME_EXISTS',
+        message: 'يوجد لديك مباراة غير مغلقة. يرجى إغلاقها أولاً.',
         data: {
           existingGameId: existingActiveGame.id,
           existingGameType: existingActiveGame.game_type,

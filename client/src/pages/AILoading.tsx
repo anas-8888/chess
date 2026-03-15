@@ -2,46 +2,80 @@ import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Brain, 
-  Crown, 
-  Trophy, 
+import {
+  Brain,
+  Crown,
+  Trophy,
   Clock,
   ArrowLeft,
   Loader2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { userService } from '@/services/userService';
 
 const AILoading = () => {
   const navigate = useNavigate();
-  const [loadingText, setLoadingText] = useState('جاري تحضير الذكاء الاصطناعي...');
+  const [loadingText, setLoadingText] = useState('جاري تهيئة جلسة اللعب...');
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
-    const loadingSteps = [
-      'جاري تحضير الذكاء الاصطناعي...',
-      'جاري تحميل استراتيجيات اللعب...',
-      'جاري تحضير لوحة الشطرنج...',
-      'جاري إعداد المؤقتات...',
-      'كل شيء جاهز!'
+    let cancelled = false;
+
+    const tasks: Array<{
+      startText: string;
+      doneText: string;
+      run: () => Promise<unknown>;
+    }> = [
+      {
+        startText: 'جاري تحميل صفحة اللعب...',
+        doneText: 'تم تجهيز واجهة اللعب.',
+        run: async () => {
+          await import('./AIGame');
+        },
+      },
+      {
+        startText: 'جاري فحص المباراة الجارية...',
+        doneText: 'تم جلب حالة الجلسة الحالية.',
+        run: async () => {
+          await userService.getActiveAiGameSession().catch(() => null);
+        },
+      },
+      {
+        startText: 'جاري تحميل محرك الشطرنج...',
+        doneText: 'تم تجهيز محرك الشطرنج.',
+        run: async () => {
+          await import('chess.js');
+        },
+      },
     ];
 
-    let currentStep = 0;
-    const interval = setInterval(() => {
-      if (currentStep < loadingSteps.length) {
-        setLoadingText(loadingSteps[currentStep]);
-        setProgress((currentStep + 1) * (100 / loadingSteps.length));
-        currentStep++;
-      } else {
-        clearInterval(interval);
-        // Navigate to AI game after loading is complete
-        setTimeout(() => {
-          navigate('/ai-game');
-        }, 1000);
-      }
-    }, 1500);
+    let completed = 0;
+    const total = tasks.length;
 
-    return () => clearInterval(interval);
+    const markProgress = (text: string) => {
+      completed += 1;
+      if (cancelled) return;
+      setLoadingText(text);
+      setProgress((completed / total) * 100);
+
+      if (completed >= total) {
+        setLoadingText('كل شيء جاهز!');
+        navigate('/ai-game', { replace: true });
+      }
+    };
+
+    tasks.forEach((task) => {
+      if (cancelled) return;
+      setLoadingText(task.startText);
+      task
+        .run()
+        .then(() => markProgress(task.doneText))
+        .catch(() => markProgress('تم تجاوز خطوة غير حرجة...'));
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [navigate]);
 
   return (
@@ -57,17 +91,17 @@ const AILoading = () => {
                 </div>
               </div>
             </div>
-            
+
             <CardTitle className="text-2xl font-amiri mb-2">
               اللعب ضد الذكاء الاصطناعي
             </CardTitle>
-            
+
             <div className="space-y-4">
               <Badge variant="outline" className="text-sm">
                 <Trophy className="w-3 h-3 ml-1" />
                 مستوى الذكاء الاصطناعي: 1500
               </Badge>
-              
+
               <Badge variant="outline" className="text-sm">
                 <Clock className="w-3 h-3 ml-1" />
                 وقت اللعب: 10 دقائق
@@ -76,7 +110,6 @@ const AILoading = () => {
           </CardHeader>
 
           <CardContent className="space-y-6">
-            {/* Loading Animation */}
             <div className="text-center">
               <div className="mb-4">
                 <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
@@ -86,22 +119,19 @@ const AILoading = () => {
               </p>
             </div>
 
-            {/* Progress Bar */}
             <div className="w-full bg-muted rounded-full h-2">
-              <div 
-                className="bg-gradient-to-r from-primary to-secondary h-2 rounded-full transition-all duration-500 ease-out"
+              <div
+                className="bg-gradient-to-r from-primary to-secondary h-2 rounded-full transition-all duration-300 ease-out"
                 style={{ width: `${progress}%` }}
               ></div>
             </div>
 
-            {/* Progress Percentage */}
             <div className="text-center">
               <span className="text-sm text-muted-foreground">
                 {Math.round(progress)}%
               </span>
             </div>
 
-            {/* Features List */}
             <div className="space-y-3 text-sm text-muted-foreground">
               <div className="flex items-center gap-2">
                 <Crown className="w-4 h-4 text-primary" />
@@ -117,10 +147,9 @@ const AILoading = () => {
               </div>
             </div>
 
-            {/* Cancel Button */}
             <div className="pt-4">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="w-full"
                 onClick={() => navigate('/dashboard')}
               >
@@ -135,4 +164,4 @@ const AILoading = () => {
   );
 };
 
-export default AILoading; 
+export default AILoading;
