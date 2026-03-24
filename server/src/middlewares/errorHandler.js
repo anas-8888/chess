@@ -1,6 +1,30 @@
 import { formatError } from '../utils/helpers.js';
 import logger from '../utils/logger.js';
 
+const BENIGN_STATIC_404_PATTERNS = [
+  /^\/sitemap\.xml$/i,
+  /^\/robots\.txt$/i,
+  /^\/favicon\.ico$/i,
+  /^\/apple-touch-icon(?:-precomposed)?\.png$/i,
+];
+
+const isExpectedTokenValidationError = (req, error, statusCode) => {
+  if (statusCode !== 401) return false;
+  if (req.originalUrl !== '/api/auth/validate') return false;
+
+  const message = String(error?.message || '');
+  return (
+    message.includes('انتهت صلاحية الرمز المميز') ||
+    message.includes('الرمز المميز غير صحيح') ||
+    message.includes('انتهت صلاحية الجلسة')
+  );
+};
+
+const isBenignStatic404 = (req, statusCode) => {
+  if (statusCode !== 404) return false;
+  return BENIGN_STATIC_404_PATTERNS.some((pattern) => pattern.test(req.originalUrl || req.path || ''));
+};
+
 /**
  * Central error handler middleware
  * @param {Error} err - Error object
@@ -9,18 +33,8 @@ import logger from '../utils/logger.js';
  * @param {Function} next - Express next function
  */
 export const errorHandler = (error, req, res, next) => {
-  // تسجيل الخطأ مرة واحدة فقط
-  logger.error('Request error', {
-    message: error.message,
-    stack: error.stack,
-    url: req.originalUrl,
-    method: req.method,
-    ip: req.ip,
-    userAgent: req.get('User-Agent'),
-  });
-
   // تحديد نوع الخطأ ورسالته المناسبة
-  let statusCode = 500;
+  let statusCode = Number(error.statusCode || error.status) || 500;
   let message = 'حدث خطأ في الخادم';
 
   if (error.name === 'SequelizeValidationError') {
@@ -39,7 +53,37 @@ export const errorHandler = (error, req, res, next) => {
     message = error.message;
   }
 
-  res.status(statusCode).json(formatErrorResponse(error, req));
+  const logPayload = {
+    message: error.message,
+    stack: error.stack,
+    url: req.originalUrl,
+    method: req.method,
+    ip: req.ip,
+    userAgent: req.get('User-Agent'),
+    statusCode,
+  };
+
+  // تخفيف ضوضاء اللوغ للحالات المتوقعة
+  if (isExpectedTokenValidationError(req, error, statusCode)) {
+    logger.warn('Expected token validation failure', {
+      ...logPayload,
+      stack: undefined,
+    });
+  } else if (isBenignStatic404(req, statusCode)) {
+    logger.debug('Benign static asset not found', {
+      ...logPayload,
+      stack: undefined,
+    });
+  } else if (statusCode >= 500) {
+    logger.error('Request error', logPayload);
+  } else {
+    logger.warn('Request warning', {
+      ...logPayload,
+      stack: undefined,
+    });
+  }
+
+  res.status(statusCode).json(formatErrorResponse(error, req, statusCode, message));
 };
 
 /**
@@ -114,10 +158,10 @@ export const databaseErrorHandler = (err, req, res, next) => {
 };
 
 // دالة لتحسين عرض رسائل الخطأ
-export const formatErrorResponse = (error, req) => {
+export const formatErrorResponse = (error, req, statusCode = 500, fallbackMessage = 'حدث خطأ في الخادم') => {
   const errorResponse = {
     success: false,
-    message: 'حدث خطأ في الخادم',
+    message: fallbackMessage,
     timestamp: new Date().toISOString(),
     path: req.path,
     method: req.method,
@@ -129,6 +173,7 @@ export const formatErrorResponse = (error, req) => {
       message: error.message,
       stack: error.stack,
       name: error.name,
+      statusCode,
     };
   }
 

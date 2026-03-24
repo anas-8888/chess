@@ -28,7 +28,7 @@ const Game = sequelize.define(
       allowNull: false,
     },
     ai_level: {
-      type: DataTypes.TINYINT,
+      type: DataTypes.INTEGER,
       allowNull: true,
     },
     puzzle_id: {

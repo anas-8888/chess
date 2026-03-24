@@ -1,4 +1,4 @@
-import Invite from '../models/Invite.js';
+﻿import Invite from '../models/Invite.js';
 import User from '../models/User.js';
 import Game from '../models/Game.js';
 // import Friend from '../models/Friend.js'; // Removed unused import
@@ -359,12 +359,16 @@ export const validateInviteAcceptance = async (inviteId, userId) => {
     return { isValid: false, message: 'انتهت صلاحية الدعوة' };
   }
   
-  // Check if both users are online
-  if (invite.toUser.state !== 'online') {
+  // Check if both users are online using live socket connections first.
+  const { isUserOnline } = await import('../socket/socketHelpers.js');
+  const isRecipientOnline = isUserOnline(invite.to_user_id) || invite.toUser.state === 'online' || invite.toUser.state === 'in-game';
+  const isSenderOnline = isUserOnline(invite.from_user_id) || invite.fromUser.state === 'online' || invite.fromUser.state === 'in-game';
+
+  if (!isRecipientOnline) {
     return { isValid: false, message: 'يجب أن تكون متصلاً لقبول الدعوة' };
   }
   
-  if (invite.fromUser.state !== 'online') {
+  if (!isSenderOnline) {
     return { isValid: false, message: 'يجب أن يكون مرسل الدعوة متصلاً' };
   }
   
@@ -601,10 +605,10 @@ export const startGame = async (inviteId, userId, playMethod) => {
       };
       
       // إرسال إشعار للاعب الأبيض
-      io.to(`user_${whiteUserId}`).emit('rejoin_game', gameData);
+      io.to(`user::${whiteUserId}`).emit('rejoin_game', gameData);
       
       // إرسال إشعار للاعب الأسود
-      io.to(`user_${blackUserId}`).emit('rejoin_game', gameData);
+      io.to(`user::${blackUserId}`).emit('rejoin_game', gameData);
       
 
     }
@@ -712,7 +716,7 @@ export const cancelInvite = async (inviteId, userId) => {
   try {
     const io = global.io;
     if (io) {
-      io.to(`user_${invite.to_user_id}`).emit('inviteCancelled', {
+      io.to(`user::${invite.to_user_id}`).emit('inviteCancelled', {
         inviteId: invite.id,
         fromUserId: invite.from_user_id,
         message: 'تم إلغاء الدعوة من قبل المرسل'
@@ -730,5 +734,4 @@ export const cancelInvite = async (inviteId, userId) => {
     message: 'تم إلغاء الدعوة بنجاح'
   };
 };
-
 

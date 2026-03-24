@@ -23,22 +23,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     loading: true,
   });
 
-  // Refs for activity monitoring
-  const activityTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const lastActivityRef = useRef<number>(Date.now());
+  // Connection refs
   const isOnlineRef = useRef<boolean>(true);
+  const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Activity monitoring functions
   const updateUserStatus = async (status: 'online' | 'offline' | 'in-game') => {
     if (!authState.isAuthenticated) return;
-    
+
     try {
       await userService.updateStatus(status);
-      console.log(`User status updated to: ${status}`);
+      console.log('User status updated to: ' + status);
     } catch (error) {
       console.error('Failed to update user status:', error);
-      // Don't throw error to avoid breaking the app
-      // Just log it for debugging
     }
   };
 
@@ -46,77 +42,41 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const debouncedUpdateStatus = (() => {
     let timeoutId: NodeJS.Timeout | null = null;
     let lastStatus: string | null = null;
-    
+
     return (status: 'online' | 'offline' | 'in-game') => {
-      if (lastStatus === status) return; // Skip if same status
-      
+      if (lastStatus === status) return;
+
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
-      
+
       timeoutId = setTimeout(() => {
         updateUserStatus(status);
         lastStatus = status;
-      }, 1000); // 1 second debounce
+      }, 500);
     };
   })();
 
-  const resetActivityTimer = () => {
-    if (activityTimeoutRef.current) {
-      clearTimeout(activityTimeoutRef.current);
-    }
-    
-    lastActivityRef.current = Date.now();
-    
-    // Set offline after 5 minutes of inactivity
-    activityTimeoutRef.current = setTimeout(() => {
-      if (isOnlineRef.current) {
-        updateUserStatus('offline');
-        isOnlineRef.current = false;
-      }
-    }, 5 * 60 * 1000); // 5 minutes
-  };
-
-      const handleUserActivity = () => {
-      if (!isOnlineRef.current) {
-        debouncedUpdateStatus('online');
-        isOnlineRef.current = true;
-      }
-      resetActivityTimer();
-    };
-
-  // Set up activity monitoring
+  // Keep user online while authenticated unless network is actually offline.
   useEffect(() => {
     if (!authState.isAuthenticated) return;
 
-    // Set initial online status
     debouncedUpdateStatus('online');
-    resetActivityTimer();
+    isOnlineRef.current = true;
 
-    // Activity event listeners
-    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
-    
-    events.forEach(event => {
-      document.addEventListener(event, handleUserActivity, true);
-    });
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+    }
 
-    // Visibility change handler
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        debouncedUpdateStatus('offline');
-        isOnlineRef.current = false;
-      } else {
+    heartbeatIntervalRef.current = setInterval(() => {
+      if (navigator.onLine !== false) {
         debouncedUpdateStatus('online');
-        isOnlineRef.current = true;
-        resetActivityTimer();
       }
-    };
+    }, 30000);
 
-    // Online/offline handlers
     const handleOnline = () => {
       debouncedUpdateStatus('online');
       isOnlineRef.current = true;
-      resetActivityTimer();
     };
 
     const handleOffline = () => {
@@ -124,36 +84,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       isOnlineRef.current = false;
     };
 
-    // Before unload handler
-    const handleBeforeUnload = () => {
-      debouncedUpdateStatus('offline');
+    const handleVisibilityChange = () => {
+      if (!document.hidden && navigator.onLine !== false) {
+        debouncedUpdateStatus('online');
+        isOnlineRef.current = true;
+      }
     };
 
-    // Add event listeners
-    document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Cleanup function
     return () => {
-      // Update status to offline when component unmounts
-      debouncedUpdateStatus('offline');
-      
-      // Clear activity timer
-      if (activityTimeoutRef.current) {
-        clearTimeout(activityTimeoutRef.current);
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
       }
-      
-      // Remove event listeners
-      events.forEach(event => {
-        document.removeEventListener(event, handleUserActivity, true);
-      });
-      
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [authState.isAuthenticated]);
 
@@ -301,3 +250,4 @@ export const useAuth = (): AuthContextType => {
   }
   return context;
 }; 
+

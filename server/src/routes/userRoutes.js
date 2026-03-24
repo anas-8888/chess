@@ -1,4 +1,4 @@
-import express from 'express';
+﻿import express from 'express';
 import {
   protect,
   userOnly,
@@ -137,7 +137,7 @@ router.put('/status', async (req, res) => {
             if (friends.length > 0) {
                 for (const friend of friends) {
                     const friendUserId = friend.user_id === userId ? friend.friend_user_id : friend.user_id;
-                    io.to(`user_${friendUserId}`).emit('friendStatusChanged', {
+                    io.to(`user::${friendUserId}`).emit('friendStatusChanged', {
                         userId: userId,
                         status: status,
                         timestamp: new Date()
@@ -199,3 +199,4 @@ router.post(
 );
 
 export default router;
+

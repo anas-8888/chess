@@ -22,12 +22,18 @@ class SocketService {
     // Connect directly to the namespace
     this.socket = io(`${SOCKET_BASE_URL}/friends`, {
       auth: {
-        token
+        token,
       },
       query: {
-        token
+        token,
       },
-      transports: ['websocket', 'polling']
+      path: '/socket.io',
+      transports: ['polling', 'websocket'],
+      withCredentials: true,
+      reconnection: true,
+      reconnectionAttempts: 8,
+      reconnectionDelay: 1000,
+      timeout: 20000,
     });
 
     this.socket.on('connect', () => {
@@ -352,3 +358,6 @@ class SocketService {
 }
 
 export const socketService = new SocketService(); 
+
+
+

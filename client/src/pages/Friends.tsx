@@ -137,14 +137,20 @@ const Friends = () => {
   const setupSocketListeners = () => {
     const socket = io(`${SOCKET_BASE_URL}/friends`, {
       auth: {
-        token: authService.getToken()
+        token: authService.getToken(),
       },
       query: {
-        userId: user?.id || ''
+        userId: user?.id || '',
+        token: authService.getToken() || '',
       },
-      transports: ['websocket', 'polling'],
+      path: '/socket.io',
+      transports: ['polling', 'websocket'],
+      withCredentials: true,
       timeout: 20000,
-      forceNew: true
+      forceNew: true,
+      reconnection: true,
+      reconnectionAttempts: 8,
+      reconnectionDelay: 1000,
     });
 
 
@@ -284,10 +290,10 @@ const Friends = () => {
     try {
       // جلب حالة المستخدم الحالي من الباك اند
       const userStatus = await userService.getCurrentUserStatus();
-      if (userStatus.state !== 'online') {
+      if (userStatus.state === 'in-game') {
         toast({
-          title: 'يجب أن تكون متصلاً',
-          description: 'لا يمكنك إرسال دعوة وأنت غير متصل',
+          title: 'المستخدم مشغول',
+          description: 'لا يمكنك إرسال دعوة أثناء وجودك في مباراة جارية',
           variant: 'destructive',
         });
         return;
@@ -386,23 +392,6 @@ const Friends = () => {
   // دالة التحقق من شروط قبول الدعوة
   const validateInviteAcceptance = async (invite: any) => {
     try {
-      // 1. التحقق من أن المستخدم الحالي متصل
-      const currentUserStatus = await userService.getCurrentUserStatus();
-      if (currentUserStatus.state !== 'online') {
-        return {
-          isValid: false,
-          message: 'يجب أن تكون متصلاً لقبول الدعوة'
-        };
-      }
-
-      // 2. التحقق من أن مرسل الدعوة متصل
-      if (invite.fromUser?.state !== 'online') {
-        return {
-          isValid: false,
-          message: 'يجب أن يكون مرسل الدعوة متصلاً'
-        };
-      }
-
       // 3. التحقق من أن الدعوة لم تنتهي صلاحيتها
       const now = new Date();
       const expiresAt = new Date(invite.expires_at);

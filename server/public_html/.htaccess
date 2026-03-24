@@ -1,0 +1,31 @@
+RewriteEngine On
+
+# =========================
+# 🔒 تحويل إلى HTTPS
+# =========================
+RewriteCond %{HTTPS} !=on
+RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
+# =========================
+# 🔌 Socket.IO WebSocket / Polling Proxy
+# =========================
+RewriteCond %{REQUEST_URI} ^/socket.io [NC]
+RewriteCond %{HTTP:Upgrade} websocket [NC]
+RewriteRule ^socket.io/(.*)$ ws://chess_node/socket.io/$1 [P,L]
+
+RewriteCond %{REQUEST_URI} ^/socket.io [NC]
+RewriteRule ^socket.io/(.*)$ http://chess_node/socket.io/$1 [P,L]
+
+# =========================
+# 🚫 تجاهل الملفات الحقيقية
+# =========================
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule .* - [L]
+
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule .* - [L]
+
+# =========================
+# 🔥 البروكسي إلى Node (chess_node)
+# =========================
+RewriteRule ^(.*)$ http://chess_node/$1 [P,L]

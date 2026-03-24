@@ -167,7 +167,7 @@ CREATE TABLE game (
     black_player_id INT NOT NULL,
     started_by_user_id INT NOT NULL,
     game_type ENUM('friend', 'ranked', 'ai', 'puzzle') NOT NULL,
-    ai_level TINYINT NULL,
+    ai_level INT NULL,
     puzzle_id INT NULL,
     initial_time INT NOT NULL,
     white_time_left INT NOT NULL,
@@ -333,3 +333,4 @@ INSERT INTO course_video (course_id, title, url, position) VALUES
 -- رسالة نجاح
 -- =====================================================
 SELECT 'Database created successfully!' as message;
+

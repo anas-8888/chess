@@ -1,4 +1,4 @@
-import jwt from 'jsonwebtoken';
+﻿import jwt from 'jsonwebtoken';
 import config from '../../config/index.js';
 import User from '../models/User.js';
 import Invite from '../models/Invite.js';
@@ -134,6 +134,12 @@ export function isUserOnline(userId) {
   return activeUsers.has(userId) && activeUsers.get(userId).size > 0;
 }
 
+const isUserEffectivelyOnline = (user) => {
+  if (!user) return false;
+  return isUserOnline(user.user_id) || user.state === 'online' || user.state === 'in-game';
+};
+
+
 // User status management
 export async function updateUserStatus(userId, status) {
   try {
@@ -265,7 +271,7 @@ async function broadcastFriendStatusUpdate(userId, status) {
       // إرسال التحديث عبر Socket.IO
       const io = global.io;
       if (io) {
-        io.to(`user_${friendUserId}`).emit('friendStatusChanged', {
+        io.to(`user::${friendUserId}`).emit('friendStatusChanged', {
           userId: userId,
           status: status,
           timestamp: new Date()
@@ -392,8 +398,8 @@ export async function handleGameInvite(socket, nsp, userId, { toUserId, gameType
       return socket.emit('error', { message: 'المستخدم غير موجود' });
     }
 
-    // Check recipient's current status
-    if (recipient.state === 'offline') {
+    // Check recipient's current status with real-time socket fallback.
+    if (!isUserEffectivelyOnline(recipient)) {
       return socket.emit('error', { message: 'المستخدم غير متصل حالياً' });
     }
 
@@ -407,7 +413,7 @@ export async function handleGameInvite(socket, nsp, userId, { toUserId, gameType
       return socket.emit('error', { message: 'خطأ في المصادقة' });
     }
 
-    if (sender.state === 'offline') {
+    if (!isUserEffectivelyOnline(sender)) {
       return socket.emit('error', { message: 'يجب أن تكون متصلاً لإرسال دعوة' });
     }
 
@@ -1274,3 +1280,4 @@ export async function updateUserStatusAfterGameEnd(gameId) {
     logger.error('Failed to update user status after game end:', error);
   }
 }
+

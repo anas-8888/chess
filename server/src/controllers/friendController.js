@@ -1,4 +1,4 @@
-import { formatResponse, formatError } from '../utils/helpers.js';
+﻿import { formatResponse, formatError } from '../utils/helpers.js';
 import * as friendService from '../services/friendService.js';
 import { asyncHandler } from '../middlewares/errorHandler.js';
 import logger from '../utils/logger.js';
@@ -60,7 +60,7 @@ export const sendFriendRequest = asyncHandler(async (req, res) => {
   try {
     const io = global.io;
     if (io) {
-      io.to(`user_${toUserIdNumber}`).emit('friendRequestReceived', {
+      io.to(`user::${toUserIdNumber}`).emit('friendRequestReceived', {
         fromUserId: fromUserId,
         toUserId: toUserIdNumber,
         requestId: result.id,
@@ -184,3 +184,4 @@ export const getMyFriendsForDashboard = asyncHandler(async (req, res) => {
     });
   }
 }); 
+

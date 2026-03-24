@@ -26,7 +26,7 @@ export default defineConfig(async ({ mode }) => {
     },
     build: {
       outDir: path.resolve(__dirname, "../server/public_html"),
-      emptyOutDir: true,
+      emptyOutDir: false,
       minify: "esbuild",
       rollupOptions: {
         onwarn(warning, warn) {
@@ -76,3 +76,4 @@ export default defineConfig(async ({ mode }) => {
     },
   };
 });
+
