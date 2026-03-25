@@ -8,13 +8,23 @@ interface ChessBoardProps {
   allowMoves: boolean;
 }
 
-const pieceSymbols: Record<Uppercase<Piece['type']>, string> = {
-  K: '♚',
-  Q: '♛',
-  R: '♜',
-  B: '♝',
-  N: '♞',
-  P: '♟',
+const pieceSymbols: Record<'w' | 'b', Record<Uppercase<Piece['type']>, string>> = {
+  w: {
+    K: '♔',
+    Q: '♕',
+    R: '♖',
+    B: '♗',
+    N: '♘',
+    P: '♙',
+  },
+  b: {
+    K: '♚',
+    Q: '♛',
+    R: '♜',
+    B: '♝',
+    N: '♞',
+    P: '♟',
+  },
 };
 
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const;
@@ -202,14 +212,14 @@ const ChessBoard: React.FC<ChessBoardProps> = ({ game, onMove, orientation, allo
 
   const getPieceSymbol = (piece: Piece | null | undefined) => {
     if (!piece) return '';
-    return pieceSymbols[piece.type.toUpperCase() as Uppercase<Piece['type']>] || '';
+    return pieceSymbols[piece.color][piece.type.toUpperCase() as Uppercase<Piece['type']>] || '';
   };
 
   const getPieceClasses = (piece: Piece | null | undefined) => {
     if (!piece) return '';
     return piece.color === 'w'
-      ? 'text-primary drop-shadow-[0_1px_1px_rgba(15,23,42,0.6)]'
-      : 'text-slate-900 drop-shadow-[0_1px_0_rgba(226,232,240,0.25)]';
+      ? 'text-slate-50 drop-shadow-[0_1px_2px_rgba(15,23,42,0.85)]'
+      : 'text-slate-900 drop-shadow-[0_1px_1px_rgba(226,232,240,0.25)]';
   };
 
   const startMoveAnimation = useCallback(

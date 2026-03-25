@@ -157,7 +157,11 @@ class Logger {
   }
 
   info(message, data = null) {
-    if (this.shouldLog('info') && !this.isMessageRepeated(message, 'info')) {
+    if (
+      this.shouldLog('info') &&
+      !this.isSuppressedInfoMessage(message) &&
+      !this.isMessageRepeated(message, 'info')
+    ) {
       console.log(this.formatMessage('info', message, data));
     }
   }
@@ -177,6 +181,25 @@ class Logger {
     if (typeof message !== 'string') return false;
 
     const normalized = message.trim();
+    const noisyPrefixes = [
+      'Fetching friends for user',
+      'Friendship relations count',
+      'Friendship relations:',
+      'Processing friend:',
+      'Mapped friends:',
+      'Friends count:',
+      'User found:',
+      'User joined personal room:',
+      '=== ===',
+      '📡 Sent status for',
+      '📡 Sent status update for',
+      'User ',
+    ];
+
+    if (noisyPrefixes.some((prefix) => normalized.startsWith(prefix))) {
+      return true;
+    }
+
     if (/^\d+\s+in-game\s+(online|offline)$/i.test(normalized)) {
       return true;
     }
@@ -186,6 +209,20 @@ class Logger {
     if (/^user\s+\d+\s+is\s+already\s+(online|offline|in-game)$/i.test(normalized)) {
       return true;
     }
+    return false;
+  }
+
+  isSuppressedInfoMessage(message) {
+    if (typeof message !== 'string') return false;
+    const normalized = message.trim();
+
+    if (
+      normalized.startsWith('Connection stats:') &&
+      process.env.SHOW_CONNECTION_STATS !== '1'
+    ) {
+      return true;
+    }
+
     return false;
   }
 

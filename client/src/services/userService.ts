@@ -424,6 +424,7 @@ class UserService {
     result: 'win' | 'loss' | 'draw';
     playerColor: 'white' | 'black';
     aiLevel?: number;
+    difficulty?: 'easy' | 'medium' | 'hard';
     initialTime?: number;
     whiteTimeLeft?: number;
     blackTimeLeft?: number;
@@ -446,8 +447,9 @@ class UserService {
   async createAiGameSession(payload: {
     playerColor: 'white' | 'black';
     aiLevel?: number;
+    difficulty?: 'easy' | 'medium' | 'hard';
     initialTime?: number;
-  }): Promise<{ gameId: number; aiUserId: number }> {
+  }): Promise<{ gameId: number; aiUserId: number; aiLevel?: number; difficulty?: 'easy' | 'medium' | 'hard' }> {
     const response = await fetch(`${API_BASE_URL}/api/game/ai/session`, {
       method: 'POST',
       headers: this.getAuthHeaders(),
@@ -557,3 +559,4 @@ export const userService = new UserService();
 
 // Export types
 export type { UserProfile, UserStats }; 
+

@@ -179,8 +179,9 @@ export const hasActivePlayableGame = async (userId) => {
 };
 
 // User status management
-export async function updateUserStatus(userId, status) {
+export async function updateUserStatus(userId, status, options = {}) {
   try {
+    const { force = false } = options;
     if (!userId || !status) {
       logger.error('Incomplete user status payload:', { userId, status });
       return;
@@ -206,7 +207,7 @@ export async function updateUserStatus(userId, status) {
     }
 
     // لا تخفض الحالة من in-game عبر تحديثات socket العادية.
-    if (user.state === 'in-game' && (status === 'online' || status === 'offline')) {
+    if (!force && user.state === 'in-game' && (status === 'online' || status === 'offline')) {
       return;
     }
     
@@ -297,7 +298,7 @@ async function broadcastFriendStatusUpdate(userId, status) {
     
     // التحقق من وجود أصدقاء قبل الإرسال
     if (friends.length === 0) {
-      logger.debug(`${userId}`);
+      logger.debug(`No friends to notify for user ${userId}`);
       return;
     }
     
@@ -321,7 +322,7 @@ async function broadcastFriendStatusUpdate(userId, status) {
     if (sentCount > 0) {
       logger.debug(`📡 Sent status update for user ${userId} (${status}) to ${sentCount} friends`);
     } else {
-      logger.debug(`${userId} (${status})`);
+      logger.debug(`No friend sockets received status update for user ${userId} (${status})`);
     }
   } catch (error) {
     logger.error('Failed to broadcast friend status update:', error);
@@ -596,24 +597,7 @@ export async function handleInviteResponse(socket, nsp, userId, { inviteId, resp
         playMethod: invite.play_method,
         gameType: invite.game_type
       });
-    } else if (response === 'rejected') {
-      // تحديث حالة المستخدمين إلى offline عند الرفض
-      await Promise.all([
-        updateUserStatus(invite.from_user_id, 'offline'),
-        updateUserStatus(invite.to_user_id, 'offline')
-      ]);
-      
-      // Broadcast status updates
-      nsp.emit('playerStatusChanged', {
-        userId: invite.from_user_id,
-        status: 'offline'
-      });
-      nsp.emit('playerStatusChanged', {
-        userId: invite.to_user_id,
-        status: 'offline'
-      });
     }
-
     // Remove invite from recipient's list
     socket.emit('inviteRemoved', { inviteId });
   } catch (error) {
@@ -1111,10 +1095,7 @@ export async function cleanupExpiredInvites(nsp) {
         }
       );
       
-      for (const invite of expiredInvites) {
-        await updateUserStatus(invite.from_user_id, 'offline');
-        await updateUserStatus(invite.to_user_id, 'offline');
-        
+      for (const invite of expiredInvites) {        
         nsp.to(`user::${invite.from_user_id}`).emit('inviteExpired', { 
           inviteId: invite.id,
           fromUserId: invite.from_user_id,
@@ -1127,7 +1108,7 @@ export async function cleanupExpiredInvites(nsp) {
         });
       }
       
-      logger.info(`${expiredInvites.length}`);
+      logger.info(`Expired invites cleaned: ${expiredInvites.length}`);
     }
   } catch (error) {
     logger.error('Failed to cleanup expired invites:', error);
@@ -1219,14 +1200,15 @@ export async function updateUserStatusAfterResign(gameId, resignedUserId) {
             { black_player_id: resignedUserId }
           ],
           status: {
-            [Op.in]: ['in-game', 'in_progress']
+            [Op.in]: ['waiting', 'active']
           },
           id: { [Op.ne]: gameId }
         }
       });
       
       if (!activeGame) {
-        updatePromises.push(updateUserStatus(resignedUserId, 'online'));
+        const nextStatus = isUserOnline(resignedUserId) ? 'online' : 'offline';
+        updatePromises.push(updateUserStatus(resignedUserId, nextStatus, { force: true }));
       }
     }
     
@@ -1240,14 +1222,15 @@ export async function updateUserStatusAfterResign(gameId, resignedUserId) {
             { black_player_id: otherUserId }
           ],
           status: {
-            [Op.in]: ['in-game', 'in_progress']
+            [Op.in]: ['waiting', 'active']
           },
           id: { [Op.ne]: gameId }
         }
       });
       
       if (!activeGame) {
-        updatePromises.push(updateUserStatus(otherUserId, 'online'));
+        const nextStatus = isUserOnline(otherUserId) ? 'online' : 'offline';
+        updatePromises.push(updateUserStatus(otherUserId, nextStatus, { force: true }));
       }
     }
     
@@ -1295,14 +1278,15 @@ export async function updateUserStatusAfterGameEnd(gameId) {
             { black_player_id: game.white_player_id }
           ],
           status: {
-            [Op.in]: ['in-game', 'in_progress']
+            [Op.in]: ['waiting', 'active']
           },
           id: { [Op.ne]: gameId }
         }
       });
       
       if (!activeGame) {
-        updatePromises.push(updateUserStatus(game.white_player_id, 'online'));
+        const nextStatus = isUserOnline(game.white_player_id) ? 'online' : 'offline';
+        updatePromises.push(updateUserStatus(game.white_player_id, nextStatus, { force: true }));
       }
     }
     
@@ -1315,14 +1299,15 @@ export async function updateUserStatusAfterGameEnd(gameId) {
             { black_player_id: game.black_player_id }
           ],
           status: {
-            [Op.in]: ['in-game', 'in_progress']
+            [Op.in]: ['waiting', 'active']
           },
           id: { [Op.ne]: gameId }
         }
       });
       
       if (!activeGame) {
-        updatePromises.push(updateUserStatus(game.black_player_id, 'online'));
+        const nextStatus = isUserOnline(game.black_player_id) ? 'online' : 'offline';
+        updatePromises.push(updateUserStatus(game.black_player_id, nextStatus, { force: true }));
       }
     }
     
@@ -1336,3 +1321,5 @@ export async function updateUserStatusAfterGameEnd(gameId) {
     logger.error('Failed to update user status after game end:', error);
   }
 }
+
+

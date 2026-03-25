@@ -30,7 +30,7 @@ export async function cleanupExpiredGames() {
         status: { [Op.in]: ['waiting', 'active'] },
         ended_at: null,
       },
-      attributes: ['id', 'initial_time', 'status', 'started_at', 'created_at'],
+      attributes: ['id', 'initial_time', 'status', 'started_at', 'created_at', 'updated_at'],
     });
 
     if (!openGames.length) {
@@ -40,12 +40,12 @@ export async function cleanupExpiredGames() {
     const staleIds = [];
 
     for (const game of openGames) {
-      const startedAtMs = new Date(game.started_at || game.created_at).getTime();
-      if (Number.isNaN(startedAtMs)) {
+      const referenceTimeMs = new Date(game.updated_at || game.started_at || game.created_at).getTime();
+      if (Number.isNaN(referenceTimeMs)) {
         continue;
       }
 
-      const ageSeconds = Math.floor((now - startedAtMs) / 1000);
+      const ageSeconds = Math.floor((now - referenceTimeMs) / 1000);
       const staleAfterSeconds = getStaleTimeoutSeconds(game.initial_time);
 
       if (ageSeconds >= staleAfterSeconds) {
@@ -91,4 +91,5 @@ export function scheduleGameCleanup() {
     }
   }, CLEANUP_CONFIG.intervalMs);
 }
+
 

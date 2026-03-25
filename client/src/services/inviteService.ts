@@ -19,6 +19,12 @@ export interface Invite {
     rank?: number;
     state?: string;
   };
+  game?: {
+    id: number;
+    status: 'waiting' | 'active' | 'ended';
+    ended_at?: string | null;
+  } | null;
+  game_id?: number;
   game_type: string;
   play_method: string;
   date_time: string;
@@ -151,6 +157,20 @@ class InviteService {
     }
   }
 
+  async getGameDetails(gameId: string | number): Promise<any> {
+    const response = await fetch(`${API_BASE_URL}/api/game/${gameId}`, {
+      method: 'GET',
+      headers: this.getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'تعذر تحميل بيانات المباراة');
+    }
+
+    return response.json();
+  }
+
   // Cancel sent invite
   async cancelInvite(inviteId: string): Promise<void> {
     try {
@@ -171,4 +191,4 @@ class InviteService {
 }
 
 // Export singleton instance
-export const inviteService = new InviteService(); 
+export const inviteService = new InviteService();

@@ -48,6 +48,21 @@ interface ApiConflictError extends Error {
   };
 }
 
+type AIDifficulty = 'easy' | 'medium' | 'hard';
+
+const AI_DIFFICULTY_CONFIG: Record<AIDifficulty, { label: string; rating: number; searchBreadth: number; thinkDelayMs: [number, number] }> = {
+  easy: { label: 'سهل', rating: 1100, searchBreadth: 4, thinkDelayMs: [500, 1000] },
+  medium: { label: 'متوسط', rating: 1500, searchBreadth: 10, thinkDelayMs: [900, 1600] },
+  hard: { label: 'عالي', rating: 1900, searchBreadth: 18, thinkDelayMs: [1300, 2200] },
+};
+
+const getDifficultyFromRating = (rating?: number): AIDifficulty => {
+  const safe = Number(rating) || 1500;
+  if (safe <= 1250) return 'easy';
+  if (safe >= 1800) return 'hard';
+  return 'medium';
+};
+
 const AIGame = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -85,6 +100,11 @@ const AIGame = () => {
   
   const [moves, setMoves] = useState<GameMove[]>([]);
   const [playerColor, setPlayerColor] = useState<'white' | 'black'>('white');
+  const [difficulty, setDifficulty] = useState<AIDifficulty>('medium');
+  const [showSetupModal, setShowSetupModal] = useState(false);
+  const [setupColor, setSetupColor] = useState<'white' | 'black'>('white');
+  const [setupDifficulty, setSetupDifficulty] = useState<AIDifficulty>('medium');
+  const [startingWithSetup, setStartingWithSetup] = useState(false);
   const [aiThinking, setAiThinking] = useState(false);
   const [startCountdown, setStartCountdown] = useState<number | null>(null);
   const [gameTime, setGameTime] = useState({
@@ -94,21 +114,21 @@ const AIGame = () => {
     lastUpdate: Date.now()
   });
 
-  // AI Player configuration
-  const [aiPlayer] = useState<AIPlayer>({
-    name: 'الذكاء الاصطناعي',
-    rating: 1500,
-    color: 'black',
-    avatar: '/placeholder.svg'
-  });
+  const aiConfig = useMemo(() => AI_DIFFICULTY_CONFIG[difficulty], [difficulty]);
 
-  // Human Player configuration
-  const [humanPlayer] = useState<AIPlayer>({
+  const aiPlayer = useMemo<AIPlayer>(() => ({
+    name: 'الذكاء الاصطناعي',
+    rating: aiConfig.rating,
+    color: playerColor === 'white' ? 'black' : 'white',
+    avatar: '/placeholder.svg'
+  }), [aiConfig.rating, playerColor]);
+
+  const humanPlayer = useMemo<AIPlayer>(() => ({
     name: user?.username || 'اللاعب',
     rating: user?.rating || 1200,
-    color: 'white',
+    color: playerColor,
     avatar: user?.avatar || ''
-  });
+  }), [user?.username, user?.rating, user?.avatar, playerColor]);
 
   const mapMovePairsToList = useCallback((pairs: GameMovePair[]): GameMove[] => {
     return (pairs || []).map((pair) => ({
@@ -172,6 +192,10 @@ const AIGame = () => {
 
     setPersistedGameId(session.gameId);
     setPlayerColor(session.playerColor);
+    const restoredDifficulty = getDifficultyFromRating(session.aiLevel);
+    setDifficulty(restoredDifficulty);
+    setSetupDifficulty(restoredDifficulty);
+    setSetupColor(session.playerColor);
     setGame(restoredGame);
     setMoves(mapMovePairsToList(movesPairs));
 
@@ -230,14 +254,23 @@ const AIGame = () => {
     }
   }, [persistedGameId, loading, gameState.status, gameState.currentTurn, gameTime.white, gameTime.black]);
 
-  const initializeAiPersistence = useCallback(async () => {
+  const initializeAiPersistence = useCallback(async (options?: { color?: 'white' | 'black'; aiDifficulty?: AIDifficulty }) => {
+    const selectedColor = options?.color || playerColor;
+    const selectedDifficulty = options?.aiDifficulty || difficulty;
+    const selectedConfig = AI_DIFFICULTY_CONFIG[selectedDifficulty];
+
     try {
       const session = await userService.createAiGameSession({
-        playerColor,
-        aiLevel: aiPlayer.rating,
+        playerColor: selectedColor,
+        aiLevel: selectedConfig.rating,
+        difficulty: selectedDifficulty,
         initialTime: 600,
       });
       setActiveGameConflict({ open: false, gameId: null, message: '' });
+      setPlayerColor(selectedColor);
+      setDifficulty(selectedDifficulty);
+      setSetupColor(selectedColor);
+      setSetupDifficulty(selectedDifficulty);
       setPersistedGameId(session.gameId);
       localStorage.setItem(storageSessionKey, String(session.gameId));
       gameStartTimeRef.current = new Date().toISOString();
@@ -264,7 +297,7 @@ const AIGame = () => {
         variant: 'destructive',
       });
     }
-  }, [playerColor, aiPlayer.rating, storageSessionKey, toast, startPreGameCountdown]);
+  }, [playerColor, difficulty, storageSessionKey, toast, startPreGameCountdown]);
 
   const handleCloseConflictingGame = useCallback(async () => {
     if (!activeGameConflict.gameId) {
@@ -280,7 +313,7 @@ const AIGame = () => {
         title: 'تم إغلاق المباراة',
         description: 'تم إغلاق المباراة غير المغلقة. يمكنك الآن بدء مباراة جديدة.',
       });
-      await initializeAiPersistence();
+      await initializeAiPersistence({ color: setupColor, aiDifficulty: setupDifficulty });
     } catch (error) {
       const typedError = error as Error;
       toast({
@@ -291,7 +324,7 @@ const AIGame = () => {
     } finally {
       setClosingConflictingGame(false);
     }
-  }, [activeGameConflict.gameId, initializeAiPersistence, toast]);
+  }, [activeGameConflict.gameId, initializeAiPersistence, setupColor, setupDifficulty, toast]);
 
   useEffect(() => {
     let cancelled = false;
@@ -307,11 +340,11 @@ const AIGame = () => {
           return;
         }
 
-        await initializeAiPersistence();
+        setShowSetupModal(true);
       } catch (error) {
         console.error('Failed to bootstrap AI game session:', error);
         if (!cancelled) {
-          await initializeAiPersistence();
+          setShowSetupModal(true);
         }
       } finally {
         if (!cancelled) {
@@ -324,7 +357,7 @@ const AIGame = () => {
     return () => {
       cancelled = true;
     };
-  }, [initializeAiPersistence, restoreAiSession]);
+  }, [restoreAiSession]);
 
   useEffect(() => {
     if (!persistedGameId || loading || gameState.status !== 'active') return;
@@ -480,8 +513,8 @@ const AIGame = () => {
 
     setAiThinking(true);
     
-    // Simulate AI thinking time
-    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
+    const [minDelay, maxDelay] = aiConfig.thinkDelayMs;
+    await new Promise(resolve => setTimeout(resolve, minDelay + Math.random() * (maxDelay - minDelay)));
     
     try {
       const gameCopy = new Chess(game.fen());
@@ -502,7 +535,7 @@ const AIGame = () => {
       let bestScore = -Infinity;
 
       // Evaluate a few random moves
-      const movesToEvaluate = Math.min(10, possibleMoves.length);
+      const movesToEvaluate = Math.min(aiConfig.searchBreadth, possibleMoves.length);
       const randomMoves = possibleMoves
         .sort(() => Math.random() - 0.5)
         .slice(0, movesToEvaluate);
@@ -632,7 +665,7 @@ const AIGame = () => {
     } finally {
       setAiThinking(false);
     }
-  }, [game, gameState, aiPlayer.color, playerColor, handleGameEnd, toast, persistedGameId, startCountdown]);
+  }, [game, gameState, aiPlayer.color, playerColor, handleGameEnd, toast, persistedGameId, startCountdown, aiConfig]);
 
   // Trigger AI move when it's AI's turn
   useEffect(() => {
@@ -831,7 +864,7 @@ const AIGame = () => {
       }
 
       resetForNewGame();
-      await initializeAiPersistence();
+      openSetupModalForNewGame();
     } catch (error) {
       console.error('Failed to restart AI game:', error);
       toast({
@@ -850,7 +883,7 @@ const AIGame = () => {
     gameTime.white,
     gameTime.black,
     resetForNewGame,
-    initializeAiPersistence,
+    openSetupModalForNewGame,
     toast,
   ]);
 
@@ -860,7 +893,24 @@ const AIGame = () => {
       return;
     }
 
-    handleConfirmNewGame();
+    openSetupModalForNewGame();
+  };
+
+  const handleStartWithSetup = useCallback(async () => {
+    setStartingWithSetup(true);
+    try {
+      setShowSetupModal(false);
+      resetForNewGame();
+      await initializeAiPersistence({ color: setupColor, aiDifficulty: setupDifficulty });
+    } finally {
+      setStartingWithSetup(false);
+    }
+  }, [resetForNewGame, initializeAiPersistence, setupColor, setupDifficulty]);
+
+  const openSetupModalForNewGame = () => {
+    setSetupColor(playerColor);
+    setSetupDifficulty(difficulty);
+    setShowSetupModal(true);
   };
 
   const getPendingNewGameResultText = () => {
@@ -879,7 +929,7 @@ const AIGame = () => {
 
   const legacyReset = () => {
     resetForNewGame();
-    initializeAiPersistence();
+    openSetupModalForNewGame();
   };
 
   const formatTime = (seconds: number) => {
@@ -981,7 +1031,7 @@ const AIGame = () => {
                 </div>
 
                 <div className="flex justify-between text-sm">
-                  <span>دور اللعب:</span>
+                  <span>دور اللعب الآن:</span>
                   <Badge variant={gameState.currentTurn === playerColor ? "default" : "outline"}>
                     {gameState.currentTurn === playerColor ? 'دورك' : 'دور الذكاء الاصطناعي'}
                   </Badge>
@@ -1098,6 +1148,58 @@ const AIGame = () => {
         </div>
       </div>
 
+      {showSetupModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="mx-4 w-full max-w-lg rounded-lg bg-card p-6 shadow-lg">
+            <h2 className="mb-2 text-xl font-bold">إعداد مباراة الذكاء الاصطناعي</h2>
+            <p className="mb-4 text-sm text-muted-foreground">حدد اللون ومستوى الصعوبة قبل بدء المباراة.</p>
+
+            <div className="mb-4">
+              <p className="mb-2 text-sm font-semibold">اختر لونك</p>
+              <div className="grid grid-cols-2 gap-2">
+                <Button type="button" variant={setupColor === 'white' ? 'default' : 'outline'} onClick={() => setSetupColor('white')}>
+                  ألعب بالأبيض
+                </Button>
+                <Button type="button" variant={setupColor === 'black' ? 'default' : 'outline'} onClick={() => setSetupColor('black')}>
+                  ألعب بالأسود
+                </Button>
+              </div>
+            </div>
+
+            <div className="mb-5">
+              <p className="mb-2 text-sm font-semibold">اختر مستوى الصعوبة</p>
+              <div className="grid grid-cols-3 gap-2">
+                {(['easy', 'medium', 'hard'] as const).map((level) => (
+                  <Button
+                    key={level}
+                    type="button"
+                    variant={setupDifficulty === level ? 'default' : 'outline'}
+                    onClick={() => setSetupDifficulty(level)}
+                    className="flex flex-col gap-1 h-auto py-3"
+                  >
+                    <span>{AI_DIFFICULTY_CONFIG[level].label}</span>
+                    <span className="text-xs opacity-80">{AI_DIFFICULTY_CONFIG[level].rating}</span>
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => navigate('/dashboard')}
+                disabled={startingWithSetup}
+              >
+                إلغاء
+              </Button>
+              <Button className="flex-1" onClick={handleStartWithSetup} disabled={startingWithSetup}>
+                {startingWithSetup ? 'جارٍ البدء...' : 'ابدأ المباراة'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {startCountdown !== null && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 backdrop-blur-sm">
@@ -1239,4 +1341,12 @@ const AIGame = () => {
 };
 
 export default AIGame; 
+
+
+
+
+
+
+
+
 

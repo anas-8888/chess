@@ -1,10 +1,40 @@
-﻿import Invite from '../models/Invite.js';
+import Invite from '../models/Invite.js';
 import User from '../models/User.js';
 import Game from '../models/Game.js';
 // import Friend from '../models/Friend.js'; // Removed unused import
 import { NotFoundError, ValidationError } from '../middlewares/errorHandler.js';
 import sequelize from '../models/index.js';
 import { Op } from 'sequelize';
+
+const ACTIVE_GAME_STATUSES = new Set(['waiting', 'active']);
+
+const syncInviteStatusWithGame = async (invites = []) => {
+  if (!Array.isArray(invites) || invites.length === 0) {
+    return invites;
+  }
+
+  const updates = invites
+    .filter(
+      (invite) =>
+        invite.status === 'game_started' &&
+        invite.game &&
+        !ACTIVE_GAME_STATUSES.has(invite.game.status)
+    )
+    .map(async (invite) => {
+      try {
+        await invite.update({ status: 'expired' });
+        invite.status = 'expired';
+      } catch (_error) {
+        // Ignore partial sync failures and keep response flow stable.
+      }
+    });
+
+  if (updates.length > 0) {
+    await Promise.allSettled(updates);
+  }
+
+  return invites;
+};
 
 const ensureUsersHaveNoActiveGames = async userIds => {
   const existingGame = await Game.findOne({
@@ -62,6 +92,12 @@ export const listInvites = async (options = {}) => {
         as: 'toUser',
         attributes: ['user_id', 'username', 'email', 'thumbnail', 'rank', 'state'],
       },
+      {
+        model: Game,
+        as: 'game',
+        required: false,
+        attributes: ['id', 'status', 'ended_at'],
+      },
     ],
     order: [['date_time', 'DESC']],
     limit: parseInt(limit),
@@ -69,6 +105,7 @@ export const listInvites = async (options = {}) => {
   });
 
   const totalPages = Math.ceil(count / limit);
+  await syncInviteStatusWithGame(rows);
 
   return {
     invites: rows,
@@ -100,6 +137,12 @@ export const getInviteById = async id => {
         model: User,
         as: 'toUser',
         attributes: ['user_id', 'username', 'email', 'thumbnail', 'rank', 'state'],
+      },
+      {
+        model: Game,
+        as: 'game',
+        required: false,
+        attributes: ['id', 'status', 'ended_at'],
       },
     ],
   });
@@ -260,12 +303,14 @@ export const createGameInvite = async (fromUserId, toUserId, gameType, playMetho
 
   await ensureUsersHaveNoActiveGames([fromUserId, toUserId]);
 
-  // Check if there's already a pending invite
+  // Check if there is already an actionable invite between the same two users in either direction
   const existingInvite = await Invite.findOne({
     where: {
-      from_user_id: fromUserId,
-      to_user_id: toUserId,
-      status: 'pending',
+      [Op.or]: [
+        { from_user_id: fromUserId, to_user_id: toUserId },
+        { from_user_id: toUserId, to_user_id: fromUserId },
+      ],
+      status: { [Op.in]: ['pending', 'accepted', 'game_started'] },
     },
   });
 
@@ -533,84 +578,98 @@ export const respondToInvite = async (inviteId, userId, response) => {
  */
 export const startGame = async (inviteId, userId, playMethod) => {
   const invite = await Invite.findByPk(inviteId);
-  
+
   if (!invite) {
     throw new NotFoundError('Invite not found');
   }
-  
+
   if (invite.from_user_id !== userId && invite.to_user_id !== userId) {
     throw new ValidationError('Not authorized to start this game');
   }
-  
-  if (invite.status !== 'accepted') {
-    throw new ValidationError('Invite must be accepted before starting game');
-  }
-  
+
   if (!['physical_board', 'phone'].includes(playMethod)) {
     throw new ValidationError('Invalid play method. Must be physical_board or phone');
   }
 
+  if (invite.status === 'game_started' && invite.game_id) {
+    const existingGame = await Game.findByPk(invite.game_id, { attributes: ['id', 'status'] });
+    if (existingGame && ACTIVE_GAME_STATUSES.has(existingGame.status)) {
+      return {
+        inviteId,
+        playMethod,
+        gameId: existingGame.id,
+        status: 'started',
+        game: {
+          id: existingGame.id,
+          status: existingGame.status,
+        },
+      };
+    }
+
+    await invite.update({ status: 'expired' });
+    throw new ValidationError('This game has already ended');
+  }
+
+  if (invite.status !== 'accepted') {
+    throw new ValidationError('Invite must be accepted before starting game');
+  }
+
   await ensureUsersHaveNoActiveGames([invite.from_user_id, invite.to_user_id]);
-  
-  // Import Game model
-      const Game = await import('../models/Game.js');
-  
-  // Determine who plays white/black (random)
+
   const isWhiteRandom = Math.random() < 0.5;
-  const whiteUserId = isWhiteRandom ? invite.from_user_id : invite.to_user_id;
-  const blackUserId = isWhiteRandom ? invite.to_user_id : invite.from_user_id;
-  
-  // Determine play methods for each player
+  const whitePlayerId = isWhiteRandom ? invite.from_user_id : invite.to_user_id;
+  const blackPlayerId = isWhiteRandom ? invite.to_user_id : invite.from_user_id;
   const whitePlayMethod = isWhiteRandom ? invite.play_method : playMethod;
   const blackPlayMethod = isWhiteRandom ? playMethod : invite.play_method;
-  
-  // Create the game in the game table
-      const game = await Game.default.create({
-    whiteUserId: whiteUserId,
-    blackUserId: blackUserId,
-    whitePlayMethod: whitePlayMethod,
-    blackPlayMethod: blackPlayMethod,
-    gameTime: '5', // Default game time
-    mode: invite.game_type === 'friendly' ? 'friend' : 'challenge', // تحويل game_type إلى mode صحيح
-    status: 'in_progress',
-    dateTime: new Date(),
+  const initialTime = 600;
+
+  const game = await Game.create({
+    white_player_id: whitePlayerId,
+    black_player_id: blackPlayerId,
+    started_by_user_id: invite.from_user_id,
+    game_type: 'friend',
+    ai_level: null,
+    puzzle_id: null,
+    initial_time: initialTime,
+    white_time_left: initialTime,
+    black_time_left: initialTime,
+    white_play_method: whitePlayMethod,
+    black_play_method: blackPlayMethod,
+    current_fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+    status: 'active',
+    current_turn: 'white',
+    winner_id: null,
+    white_rank_change: null,
+    black_rank_change: null,
+    started_at: new Date(),
+    ended_at: null,
   });
-  
-  // Update invite with game ID and status
-  await invite.update({ 
+
+  await invite.update({
     game_id: game.id,
-    status: 'game_started'
+    status: 'game_started',
   });
-  
-  // Update both players' status to 'in-game'
+
   const { updateUserStatus } = await import('../socket/socketHelpers.js');
   await Promise.all([
     updateUserStatus(invite.from_user_id, 'in-game'),
-    updateUserStatus(invite.to_user_id, 'in-game')
+    updateUserStatus(invite.to_user_id, 'in-game'),
   ]);
-  
 
-
-  // إرسال إشعار rejoin_game للاعبين
   try {
     const io = global.io;
     if (io) {
       const gameData = {
         gameId: game.id,
-        whiteUserId: whiteUserId,
-        blackUserId: blackUserId,
-        whitePlayMethod: whitePlayMethod,
-        blackPlayMethod: blackPlayMethod,
-        mode: invite.game_type
+        whitePlayerId,
+        blackPlayerId,
+        whitePlayMethod,
+        blackPlayMethod,
+        mode: invite.game_type,
       };
-      
-      // إرسال إشعار للاعب الأبيض
-      io.to(`user::${whiteUserId}`).emit('rejoin_game', gameData);
-      
-      // إرسال إشعار للاعب الأسود
-      io.to(`user::${blackUserId}`).emit('rejoin_game', gameData);
-      
 
+      io.to(`user::${whitePlayerId}`).emit('rejoin_game', gameData);
+      io.to(`user::${blackPlayerId}`).emit('rejoin_game', gameData);
     }
   } catch (error) {
     console.error('Error sending rejoin_game notifications:', error);
@@ -623,14 +682,13 @@ export const startGame = async (inviteId, userId, playMethod) => {
     status: 'started',
     game: {
       id: game.id,
-      whiteUserId: game.whiteUserId,
-      blackUserId: game.blackUserId,
-      whitePlayMethod: game.whitePlayMethod,
-      blackPlayMethod: game.blackPlayMethod,
-      gameTime: game.gameTime,
-      mode: game.mode,
-      status: game.status
-    }
+      whitePlayerId,
+      blackPlayerId,
+      whitePlayMethod,
+      blackPlayMethod,
+      initialTime,
+      status: game.status,
+    },
   };
 };
 
@@ -707,8 +765,8 @@ export const cancelInvite = async (inviteId, userId) => {
     throw new Error('لا يمكن إلغاء دعوة غير معلقة');
   }
   
-  // تحديث حالة الدعوة إلى مرفوضة
-  await invite.update({ status: 'cancelled' });
+  // تحديث حالة الدعوة إلى مرفوضة (قيمة مدعومة في ENUM)
+  await invite.update({ status: 'rejected' });
   
 
   
@@ -734,4 +792,3 @@ export const cancelInvite = async (inviteId, userId) => {
     message: 'تم إلغاء الدعوة بنجاح'
   };
 };
-

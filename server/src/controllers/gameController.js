@@ -9,6 +9,25 @@ import { handleGameMove, handleGameEnd } from '../socket/socketHelpers.js';
 const AI_SYSTEM_EMAIL = 'ai.bot@system.local';
 const AI_SYSTEM_USERNAME = 'ai_bot';
 
+const AI_DIFFICULTY_LEVELS = {
+  easy: 1100,
+  medium: 1500,
+  hard: 1900,
+};
+
+const resolveAiLevel = (difficulty, aiLevel) => {
+  if (difficulty && AI_DIFFICULTY_LEVELS[difficulty]) {
+    return AI_DIFFICULTY_LEVELS[difficulty];
+  }
+
+  const numeric = Number(aiLevel);
+  if (!Number.isFinite(numeric)) {
+    return AI_DIFFICULTY_LEVELS.medium;
+  }
+
+  return Math.max(800, Math.min(2400, Math.round(numeric)));
+};
+
 const ensureAiSystemUser = async () => {
   let aiUser = await User.findOne({ where: { email: AI_SYSTEM_EMAIL } });
   if (aiUser) return aiUser;
@@ -546,6 +565,7 @@ export const recordAiGameResult = async (req, res) => {
       result,
       playerColor = 'white',
       aiLevel = 1500,
+      difficulty = 'medium',
       initialTime = 600,
       whiteTimeLeft = 600,
       blackTimeLeft = 600,
@@ -567,6 +587,12 @@ export const recordAiGameResult = async (req, res) => {
         message: 'Invalid playerColor value. Use white or black.',
       });
     }
+    if (difficulty && !Object.prototype.hasOwnProperty.call(AI_DIFFICULTY_LEVELS, difficulty)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid difficulty value. Use easy, medium, or hard.',
+      });
+    }
 
     const aiUser = await ensureAiSystemUser();
     if (!aiUser || aiUser.user_id === userId) {
@@ -577,6 +603,7 @@ export const recordAiGameResult = async (req, res) => {
     }
 
     const safeInitial = Math.max(0, Number(initialTime) || 600);
+    const resolvedAiLevel = resolveAiLevel(difficulty, aiLevel);
     const safeWhiteLeft = Math.max(0, Number(whiteTimeLeft) || 0);
     const safeBlackLeft = Math.max(0, Number(blackTimeLeft) || 0);
     const safeFen =
@@ -601,7 +628,7 @@ export const recordAiGameResult = async (req, res) => {
       black_player_id: blackPlayerId,
       started_by_user_id: userId,
       game_type: 'ai',
-      ai_level: Number(aiLevel) || 1500,
+      ai_level: resolvedAiLevel,
       initial_time: safeInitial,
       white_time_left: safeWhiteLeft,
       black_time_left: safeBlackLeft,
@@ -643,11 +670,17 @@ export const createAiGameSession = async (req, res) => {
       });
     }
 
-    const { playerColor = 'white', aiLevel = 1500, initialTime = 600 } = req.body || {};
+    const { playerColor = 'white', aiLevel = 1500, difficulty = 'medium', initialTime = 600 } = req.body || {};
     if (!['white', 'black'].includes(playerColor)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid playerColor value. Use white or black.',
+      });
+    }
+    if (difficulty && !Object.prototype.hasOwnProperty.call(AI_DIFFICULTY_LEVELS, difficulty)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid difficulty value. Use easy, medium, or hard.',
       });
     }
 
@@ -662,6 +695,7 @@ export const createAiGameSession = async (req, res) => {
     const whitePlayerId = playerColor === 'white' ? userId : aiUser.user_id;
     const blackPlayerId = playerColor === 'black' ? userId : aiUser.user_id;
     const safeInitial = Math.max(0, Number(initialTime) || 600);
+    const resolvedAiLevel = resolveAiLevel(difficulty, aiLevel);
 
     const existingActiveGame = await Game.findOne({
       where: {
@@ -690,7 +724,7 @@ export const createAiGameSession = async (req, res) => {
       black_player_id: blackPlayerId,
       started_by_user_id: userId,
       game_type: 'ai',
-      ai_level: Number(aiLevel) || 1500,
+      ai_level: resolvedAiLevel,
       initial_time: safeInitial,
       white_time_left: safeInitial,
       black_time_left: safeInitial,
@@ -710,6 +744,8 @@ export const createAiGameSession = async (req, res) => {
       data: {
         gameId: game.id,
         aiUserId: aiUser.user_id,
+        aiLevel: resolvedAiLevel,
+        difficulty: difficulty || 'medium',
       },
     });
   } catch (error) {
@@ -926,3 +962,5 @@ export const finalizeAiGame = async (req, res) => {
     });
   }
 };
+
+

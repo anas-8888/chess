@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useToast } from "@/hooks/use-toast";
 import { userService } from "@/services/userService";
 import { friendService } from "@/services/friendService";
-import { inviteService } from "@/services/inviteService";
+import { inviteService, type Invite } from "@/services/inviteService";
 import { authService } from "@/services/authService";
 import { useAuth } from "@/contexts/AuthContext";
 import { API_BASE_URL, SOCKET_BASE_URL } from "@/config/urls";
@@ -59,6 +59,34 @@ const Friends = () => {
   const [selectedInvite, setSelectedInvite] = useState<any>(null);
   const [acceptPlayMethod, setAcceptPlayMethod] = useState<'phone' | 'physical_board' | null>(null);
   const [isAcceptingInvite, setIsAcceptingInvite] = useState(false);
+
+  const isGameStatusActiveForResume = (status?: string) => status === 'waiting' || status === 'active';
+
+  const isInviteGameStillActive = (invite: Invite | any) => {
+    if (invite?.status !== 'game_started') {
+      return true;
+    }
+
+    if (invite?.game?.status) {
+      return isGameStatusActiveForResume(invite.game.status);
+    }
+
+    return Boolean(invite?.game_id);
+  };
+
+  const getFilteredReceivedInvites = () => {
+    return invites.filter((invite) => {
+      if (invite.status === 'pending' || invite.status === 'accepted') {
+        return true;
+      }
+
+      if (invite.status === 'game_started') {
+        return isInviteGameStillActive(invite);
+      }
+
+      return false;
+    });
+  };
 
   
   useEffect(() => {
@@ -161,9 +189,21 @@ const Friends = () => {
     });
 
     socket.on('friendStatusChanged', (friendData) => {
-      setFriends(prev => prev.map(friend => 
-        friend.id === friendData.id ? { ...friend, ...friendData } : friend
-      ));
+      setFriends((prev) =>
+        prev.map((friend) => {
+          const friendId = Number(friend.user_id ?? friend.id);
+          const changedUserId = Number(friendData.userId ?? friendData.id);
+          if (friendId !== changedUserId) {
+            return friend;
+          }
+
+          return {
+            ...friend,
+            state: friendData.status || friend.state,
+            is_online: friendData.status === 'online',
+          };
+        })
+      );
     });
 
     return () => {
@@ -561,7 +601,7 @@ const Friends = () => {
       case 'accepted':
         return (
           <Button
-            onClick={() => startGame(invite.id)}
+            onClick={() => startGame(invite)}
             variant="chess"
             size="sm"
           >
@@ -577,7 +617,7 @@ const Friends = () => {
       case 'game_started':
         return (
           <Button
-            onClick={() => joinGame(invite.game_id)}
+            onClick={() => joinGame(invite)}
             variant="chess"
             size="sm"
           >
@@ -592,50 +632,74 @@ const Friends = () => {
   };
 
   // دالة بدء المباراة
-  const startGame = async (inviteId: string) => {
+  const startGame = async (invite: Invite | any) => {
     try {
-      const result = await inviteService.startGame(inviteId, 'phone');
-      
+      if (invite?.status === 'game_started' && (invite?.game_id || invite?.game?.id)) {
+        await joinGame(invite);
+        return;
+      }
+
+      const result = await inviteService.startGame(invite.id, 'phone');
+      const gameId = result?.data?.gameId || result?.gameId;
+
+      if (!gameId) {
+        throw new Error('لم يتم إرجاع معرف المباراة');
+      }
+
       toast({
         title: 'تم بدء المباراة',
         description: 'جاري الانتقال إلى المباراة...',
       });
 
-      // الانتقال إلى صفحة المباراة
-      setTimeout(() => {
-        navigate(`/game?id=${result.data?.gameId || 'new_game'}`);
-      }, 1000);
-
+      navigate(`/game?id=${gameId}`);
     } catch (error) {
       console.error('Error starting game:', error);
+      const message = error instanceof Error ? error.message : 'فشل في بدء المباراة';
       toast({
         title: 'خطأ',
-        description: error instanceof Error ? error.message : 'فشل في بدء المباراة',
+        description: message,
         variant: 'destructive',
       });
+
+      await loadInvites();
     }
   };
 
-  // دالة دخول المباراة
-  const joinGame = async (gameId: string) => {
-    try {
+  // دالة دخول/استئناف المباراة مع التحقق من حالتها الفعلية
+  const joinGame = async (invite: Invite | any) => {
+    const gameId = invite?.game_id || invite?.game?.id;
+    if (!gameId) {
       toast({
-        title: 'جاري الانتقال',
-        description: 'جاري الانتقال إلى المباراة...',
+        title: 'لا توجد مباراة صالحة',
+        description: 'هذه الدعوة لا تحتوي على مباراة قابلة للاستئناف',
+        variant: 'destructive',
       });
+      await loadInvites();
+      return;
+    }
 
-      // الانتقال إلى صفحة المباراة
-      setTimeout(() => {
-        navigate(`/game?id=${gameId}`);
-      }, 1000);
+    try {
+      const gameResponse = await inviteService.getGameDetails(gameId);
+      const gameStatus = gameResponse?.data?.status;
 
+      if (!isGameStatusActiveForResume(gameStatus)) {
+        toast({
+          title: 'المباراة منتهية',
+          description: 'تم إنهاء هذه المباراة، سيتم تحديث قائمة الدعوات.',
+        });
+        await loadInvites();
+        return;
+      }
+
+      navigate(`/game?id=${gameId}`);
     } catch (error) {
       console.error('Error joining game:', error);
       toast({
-        title: 'خطأ',
-        description: 'فشل في دخول المباراة',
+        title: 'تعذر استئناف المباراة',
+        description: 'قد تكون المباراة منتهية أو غير متاحة حالياً',
         variant: 'destructive',
       });
+      await loadInvites();
     }
   };
 
@@ -712,15 +776,19 @@ const Friends = () => {
     }
   };
 
-  // دالة تصفية الدعوات المرسلة لعرض جميع الحالات
+  // دالة تصفية الدعوات المرسلة (فقط الحالات القابلة للإجراء)
   const getFilteredSentInvites = () => {
-    return pendingInvites.filter(invite => 
-      invite.status === 'pending' || 
-      invite.status === 'rejected' || 
-      invite.status === 'accepted' || 
-      invite.status === 'expired' || 
-      invite.status === 'game_started'
-    );
+    return pendingInvites.filter((invite) => {
+      if (invite.status === 'pending' || invite.status === 'accepted') {
+        return true;
+      }
+
+      if (invite.status === 'game_started') {
+        return isInviteGameStillActive(invite);
+      }
+
+      return false;
+    });
   };
 
   // دالة معالجة أزرار الدعوات المرسلة
@@ -739,7 +807,7 @@ const Friends = () => {
       case 'accepted':
         return (
           <Button
-            onClick={() => startGame(invite.id)}
+            onClick={() => startGame(invite)}
             variant="chess"
             size="sm"
           >
@@ -755,7 +823,7 @@ const Friends = () => {
       case 'game_started':
         return (
           <Button
-            onClick={() => joinGame(invite.game_id)}
+            onClick={() => joinGame(invite)}
             variant="chess"
             size="sm"
           >
@@ -803,7 +871,7 @@ const Friends = () => {
              أصدقائي ({friends.length})
            </TabsTrigger>
            <TabsTrigger value="invites">
-             الدعوات الواردة ({invites.length})
+             الدعوات الواردة ({getFilteredReceivedInvites().length})
            </TabsTrigger>
            <TabsTrigger value="pending">
               الدعوات المرسلة ({getFilteredSentInvites().length})
@@ -1004,7 +1072,7 @@ const Friends = () => {
            </TabsContent>
 
            <TabsContent value="invites" className="space-y-4">
-            {invites.map((invite) => (
+            {getFilteredReceivedInvites().map((invite) => (
               <Card key={invite.id} className="border-primary/20">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
@@ -1041,7 +1109,7 @@ const Friends = () => {
               </Card>
             ))}
 
-            {invites.length === 0 && (
+            {getFilteredReceivedInvites().length === 0 && (
               <Card>
                 <CardContent className="text-center py-12">
                   <Mail className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -1201,3 +1269,4 @@ const Friends = () => {
  };
 
 export default Friends;
+
