@@ -1,4 +1,4 @@
-﻿import jwt from 'jsonwebtoken';
+import jwt from 'jsonwebtoken';
 import config from '../../config/index.js';
 import User from '../models/User.js';
 import Invite from '../models/Invite.js';
@@ -15,6 +15,9 @@ const gameTimers = {};
 
 // متغير لتخزين بيانات المؤقت في الذاكرة
 const gameTimerData = new Map(); // { gameId: { whiteTimeLeft, blackTimeLeft, currentTurn, game } }
+const pendingOfflineUpdates = new Map(); // userId -> timeoutId
+const OFFLINE_GRACE_MS = 5000;
+
 
 // Store previous stats for comparison
 let previousStats = { totalUsers: 0, totalConnections: 0 };
@@ -81,21 +84,24 @@ export function authenticateSocket(socket) {
 
 // User connection management
 export function addUserConnection(userId, socketId) {
+  if (pendingOfflineUpdates.has(userId)) {
+    clearTimeout(pendingOfflineUpdates.get(userId));
+    pendingOfflineUpdates.delete(userId);
+  }
+
   if (!activeUsers.has(userId)) {
     activeUsers.set(userId, new Set());
   }
+
   activeUsers.get(userId).add(socketId);
-  
   const totalConnections = activeUsers.get(userId).size;
-  
-  // تحديث حالة المستخدم إلى online عند أول اتصال
+
   if (totalConnections === 1) {
     updateUserStatus(userId, 'online').catch(error => {
       logger.error('Failed to set user status to online:', error);
     });
   }
-  
-  // طباعة رسالة فقط عند أول اتصال أو عند تغيير عدد الاتصالات
+
   if (LOG_CONFIG.showDetailedConnections) {
     if (totalConnections === 1) {
       logger.debug(`New user connection: user=${userId}, socket=${socketId}`);
@@ -106,24 +112,45 @@ export function addUserConnection(userId, socketId) {
 }
 
 export function removeUserConnection(userId, socketId) {
-  if (activeUsers.has(userId)) {
-    activeUsers.get(userId).delete(socketId);
-    
-    const remainingConnections = activeUsers.get(userId).size;
-    
-    // إذا لم يتبق أي اتصالات، احذف المستخدم من القائمة وتحديث الحالة إلى offline
-    if (remainingConnections === 0) {
-      activeUsers.delete(userId);
-      logger.debug(`❌ ${userId}`);
-      
-      // تحديث حالة المستخدم إلى offline عند قطع آخر اتصال
-      updateUserStatus(userId, 'offline').catch(error => {
-        logger.error('Failed to set user status to offline:', error);
-      });
-    } else if (LOG_CONFIG.showDetailedConnections) {
+  if (!activeUsers.has(userId)) {
+    return;
+  }
+
+  activeUsers.get(userId).delete(socketId);
+  const remainingConnections = activeUsers.get(userId).size;
+
+  if (remainingConnections > 0) {
+    if (LOG_CONFIG.showDetailedConnections) {
       logger.debug(`Connection removed for user ${userId}; remaining connections: ${remainingConnections}`);
     }
+    return;
   }
+
+  activeUsers.delete(userId);
+  logger.debug(`❌ ${userId}`);
+
+  const timeoutId = setTimeout(async () => {
+    pendingOfflineUpdates.delete(userId);
+
+    if (isUserOnline(userId)) {
+      return;
+    }
+
+    try {
+      const user = await User.findByPk(userId);
+      if (!user) return;
+
+      if (user.state === 'in-game') {
+        return;
+      }
+
+      await updateUserStatus(userId, 'offline');
+    } catch (error) {
+      logger.error('Failed to set user status to offline:', error);
+    }
+  }, OFFLINE_GRACE_MS);
+
+  pendingOfflineUpdates.set(userId, timeoutId);
 }
 
 export function getUserConnections(userId) {
@@ -139,6 +166,17 @@ const isUserEffectivelyOnline = (user) => {
   return isUserOnline(user.user_id) || user.state === 'online' || user.state === 'in-game';
 };
 
+export const hasActivePlayableGame = async (userId) => {
+  const activeGame = await Game.findOne({
+    where: {
+      [Op.or]: [{ white_player_id: userId }, { black_player_id: userId }],
+      status: { [Op.in]: ['waiting', 'active'] },
+    },
+    attributes: ['id', 'game_type', 'status'],
+  });
+
+  return activeGame;
+};
 
 // User status management
 export async function updateUserStatus(userId, status) {
@@ -406,6 +444,11 @@ export async function handleGameInvite(socket, nsp, userId, { toUserId, gameType
     if (recipient.state === 'in-game') {
       return socket.emit('error', { message: 'المستخدم مشغول في مباراة أخرى' });
     }
+    const recipientActiveGame = await hasActivePlayableGame(toUserId);
+    if (recipientActiveGame) {
+      return socket.emit('error', { message: 'المستخدم لديه مباراة جارية بالفعل' });
+    }
+
 
     // فحص حالة المرسل أيضاً
     const sender = await User.findByPk(userId);
@@ -420,6 +463,11 @@ export async function handleGameInvite(socket, nsp, userId, { toUserId, gameType
     if (sender.state === 'in-game') {
       return socket.emit('error', { message: 'لا يمكن إرسال دعوة أثناء اللعب' });
     }
+    const senderActiveGame = await hasActivePlayableGame(userId);
+    if (senderActiveGame) {
+      return socket.emit('error', { message: 'لا يمكنك إرسال دعوة، لديك مباراة جارية' });
+    }
+
 
     // Check if there's already a pending invite
     const existingInvite = await Invite.findOne({
@@ -511,6 +559,14 @@ export async function handleInviteResponse(socket, nsp, userId, { inviteId, resp
     // If accepted, create game and update player statuses
     if (response === 'accepted') {
       await invite.update({ status: 'accepted' });
+
+      const senderActiveGame = await hasActivePlayableGame(invite.from_user_id);
+      const recipientActiveGame = await hasActivePlayableGame(invite.to_user_id);
+
+      if (senderActiveGame || recipientActiveGame) {
+        await invite.update({ status: 'expired' });
+        return socket.emit('error', { message: 'تعذر بدء المباراة لأن أحد اللاعبين لديه مباراة جارية' });
+      }
       
       // Create the game
       const game = await createGame(invite);
@@ -1280,4 +1336,3 @@ export async function updateUserStatusAfterGameEnd(gameId) {
     logger.error('Failed to update user status after game end:', error);
   }
 }
-

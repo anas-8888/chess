@@ -110,6 +110,7 @@ export function initFriendSocket(io) {
     // Authenticate user
     try {
       userId = authenticateSocket(socket);
+      socket.userId = userId;
     } catch (error) {
       logger.error('Authentication error:', error.message);
       socket.emit('error', { message: 'Authentication required' });
@@ -132,7 +133,7 @@ export function initFriendSocket(io) {
             ],
             status: 'active'
           },
-          order: [['dateTime', 'DESC']]
+          order: [['created_at', 'DESC']]
         });
 
         if (activeGame) {
@@ -360,44 +361,50 @@ export function initFriendSocket(io) {
     });
 
     // معالجة الاستسلام
-    socket.on('resign', async (data) => {
-      logger.debug('Received resign event', { data, socketUserId: socket.userId });
-      
+    socket.on('resign', async (data, ack) => {
       try {
-        const { gameId } = data;
-        const game = await Game.findByPk(gameId);
-        
-        if (!game) {
-          logger.error(`Game ${gameId} not found for resign`);
+        const gameId = String(data?.gameId || '').trim();
+        if (!gameId) {
+          const response = { success: false, message: 'Game ID is required' };
+          if (typeof ack === 'function') ack(response);
           return;
         }
-        
-        logger.debug('Game found for resign:', {
-          gameId: game.id,
-          whitePlayerId: game.white_player_id,
-          blackPlayerId: game.black_player_id,
-          socketUserId: socket.userId
-        });
-        
-        // تحديد اللاعب الذي استسلم
-        const resignedPlayer = socket.userId === game.white_player_id ? 'white' : 'black';
+
+        const game = await Game.findByPk(gameId);
+        if (!game) {
+          const response = { success: false, message: 'Game not found' };
+          if (typeof ack === 'function') ack(response);
+          return;
+        }
+
+        if (game.status !== 'active') {
+          const response = { success: false, message: 'Game is not active' };
+          if (typeof ack === 'function') ack(response);
+          return;
+        }
+
+        const isParticipant =
+          Number(game.white_player_id) === Number(userId) ||
+          Number(game.black_player_id) === Number(userId);
+
+        if (!isParticipant) {
+          const response = { success: false, message: 'Not authorized to resign this game' };
+          if (typeof ack === 'function') ack(response);
+          return;
+        }
+
+        const resignedPlayer = Number(userId) === Number(game.white_player_id) ? 'white' : 'black';
         const winner = resignedPlayer === 'white' ? 'black' : 'white';
-        
-        logger.debug('Resign analysis:', {
-          resignedPlayer,
-          winner,
-          socketUserId: socket.userId,
-          whitePlayerId: game.white_player_id,
-          blackPlayerId: game.black_player_id
-        });
-        
-        // معالجة انتهاء اللعبة
+
         await handleGameEnd(nsp, gameId, 'resign', winner);
-        
-        logger.info('Resign handled successfully');
-        
+
+        const response = { success: true };
+        if (typeof ack === 'function') ack(response);
       } catch (error) {
         logger.error('Error handling resign:', error);
+        if (typeof ack === 'function') {
+          ack({ success: false, message: 'Failed to process resignation' });
+        }
       }
     });
 
@@ -433,4 +440,4 @@ export function initFriendSocket(io) {
       });
     });
   });
-} 
+}

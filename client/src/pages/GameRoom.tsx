@@ -654,11 +654,9 @@ const GameRoom = () => {
       return;
     }
 
-    // Connect to WebSocket
     socketService.connect(token);
-    socketService.setConnectionCallback(setIsConnected);
+    const removeConnectionCallback = socketService.setConnectionCallback(setIsConnected);
 
-    // Set up event listeners
     socketService.onClockUpdate(handleClockUpdate);
     socketService.onTurnUpdate(handleTurnUpdate);
     socketService.onMoveMade(handleOpponentMove);
@@ -666,10 +664,9 @@ const GameRoom = () => {
     socketService.onGameEnd(handleGameEnd);
     socketService.onMoveConfirmed(handleMoveConfirmed);
 
-    // Join game room
-            socketService.joinGameRoom(gameId);
-      
-      return () => {
+    socketService.joinGameRoom(gameId);
+
+    return () => {
       socketService.leaveGameRoom(gameId);
       socketService.offClockUpdate();
       socketService.offTurnUpdate();
@@ -677,9 +674,19 @@ const GameRoom = () => {
       socketService.offGameTimeout();
       socketService.offGameEnd();
       socketService.offMoveConfirmed();
-      socketService.disconnect();
+      removeConnectionCallback();
     };
-  }, [user, token, handleClockUpdate, handleTurnUpdate, handleOpponentMove, handleGameTimeout, handleGameEnd, handleMoveConfirmed, getValidGameIdFromUrl]);
+  }, [
+    user,
+    token,
+    handleClockUpdate,
+    handleTurnUpdate,
+    handleOpponentMove,
+    handleGameTimeout,
+    handleGameEnd,
+    handleMoveConfirmed,
+    getValidGameIdFromUrl,
+  ]);
 
   const handleMove = useCallback((from: Square, to: Square, promotion?: string) => {
     console.log('=== FULL SYNC: GAME ROOM: Handling move ===');
@@ -842,31 +849,40 @@ const GameRoom = () => {
     }
 
     return false;
-  }, [game, gameState.currentTurn, currentPlayer, isProcessingMove, handleGameEnd]);
+  }, [game, gameState.currentTurn, gameState.status, currentPlayer, isProcessingMove, handleGameEnd, getValidGameIdFromUrl, toast]);
 
   const handleResign = () => {
     setShowResignConfirmModal(true);
   };
 
-  const confirmResign = () => {
-    console.log('=== GAME ROOM: Player confirmed resignation ===');
-    console.log('Player confirmed resignation');
-    console.log('Game state ID:', gameState.id);
-    console.log('Current player:', currentPlayer);
-    
-    // إرسال الاستسلام عبر socket
-    socketService.sendResign(gameState.id);
-    
-    // معالجة محلية للاستسلام
-    const winner = currentPlayer === 'white' ? 'black' : 'white';
-    console.log('Local winner calculation:', winner);
-    
-    handleGameEnd({ 
-      reason: 'resign', 
-      winner: winner 
-    });
-    
-    // إغلاق مودال التأكيد
+  const confirmResign = async () => {
+    const gameId = gameState.id || getValidGameIdFromUrl();
+    if (!gameId) {
+      toast({
+        title: 'خطأ',
+        description: 'لا يمكن تنفيذ الاستسلام بدون معرف مباراة صالح',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const socketAck = await socketService.sendResign(gameId);
+
+      if (!socketAck.success) {
+        await api.post(`/api/game/${gameId}/resign`);
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'تعذر تنفيذ الاستسلام حالياً. حاول مرة أخرى.';
+      toast({
+        title: 'فشل الاستسلام',
+        description: message,
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setShowResignConfirmModal(false);
   };
 

@@ -6,6 +6,7 @@ import {
   getGameDuration,
   controlPlayer,
   getGameState,
+  resignGame,
   recordAiGameResult,
   createAiGameSession,
   getActiveAiGameSession,
@@ -35,6 +36,7 @@ router.get('/:id/duration', validateGameId, getGameDuration);
 
 // الحصول على حالة اللعبة الحالية
 router.get('/:id/state', validateGameId, getGameState);
+router.post('/:id/resign', protect, validateGameId, resignGame);
 
 // تحديث وقت اللعبة
 router.post('/:id/update-time', validateUpdateTime, updateGameTime);
@@ -55,4 +57,4 @@ router.get('/', (req, res) => {
   });
 });
 
-export default router; 
+export default router;

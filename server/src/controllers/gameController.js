@@ -4,7 +4,7 @@ import GameMove from '../models/GameMove.js';
 import User from '../models/User.js';
 import Game from '../models/Game.js'; // Added import for Game model
 import logger from '../utils/logger.js';
-import { handleGameMove } from '../socket/socketHelpers.js';
+import { handleGameMove, handleGameEnd } from '../socket/socketHelpers.js';
 
 const AI_SYSTEM_EMAIL = 'ai.bot@system.local';
 const AI_SYSTEM_USERNAME = 'ai_bot';
@@ -395,7 +395,7 @@ export const controlPlayer = async (req, res) => {
 // الحصول على حالة اللعبة الحالية
 export const getGameState = async (req, res) => {
   try {
-    const { gameId } = req.params;
+    const gameId = req.params.id;
 
     const game = await Game.findByPk(gameId, {
       include: [
@@ -460,6 +460,73 @@ export const getGameState = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'خطأ في الخادم'
+    });
+  }
+};
+
+
+// استسلام لاعب في مباراة مباشرة (fallback API)
+export const resignGame = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.user_id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required',
+      });
+    }
+
+    const game = await Game.findByPk(id);
+    if (!game) {
+      return res.status(404).json({
+        success: false,
+        message: 'Game not found',
+      });
+    }
+
+    const isParticipant =
+      Number(game.white_player_id) === Number(userId) ||
+      Number(game.black_player_id) === Number(userId);
+
+    if (!isParticipant) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to resign this game',
+      });
+    }
+
+    if (game.status !== 'active') {
+      return res.status(409).json({
+        success: false,
+        message: 'Game is not active',
+      });
+    }
+
+    const winner = Number(userId) === Number(game.white_player_id) ? 'black' : 'white';
+    const friendsNamespace = global.io?.of ? global.io.of('/friends') : null;
+
+    if (friendsNamespace) {
+      await handleGameEnd(friendsNamespace, String(id), 'resign', winner);
+    } else {
+      const winnerId = winner === 'white' ? game.white_player_id : game.black_player_id;
+      await game.update({
+        status: 'ended',
+        winner_id: winnerId,
+        ended_at: new Date(),
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Resignation processed successfully',
+    });
+  } catch (error) {
+    logger.error('Failed to resign game:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to resign game',
     });
   }
 };
