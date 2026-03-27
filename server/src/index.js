@@ -1,4 +1,4 @@
-import express from 'express';
+﻿import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -60,64 +60,70 @@ import adminRoutes from './routes/adminRoutes.js';
 
 const app = express();
 app.set('trust proxy', 1);
+const isProduction = process.env.NODE_ENV === 'production';
 
 // Security middleware
-app.use(
-  helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        styleSrc: [
-          "'self'", 
-          "'unsafe-inline'", 
-          "https://cdn.jsdelivr.net", 
-          "https://fonts.googleapis.com",
-          "https://cdnjs.cloudflare.com",
-          "https://unpkg.com"
-        ],
-        scriptSrc: [
-          "'self'", 
-          "'unsafe-inline'", 
-          "https://cdn.jsdelivr.net", 
-          "https://code.jquery.com", 
-          "https://cdnjs.cloudflare.com", 
-          "https://unpkg.com", 
-          "https://kit.fontawesome.com", 
-          "https://cdn.socket.io"
-        ],
-        imgSrc: [
-          "'self'", 
-          'data:', 
-          'https:', 
-          "https://i.imgur.com", 
-          "https://chessboardjs.com",
-          "https://cdnjs.cloudflare.com",
-          "https://unpkg.com"
-        ],
-        fontSrc: [
-          "'self'", 
-          "https://fonts.gstatic.com", 
-          "https://cdn.jsdelivr.net",
-          "https://cdnjs.cloudflare.com"
-        ],
-        connectSrc: [
-          "'self'", 
-          "wss:", 
-          "ws:",
-          "https://localhost:3000",
-          "http://localhost:3003"
-        ],
-        mediaSrc: [
-          "'self'",
-          "https:",
-          "data:"
-        ],
-        objectSrc: ["'none'"],
-        upgradeInsecureRequests: [],
-      },
+const buildHelmetOptions = (forceHttpsHeaders) => ({
+  crossOriginOpenerPolicy: forceHttpsHeaders ? { policy: 'same-origin' } : false,
+  originAgentCluster: forceHttpsHeaders,
+  hsts: forceHttpsHeaders,
+  contentSecurityPolicy: {
+    useDefaults: true,
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: [
+        "'self'",
+        "'unsafe-inline'",
+        'https://cdn.jsdelivr.net',
+        'https://fonts.googleapis.com',
+        'https://cdnjs.cloudflare.com',
+        'https://unpkg.com',
+      ],
+      scriptSrc: [
+        "'self'",
+        "'unsafe-inline'",
+        'https://cdn.jsdelivr.net',
+        'https://code.jquery.com',
+        'https://cdnjs.cloudflare.com',
+        'https://unpkg.com',
+        'https://kit.fontawesome.com',
+        'https://cdn.socket.io',
+      ],
+      imgSrc: [
+        "'self'",
+        'data:',
+        'https:',
+        'https://i.imgur.com',
+        'https://chessboardjs.com',
+        'https://cdnjs.cloudflare.com',
+        'https://unpkg.com',
+      ],
+      fontSrc: [
+        "'self'",
+        'https://fonts.gstatic.com',
+        'https://cdn.jsdelivr.net',
+        'https://cdnjs.cloudflare.com',
+      ],
+      connectSrc: [
+        "'self'",
+        'wss:',
+        'ws:',
+        'https://localhost:3000',
+        'http://localhost:3003',
+      ],
+      mediaSrc: ["'self'", 'https:', 'data:'],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: forceHttpsHeaders ? [] : null,
     },
-  })
-);
+  },
+});
+
+app.use((req, res, next) => {
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').toLowerCase();
+  const isSecureRequest = req.secure || forwardedProto.includes('https');
+  const forceHttpsHeaders = isProduction && isSecureRequest;
+  return helmet(buildHelmetOptions(forceHttpsHeaders))(req, res, next);
+});
 
 // CORS configuration - Allow all origins for development
 app.use(
@@ -609,4 +615,5 @@ process.on('uncaughtException', err => {
 });
 
 export default app;
+
 

@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Large Stockfish binary (served خارج git)
+public/stockfish/stockfish-18-single.wasm

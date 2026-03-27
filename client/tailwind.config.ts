@@ -19,8 +19,8 @@ export default {
 		},
 		extend: {
 			fontFamily: {
-				'cairo': ['Almarai', 'Outfit', 'Inter', 'sans-serif'],
-				'amiri': ['IBM Plex Sans Arabic', 'Almarai', 'sans-serif'],
+				'cairo': ['Cairo', 'sans-serif'],
+				'amiri': ['Cairo', 'sans-serif'],
 			},
 			colors: {
 				border: 'hsl(var(--border))',

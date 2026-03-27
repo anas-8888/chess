@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Chess, Square } from 'chess.js';
 import ChessBoard from '@/components/ChessBoard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,7 +19,10 @@ import {
   RotateCcw,
   Crown,
   Wifi,
-  WifiOff
+  WifiOff,
+  Minimize2,
+  ArrowRight,
+  CircleHelp
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { api } from '@/config/api';
@@ -31,6 +34,7 @@ interface Player {
   name: string;
   rank: number;
   color: 'white' | 'black';
+  thumbnail?: string;
 }
 
 interface GameData {
@@ -69,6 +73,73 @@ interface GameMove {
   san: string;
   fen: string;
 }
+
+const appendMoveWithDedup = (
+  previousMoves: GameMove[],
+  movedBy: 'white' | 'black',
+  san: string,
+  fen: string
+): GameMove[] => {
+  if (!san || !fen) {
+    return previousMoves;
+  }
+
+  const lastMove = previousMoves[previousMoves.length - 1];
+
+  // Prevent duplicate appends from local optimistic update + socket echo.
+  if (lastMove && lastMove.san === san && lastMove.fen === fen) {
+    return previousMoves;
+  }
+
+  if (movedBy === 'white') {
+    const nextMoveNumber = (lastMove?.moveNumber || 0) + 1;
+    return [
+      ...previousMoves,
+      {
+        moveNumber: nextMoveNumber,
+        white: san,
+        black: null,
+        san,
+        fen
+      }
+    ];
+  }
+
+  if (!lastMove) {
+    return [
+      {
+        moveNumber: 1,
+        white: null,
+        black: san,
+        san,
+        fen
+      }
+    ];
+  }
+
+  if (lastMove.black) {
+    return [
+      ...previousMoves,
+      {
+        moveNumber: lastMove.moveNumber + 1,
+        white: null,
+        black: san,
+        san,
+        fen
+      }
+    ];
+  }
+
+  const updatedMoves = [...previousMoves];
+  updatedMoves[updatedMoves.length - 1] = {
+    ...lastMove,
+    black: san,
+    san,
+    fen
+  };
+
+  return updatedMoves;
+};
 
 const GameRoom = () => {
   const { user, token } = useAuth();
@@ -241,8 +312,215 @@ const GameRoom = () => {
   const [showGameEndModalState, setShowGameEndModalState] = useState(false);
   const [gameEndData, setGameEndData] = useState<{ reason: string; winner?: string } | null>(null);
   const [showResignConfirmModal, setShowResignConfirmModal] = useState(false);
+  const gamePageRef = useRef<HTMLDivElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioUnlockedRef = useRef(false);
 
   const { toast } = useToast();
+  const DRAWING_GUIDE_STORAGE_KEY = 'drawing_guide_friend_v1';
+
+  const isMobileDevice = useCallback(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+  }, []);
+
+  const showDrawingGuide = useCallback((force = false) => {
+    if (typeof window === 'undefined') return;
+    if (!force && localStorage.getItem(DRAWING_GUIDE_STORAGE_KEY) === '1') return;
+
+    const mobile = isMobileDevice();
+    const description = mobile
+      ? 'اضغط مطوّلًا ثم اسحب لرسم سهم، واضغط مطوّلًا دون سحب لتحديد مربع. يمكن رسم عدة أسهم، وإزالتها بإعادة الضغط. هذه الرسومات للتوضيح فقط ولا تؤثر على اللعب.'
+      : 'استخدم زر الفأرة الأيمن: سحب لرسم سهم، ونقرة واحدة لتحديد مربع. يمكنك رسم عدة أسهم وإزالتها بالنقر مرة أخرى. هذه الرسومات للتوضيح فقط ولا تؤثر على اللعب.';
+
+    toast({
+      title: 'دليل الرسم التوضيحي',
+      description,
+    });
+
+    if (!force) {
+      localStorage.setItem(DRAWING_GUIDE_STORAGE_KEY, '1');
+    }
+  }, [isMobileDevice, toast]);
+
+  const applySoundPreference = useCallback((enabled: boolean) => {
+    const mediaElements = document.querySelectorAll<HTMLMediaElement>('audio, video');
+    mediaElements.forEach((media) => {
+      media.muted = !enabled;
+      media.volume = enabled ? 1 : 0;
+    });
+  }, []);
+
+  const getAudioContext = useCallback(() => {
+    if (typeof window === 'undefined') return null;
+    if (!audioContextRef.current) {
+      const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!Ctx) return null;
+      audioContextRef.current = new Ctx();
+    }
+    return audioContextRef.current;
+  }, []);
+
+  const playSoundEffect = useCallback((kind: 'move' | 'capture' | 'check' | 'toggle', force = false) => {
+    if (!force && !isSoundEnabled) return;
+
+    const context = getAudioContext();
+    if (!context) return;
+
+    const play = () => {
+      const oscillator = context.createOscillator();
+      const gainNode = context.createGain();
+
+      const settings = {
+        move: { freq: 520, type: 'sine' as OscillatorType, attack: 0.003, release: 0.08, volume: 0.11 },
+        capture: { freq: 390, type: 'triangle' as OscillatorType, attack: 0.003, release: 0.14, volume: 0.14 },
+        check: { freq: 740, type: 'square' as OscillatorType, attack: 0.003, release: 0.18, volume: 0.18 },
+        toggle: { freq: 620, type: 'sine' as OscillatorType, attack: 0.002, release: 0.10, volume: 0.16 },
+      }[kind];
+
+      oscillator.type = settings.type;
+      oscillator.frequency.setValueAtTime(settings.freq, context.currentTime);
+
+      gainNode.gain.setValueAtTime(0.0001, context.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(settings.volume, context.currentTime + settings.attack);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + settings.release);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(context.destination);
+
+      oscillator.start();
+      oscillator.stop(context.currentTime + settings.release + 0.01);
+    };
+
+    if (context.state === 'suspended') {
+      context.resume().then(play).catch(() => {});
+      return;
+    }
+
+    play();
+  }, [getAudioContext, isSoundEnabled]);
+
+  const toggleSound = useCallback(async () => {
+    const next = !isSoundEnabled;
+    setIsSoundEnabled(next);
+    localStorage.setItem('game_sound_enabled', next ? '1' : '0');
+    applySoundPreference(next);
+    if (next) {
+      const context = getAudioContext();
+      if (context && context.state === 'suspended') {
+        try {
+          await context.resume();
+          audioUnlockedRef.current = true;
+        } catch {
+          // Ignore; we'll still try to play.
+        }
+      }
+      playSoundEffect('toggle', true);
+    }
+    toast({
+      title: next ? 'تم تشغيل الصوت' : 'تم كتم الصوت',
+    });
+  }, [applySoundPreference, getAudioContext, isSoundEnabled, playSoundEffect, toast]);
+
+  useEffect(() => {
+    const unlockAudio = async () => {
+      if (audioUnlockedRef.current) return;
+      const context = getAudioContext();
+      if (!context) return;
+      try {
+        if (context.state === 'suspended') {
+          await context.resume();
+        }
+        audioUnlockedRef.current = true;
+      } catch {
+        // Ignore; next user interaction will retry.
+      }
+    };
+
+    const events: (keyof WindowEventMap)[] = ['touchstart', 'pointerdown', 'click'];
+    events.forEach((eventName) => {
+      window.addEventListener(eventName, unlockAudio, { passive: true });
+    });
+
+    return () => {
+      events.forEach((eventName) => {
+        window.removeEventListener(eventName, unlockAudio);
+      });
+    };
+  }, [getAudioContext]);
+
+  const toggleFullscreen = useCallback(async () => {
+    const rootElement = gamePageRef.current || document.documentElement;
+    const doc = document as Document & {
+      webkitExitFullscreen?: () => Promise<void> | void;
+      webkitFullscreenElement?: Element | null;
+    };
+    const target = rootElement as HTMLElement & {
+      webkitRequestFullscreen?: () => Promise<void> | void;
+    };
+
+    try {
+      const isCurrentlyFullscreen = !!(document.fullscreenElement || doc.webkitFullscreenElement);
+      if (isCurrentlyFullscreen) {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+          return;
+        }
+        if (doc.webkitExitFullscreen) {
+          await doc.webkitExitFullscreen();
+          return;
+        }
+      } else {
+        if (target.requestFullscreen) {
+          await target.requestFullscreen();
+          return;
+        }
+        if (target.webkitRequestFullscreen) {
+          await target.webkitRequestFullscreen();
+          return;
+        }
+      }
+
+      toast({
+        title: 'غير مدعوم',
+        description: 'وضع ملء الشاشة غير مدعوم على هذا الجهاز.',
+      });
+    } catch (error) {
+      toast({
+        title: 'تعذر تغيير وضع الشاشة',
+        description: error instanceof Error ? error.message : 'حاول مرة أخرى.',
+        variant: 'destructive',
+      });
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('game_sound_enabled');
+    const enabled = saved !== '0';
+    setIsSoundEnabled(enabled);
+    applySoundPreference(enabled);
+  }, [applySoundPreference]);
+
+  useEffect(() => {
+    showDrawingGuide(false);
+  }, [showDrawingGuide]);
+
+  useEffect(() => {
+    const updateFullscreenState = () => {
+      const doc = document as Document & { webkitFullscreenElement?: Element | null };
+      setIsFullscreen(!!(document.fullscreenElement || doc.webkitFullscreenElement));
+    };
+
+    document.addEventListener('fullscreenchange', updateFullscreenState);
+    document.addEventListener('webkitfullscreenchange', updateFullscreenState as EventListener);
+    updateFullscreenState();
+
+    return () => {
+      document.removeEventListener('fullscreenchange', updateFullscreenState);
+      document.removeEventListener('webkitfullscreenchange', updateFullscreenState as EventListener);
+    };
+  }, []);
+
   const getValidGameIdFromUrl = useCallback((): string | null => {
     const urlParams = new URLSearchParams(window.location.search);
     const rawGameId = urlParams.get('game_id') || urlParams.get('id');
@@ -251,6 +529,16 @@ const GameRoom = () => {
   }, []);
 
   // دالة لعرض مودال انتهاء اللعبة
+  const boardResultSticker = React.useMemo<'win' | 'loss' | 'draw' | null>(() => {
+    if (gameState.status !== 'finished') return null;
+
+    const winnerFromEnd = gameEndData?.winner;
+    const winnerFromState = (gameState as any).winner as string | null | undefined;
+    const winner = winnerFromEnd || winnerFromState;
+
+    if (!winner) return 'draw';
+    return winner === currentPlayer ? 'win' : 'loss';
+  }, [gameState.status, gameEndData?.winner, currentPlayer, gameState]);
   const showGameEndModal = useCallback((reason: string, winner?: string) => {
     setGameEndData({ reason, winner });
     setShowGameEndModalState(true);
@@ -498,6 +786,15 @@ const GameRoom = () => {
 
     // Check for game end conditions
     const gameCopy = new Chess(fen);
+    const isCaptureMove = typeof san === 'string' && san.includes('x');
+    if (gameCopy.isCheckmate() || gameCopy.inCheck()) {
+      playSoundEffect('check');
+    } else if (isCaptureMove) {
+      playSoundEffect('capture');
+    } else {
+      playSoundEffect('move');
+    }
+
     if (gameCopy.isCheckmate()) {
       handleGameEnd({ reason: 'checkmate', winner: movedBy === 'white' ? 'black' : 'white' });
     } else if (gameCopy.isDraw()) {
@@ -511,46 +808,12 @@ const GameRoom = () => {
     }
 
     // Update moves list
-    setMoves(prev => {
-      const newMoves = [...prev];
-      
-      if (movedBy === 'white') {
-        // إضافة حركة الأبيض - دائماً تبدأ زوج جديد
-        const moveNumber = newMoves.length + 1;
-        newMoves.push({
-          moveNumber,
-          white: san,
-          black: null,
-          san,
-          fen
-        });
-      } else {
-        // إضافة حركة الأسود - دائماً تكمل الزوج الحالي
-        
-        // التحقق من وجود حركة سابقة
-        if (newMoves.length === 0) {
-          // إذا لم تكن هناك حركة سابقة، أنشئ زوج جديد
-          newMoves.push({
-            moveNumber: 1,
-            white: null,
-            black: san,
-            san,
-            fen
-          });
-        } else {
-          // إضافة إلى الحركة السابقة
-          const lastMove = newMoves[newMoves.length - 1];
-          lastMove.black = san;
-          lastMove.san = san;
-          lastMove.fen = fen;
-        }
-      }
-      
-      return newMoves;
-    });
+    if (movedBy === 'white' || movedBy === 'black') {
+      setMoves(prev => appendMoveWithDedup(prev, movedBy, san, fen));
+    }
 
     setIsProcessingMove(false);
-  }, [currentPlayer, handleGameEnd]);
+  }, [currentPlayer, handleGameEnd, playSoundEffect]);
 
   const handleGameTimeout = useCallback((data: { winner: string; reason?: string }) => {
     
@@ -678,36 +941,7 @@ const GameRoom = () => {
           lastUpdate: Date.now() // Reset timer to prevent double counting
         }));
         
-        const newMove: GameMove = {
-          moveNumber: Math.floor(gameCopy.history().length / 2) + 1,
-          san: move.san,
-          fen: gameCopy.fen(),
-          [currentPlayer]: move.san
-        };
-
-        setMoves(prev => {
-          const newMoves = [...prev];
-          
-          if (currentPlayer === 'white') {
-            // إضافة حركة الأبيض - دائماً تبدأ زوج جديد
-            const moveNumber = newMoves.length + 1;
-            newMoves.push({
-              moveNumber,
-              white: move.san,
-              black: null,
-              san: move.san,
-              fen: gameCopy.fen()
-            });
-          } else {
-            // إضافة حركة الأسود - دائماً تكمل الزوج الحالي
-            const lastMove = newMoves[newMoves.length - 1];
-            lastMove.black = move.san;
-            lastMove.san = move.san;
-            lastMove.fen = gameCopy.fen();
-          }
-          
-          return newMoves;
-        });
+        setMoves(prev => appendMoveWithDedup(prev, currentPlayer, move.san, gameCopy.fen()));
 
         // Update local game state (turn will be updated by server)
         setGameState(prev => ({
@@ -717,6 +951,15 @@ const GameRoom = () => {
           isCheckmate: gameCopy.isCheckmate(),
           isDraw: gameCopy.isDraw()
         }));
+
+        const isCaptureMove = typeof move.san === 'string' && move.san.includes('x');
+        if (gameCopy.isCheckmate() || gameCopy.inCheck()) {
+          playSoundEffect('check');
+        } else if (isCaptureMove) {
+          playSoundEffect('capture');
+        } else {
+          playSoundEffect('move');
+        }
 
         // Send move to server via WebSocket
         const gameId = getValidGameIdFromUrl();
@@ -774,7 +1017,7 @@ const GameRoom = () => {
     }
 
     return false;
-  }, [game, gameState.currentTurn, gameState.status, currentPlayer, isProcessingMove, handleGameEnd, getValidGameIdFromUrl, toast]);
+  }, [game, gameState.currentTurn, gameState.status, currentPlayer, isProcessingMove, handleGameEnd, getValidGameIdFromUrl, playSoundEffect, toast]);
 
   const handleResign = () => {
     setShowResignConfirmModal(true);
@@ -925,12 +1168,21 @@ const GameRoom = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background" ref={gamePageRef}>
       {/* Header */}
       <header className="bg-card border-b shadow-card">
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="md:hidden"
+                aria-label="رجوع"
+                onClick={() => window.history.back()}
+              >
+                <ArrowRight className="w-5 h-5" />
+              </Button>
               <h1 className="font-amiri text-xl font-bold">شطرنج العرب</h1>
               <Badge variant={isConnected ? "secondary" : "destructive"} className="flex items-center gap-1">
                 {isConnected ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
@@ -948,12 +1200,28 @@ const GameRoom = () => {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setIsSoundEnabled(!isSoundEnabled)}
+                onClick={() => showDrawingGuide(true)}
+                aria-label="شرح الرسم"
+                title="شرح الرسم"
+              >
+                <CircleHelp className="w-5 h-5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleSound}
+                aria-label={isSoundEnabled ? 'كتم الصوت' : 'تشغيل الصوت'}
               >
                 {isSoundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
               </Button>
-              <Button variant="ghost" size="icon" onClick={() => setIsFullscreen(!isFullscreen)}>
-                <Maximize className="w-5 h-5" />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleFullscreen}
+                aria-label={isFullscreen ? 'الخروج من ملء الشاشة' : 'ملء الشاشة'}
+                className="hidden md:inline-flex"
+              >
+                {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
               </Button>
             </div>
           </div>
@@ -964,12 +1232,53 @@ const GameRoom = () => {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Players & Game Info */}
           <div className="lg:col-span-1 space-y-4">
+            {/* Mobile Compact Header */}
+            <Card className="md:hidden">
+              <CardContent className="p-3">
+                <div className="flex items-center justify-between gap-2 [direction:ltr]">
+                  <div className="min-w-0 flex-1 rounded-md border border-border/60 px-2 py-1.5">
+                    <div className="flex items-center gap-2">
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={players.black.thumbnail || ''} />
+                        <AvatarFallback className="bg-secondary text-secondary-foreground text-xs">
+                          {players.black.name.charAt(0)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="truncate text-sm font-cairo font-semibold">{players.black.name}</span>
+                    </div>
+                    <div className={`mt-1 text-sm font-mono ${getPlayerTurn('black') ? 'text-primary font-bold' : 'text-muted-foreground'}`}>
+                      {formatTime(getPlayerTimer('black'))}
+                    </div>
+                  </div>
+
+                  <Badge variant={gameState.currentTurn === currentPlayer ? 'default' : 'outline'} className="shrink-0">
+                    {gameState.currentTurn === currentPlayer ? 'دورك' : 'دور الخصم'}
+                  </Badge>
+
+                  <div className="min-w-0 flex-1 rounded-md border border-border/60 px-2 py-1.5">
+                    <div className="flex items-center gap-2">
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={players.white.thumbnail || ''} />
+                        <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                          {players.white.name.charAt(0)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="truncate text-sm font-cairo font-semibold">{players.white.name}</span>
+                    </div>
+                    <div className={`mt-1 text-sm font-mono ${getPlayerTurn('white') ? 'text-primary font-bold' : 'text-muted-foreground'}`}>
+                      {formatTime(getPlayerTimer('white'))}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Black Player */}
-            <Card>
+            <Card className="hidden md:block">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                                      <Avatar>
-                     <AvatarImage src="" />
+                     <AvatarImage src={players.black.thumbnail || ''} />
                      <AvatarFallback className="bg-secondary text-secondary-foreground">
                        {players.black.name.charAt(0)}
                      </AvatarFallback>
@@ -991,7 +1300,7 @@ const GameRoom = () => {
             </Card>
 
             {/* Game Status */}
-            <Card>
+            <Card className="hidden md:block">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg font-amiri">حالة المباراة</CardTitle>
               </CardHeader>
@@ -1043,11 +1352,11 @@ const GameRoom = () => {
             </Card>
 
             {/* White Player */}
-            <Card>
+            <Card className="hidden md:block">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                                      <Avatar>
-                     <AvatarImage src="" />
+                     <AvatarImage src={players.white.thumbnail || ''} />
                      <AvatarFallback className="bg-primary text-primary-foreground">
                        {players.white.name.charAt(0)}
                      </AvatarFallback>
@@ -1069,7 +1378,7 @@ const GameRoom = () => {
             </Card>
 
             {/* Game Controls */}
-            <div className="space-y-2">
+            <div className="space-y-2 hidden md:block">
               <Button 
                 variant="destructive" 
                 className="w-full"
@@ -1085,26 +1394,73 @@ const GameRoom = () => {
           {/* Chess Board */}
           <div className="lg:col-span-2">
             <Card className="p-4">
-              <div className="mb-4 text-center">
-                <Badge variant="outline" className="mb-2">
-                  {gameData?.gameType === 'friend' ? 'لعبة مع صديق' : 
-                   gameData?.gameType === 'ranked' ? 'لعبة مصنفة' :
-                   gameData?.gameType === 'ai' ? 'لعبة ضد الذكاء الاصطناعي' :
-                   gameData?.gameType === 'puzzle' ? 'لغز شطرنج' : 'لعبة شطرنج'}
-                </Badge>
-                {gameData && (
-                  <p className="text-sm text-muted-foreground">
-                    بدأت بواسطة: {gameData.startedByUser.name}
-                  </p>
-                )}
-              </div>
               <ChessBoard
                 game={game}
                 onMove={handleMove}
                 orientation={currentPlayer}
                 allowMoves={gameState.status === 'active' && gameState.currentTurn === currentPlayer && !isProcessingMove}
+                resultSticker={boardResultSticker}
               />
             </Card>
+
+            {/* Mobile Secondary Info */}
+            <Card className="mt-4 md:hidden">
+              <CardContent className="p-3 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">نوع المباراة</span>
+                  <Badge variant="outline">
+                    {gameData?.gameType === 'friend' ? 'لعبة مع صديق' :
+                     gameData?.gameType === 'ranked' ? 'لعبة مصنفة' :
+                     gameData?.gameType === 'ai' ? 'لعبة ضد الذكاء الاصطناعي' :
+                     gameData?.gameType === 'puzzle' ? 'لغز شطرنج' : 'لعبة شطرنج'}
+                  </Badge>
+                </div>
+                {gameData?.startedByUser?.name && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">بدأت بواسطة</span>
+                    <span>{gameData.startedByUser.name}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">عدد النقلات</span>
+                  <span>{game.history().length}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">حالة اللعبة</span>
+                  <Badge variant="secondary">
+                    {gameState.status === 'active' ? 'نشطة' : 'منتهية'}
+                  </Badge>
+                </div>
+                {gameData && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">طريقة الأبيض</span>
+                      <Badge variant="outline">
+                        {gameData.whitePlayMethod === 'phone' ? 'هاتف' : 'لوحة مادية'}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">طريقة الأسود</span>
+                      <Badge variant="outline">
+                        {gameData.blackPlayMethod === 'phone' ? 'هاتف' : 'لوحة مادية'}
+                      </Badge>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <div className="mt-4 md:hidden">
+              <Button
+                variant="destructive"
+                className="w-full"
+                onClick={handleResign}
+                disabled={gameState.status !== 'active'}
+              >
+                <Flag className="w-4 h-4 ml-2" />
+                استسلام
+              </Button>
+            </div>
           </div>
 
           {/* Moves & Chat */}
@@ -1330,5 +1686,6 @@ const GameRoom = () => {
 };
 
 export default GameRoom;
+
 
 

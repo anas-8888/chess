@@ -1,4 +1,4 @@
-import { getGameDetailsService, updateGameTimeService, getGameDurationService } from '../services/gameService.js';
+﻿import { getGameDetailsService, updateGameTimeService, getGameDurationService } from '../services/gameService.js';
 import { Op } from 'sequelize';
 import GameMove from '../models/GameMove.js';
 import User from '../models/User.js';
@@ -949,6 +949,9 @@ export const finalizeAiGame = async (req, res) => {
       white_time_left: Math.max(0, Number(whiteTimeLeft) || 0),
       black_time_left: Math.max(0, Number(blackTimeLeft) || 0),
     });
+    const { isUserOnline, updateUserStatus } = await import('../socket/socketHelpers.js');
+    const nextState = isUserOnline(userId) ? 'online' : 'offline';
+    await updateUserStatus(userId, nextState, { force: true });
 
     return res.status(200).json({
       success: true,
@@ -962,5 +965,8 @@ export const finalizeAiGame = async (req, res) => {
     });
   }
 };
+
+
+
 
 

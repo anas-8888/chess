@@ -374,7 +374,7 @@ const PlayPage = () => {
                   variant="elegant"
                   className="h-16 flex-col gap-2"
                 >
-                  <span className="text-2xl">♟️</span>
+                  <img src="/thumbnails/pawn-b.svg" alt="pawn" className="h-8 w-8 object-contain" />
                   <span>اللوحة المادية</span>
                 </Button>
               </div>

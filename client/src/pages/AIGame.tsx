@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+﻿import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Chess, Square, Move } from 'chess.js';
 import ChessBoard from '@/components/ChessBoard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,7 +16,8 @@ import {
   User,
   Trophy,
   RefreshCw,
-  ArrowLeft
+  ArrowLeft,
+  CircleHelp
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -50,10 +51,19 @@ interface ApiConflictError extends Error {
 
 type AIDifficulty = 'easy' | 'medium' | 'hard';
 
-const AI_DIFFICULTY_CONFIG: Record<AIDifficulty, { label: string; rating: number; searchBreadth: number; thinkDelayMs: [number, number] }> = {
-  easy: { label: 'سهل', rating: 1100, searchBreadth: 4, thinkDelayMs: [500, 1000] },
-  medium: { label: 'متوسط', rating: 1500, searchBreadth: 10, thinkDelayMs: [900, 1600] },
-  hard: { label: 'عالي', rating: 1900, searchBreadth: 18, thinkDelayMs: [1300, 2200] },
+const AI_DIFFICULTY_CONFIG: Record<
+  AIDifficulty,
+  {
+    label: string;
+    rating: number;
+    skillLevel: number;
+    depth: number;
+    moveTimeMs: number;
+  }
+> = {
+  easy: { label: 'سهل', rating: 900, skillLevel: 2, depth: 5, moveTimeMs: 250 },
+  medium: { label: 'متوسط', rating: 1500, skillLevel: 10, depth: 10, moveTimeMs: 900 },
+  hard: { label: 'عالي', rating: 2300, skillLevel: 20, depth: 22, moveTimeMs: 3200 },
 };
 
 const getDifficultyFromRating = (rating?: number): AIDifficulty => {
@@ -66,11 +76,16 @@ const getDifficultyFromRating = (rating?: number): AIDifficulty => {
 const AIGame = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const DRAWING_GUIDE_STORAGE_KEY = 'drawing_guide_ai_v1';
   const navigate = useNavigate();
   const gameStartTimeRef = useRef<string>(new Date().toISOString());
   const resultSavedRef = useRef(false);
   const clockSyncInFlightRef = useRef(false);
   const startCountdownIntervalRef = useRef<number | null>(null);
+  const stockfishWorkerRef = useRef<Worker | null>(null);
+  const stockfishReadyRef = useRef(false);
+  const stockfishSearchResolverRef = useRef<((bestMove: string | null) => void) | null>(null);
+  const stockfishSearchTimeoutRef = useRef<number | null>(null);
   const [persistedGameId, setPersistedGameId] = useState<number | null>(null);
   const [showNewGameConfirm, setShowNewGameConfirm] = useState(false);
   const [showResignConfirm, setShowResignConfirm] = useState(false);
@@ -116,6 +131,30 @@ const AIGame = () => {
 
   const aiConfig = useMemo(() => AI_DIFFICULTY_CONFIG[difficulty], [difficulty]);
 
+  const isMobileDevice = useCallback(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+  }, []);
+
+  const showDrawingGuide = useCallback((force = false) => {
+    if (typeof window === 'undefined') return;
+    if (!force && localStorage.getItem(DRAWING_GUIDE_STORAGE_KEY) === '1') return;
+
+    const mobile = isMobileDevice();
+    const description = mobile
+      ? 'اضغط مطوّلًا ثم اسحب لرسم سهم، واضغط مطوّلًا دون سحب لتحديد مربع. يمكن رسم عدة أسهم، وإزالتها بإعادة الضغط. هذه الرسومات للتوضيح فقط ولا تؤثر على اللعب.'
+      : 'استخدم زر الفأرة الأيمن: سحب لرسم سهم، ونقرة واحدة لتحديد مربع. يمكنك رسم عدة أسهم وإزالتها بالنقر مرة أخرى. هذه الرسومات للتوضيح فقط ولا تؤثر على اللعب.';
+
+    toast({
+      title: 'دليل الرسم التوضيحي',
+      description,
+    });
+
+    if (!force) {
+      localStorage.setItem(DRAWING_GUIDE_STORAGE_KEY, '1');
+    }
+  }, [isMobileDevice, toast]);
+
   const aiPlayer = useMemo<AIPlayer>(() => ({
     name: 'الذكاء الاصطناعي',
     rating: aiConfig.rating,
@@ -140,6 +179,134 @@ const AIGame = () => {
     }));
   }, []);
 
+  const stopPendingStockfishSearch = useCallback(() => {
+    if (stockfishSearchTimeoutRef.current !== null) {
+      window.clearTimeout(stockfishSearchTimeoutRef.current);
+      stockfishSearchTimeoutRef.current = null;
+    }
+    if (stockfishSearchResolverRef.current) {
+      stockfishSearchResolverRef.current(null);
+      stockfishSearchResolverRef.current = null;
+    }
+  }, []);
+
+  const initializeStockfishEngine = useCallback(() => {
+    if (stockfishWorkerRef.current) {
+      return;
+    }
+
+    try {
+      const worker = new Worker('/stockfish/stockfish-18-single.js');
+      stockfishWorkerRef.current = worker;
+
+      worker.onmessage = (event: MessageEvent<string>) => {
+        const line = String(event.data || '').trim();
+        if (!line) return;
+
+        if (line === 'uciok') {
+          worker.postMessage('isready');
+          return;
+        }
+
+        if (line === 'readyok') {
+          stockfishReadyRef.current = true;
+          return;
+        }
+
+        if (line.startsWith('bestmove')) {
+          const parts = line.split(/\s+/);
+          const bestMove = parts[1] && parts[1] !== '(none)' ? parts[1] : null;
+          if (stockfishSearchTimeoutRef.current !== null) {
+            window.clearTimeout(stockfishSearchTimeoutRef.current);
+            stockfishSearchTimeoutRef.current = null;
+          }
+          if (stockfishSearchResolverRef.current) {
+            stockfishSearchResolverRef.current(bestMove);
+            stockfishSearchResolverRef.current = null;
+          }
+        }
+      };
+
+      worker.onerror = (error) => {
+        console.error('Stockfish worker error:', error);
+      };
+
+      worker.postMessage('uci');
+      worker.postMessage('setoption name Ponder value false');
+      worker.postMessage('setoption name UCI_LimitStrength value false');
+    } catch (error) {
+      console.error('Failed to initialize Stockfish worker:', error);
+      stockfishWorkerRef.current = null;
+      stockfishReadyRef.current = false;
+    }
+  }, []);
+
+  const waitForStockfishReady = useCallback(async () => {
+    if (!stockfishWorkerRef.current) return false;
+    if (stockfishReadyRef.current) return true;
+
+    const startedAt = Date.now();
+    while (!stockfishReadyRef.current && Date.now() - startedAt < 4000) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    return stockfishReadyRef.current;
+  }, []);
+
+  const requestBestMoveFromStockfish = useCallback(
+    async (fen: string, aiDifficulty: AIDifficulty): Promise<string | null> => {
+      const worker = stockfishWorkerRef.current;
+      if (!worker) return null;
+
+      const ready = await waitForStockfishReady();
+      if (!ready) return null;
+
+      const config = AI_DIFFICULTY_CONFIG[aiDifficulty];
+
+      worker.postMessage(`setoption name Skill Level value ${config.skillLevel}`);
+      if (aiDifficulty === 'hard') {
+        worker.postMessage('setoption name UCI_LimitStrength value false');
+      } else {
+        worker.postMessage('setoption name UCI_LimitStrength value true');
+        worker.postMessage(`setoption name UCI_Elo value ${Math.max(800, Math.min(2500, config.rating))}`);
+      }
+      worker.postMessage('ucinewgame');
+      worker.postMessage(`position fen ${fen}`);
+
+      const bestMove = await new Promise<string | null>((resolve) => {
+        stockfishSearchResolverRef.current = resolve;
+        stockfishSearchTimeoutRef.current = window.setTimeout(() => {
+          worker.postMessage('stop');
+          if (stockfishSearchResolverRef.current) {
+            stockfishSearchResolverRef.current(null);
+            stockfishSearchResolverRef.current = null;
+          }
+        }, Math.max(config.moveTimeMs + 3000, 5000));
+
+        worker.postMessage(`go depth ${config.depth} movetime ${config.moveTimeMs}`);
+      });
+
+      return bestMove;
+    },
+    [waitForStockfishReady]
+  );
+
+  useEffect(() => {
+    initializeStockfishEngine();
+
+    return () => {
+      stopPendingStockfishSearch();
+      if (stockfishWorkerRef.current) {
+        stockfishWorkerRef.current.terminate();
+        stockfishWorkerRef.current = null;
+      }
+      stockfishReadyRef.current = false;
+    };
+  }, [initializeStockfishEngine, stopPendingStockfishSearch]);
+
+  useEffect(() => {
+    showDrawingGuide(false);
+  }, [showDrawingGuide]);
   const startPreGameCountdown = useCallback(() => {
     if (startCountdownIntervalRef.current !== null) {
       window.clearInterval(startCountdownIntervalRef.current);
@@ -512,16 +679,12 @@ const AIGame = () => {
     }
 
     setAiThinking(true);
-    
-    const [minDelay, maxDelay] = aiConfig.thinkDelayMs;
-    await new Promise(resolve => setTimeout(resolve, minDelay + Math.random() * (maxDelay - minDelay)));
-    
+
     try {
       const gameCopy = new Chess(game.fen());
       const possibleMoves = gameCopy.moves({ verbose: true });
-      
+
       if (possibleMoves.length === 0) {
-        // No moves available
         if (gameCopy.isCheckmate()) {
           handleGameEnd({ reason: 'checkmate', winner: playerColor });
         } else if (gameCopy.isDraw()) {
@@ -530,142 +693,118 @@ const AIGame = () => {
         return;
       }
 
-      // Simple AI: Choose a random move with some basic evaluation
-      let bestMove = possibleMoves[0];
-      let bestScore = -Infinity;
+      const bestMoveUci = await requestBestMoveFromStockfish(gameCopy.fen(), difficulty);
 
-      // Evaluate a few random moves
-      const movesToEvaluate = Math.min(aiConfig.searchBreadth, possibleMoves.length);
-      const randomMoves = possibleMoves
-        .sort(() => Math.random() - 0.5)
-        .slice(0, movesToEvaluate);
+      let aiMove: Move | null = null;
 
-      for (const move of randomMoves) {
-        const tempGame = new Chess(gameCopy.fen());
-        tempGame.move(move);
-        
-        // Simple evaluation: piece values + position
-        let score = 0;
-        const pieceValues = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
-        
-        // Count material
-        for (const square of tempGame.board().flat()) {
-          if (square) {
-            const piece = square.type;
-            const color = square.color;
-            const value = pieceValues[piece as keyof typeof pieceValues] || 0;
-            score += (color === 'w' ? 1 : -1) * value;
-          }
-        }
-        
-        // Bonus for captures
-        if (move.captured) {
-          score += pieceValues[move.captured as keyof typeof pieceValues] * 2;
-        }
-        
-        // Bonus for check
-        if (tempGame.isCheck()) {
-          score += 5;
-        }
-        
-        // Bonus for checkmate
-        if (tempGame.isCheckmate()) {
-          score += 1000;
-        }
-        
-        if (score > bestScore) {
-          bestScore = score;
-          bestMove = move;
+      if (bestMoveUci && bestMoveUci.length >= 4) {
+        const from = bestMoveUci.slice(0, 2) as Square;
+        const to = bestMoveUci.slice(2, 4) as Square;
+        const promotion = bestMoveUci.length > 4 ? bestMoveUci[4] : undefined;
+
+        aiMove = gameCopy.move({ from, to, promotion: promotion || undefined }) || null;
+      }
+
+      if (!aiMove) {
+        const fallbackMove = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
+        aiMove = gameCopy.move(fallbackMove) || null;
+      }
+
+      if (!aiMove) {
+        return;
+      }
+
+      if (persistedGameId) {
+        try {
+          await userService.recordAiGameMove(persistedGameId, {
+            from: aiMove.from,
+            to: aiMove.to,
+            promotion: aiMove.promotion || '',
+            san: aiMove.san,
+            fenAfter: gameCopy.fen(),
+            movedBy: 'ai',
+            nextTurn: playerColor,
+          });
+        } catch (error) {
+          console.error('Failed to persist AI move:', error);
         }
       }
 
-      // Make the AI move
-      const aiMove = gameCopy.move(bestMove);
-      if (aiMove) {
-        if (persistedGameId) {
-          try {
-            await userService.recordAiGameMove(persistedGameId, {
-              from: aiMove.from,
-              to: aiMove.to,
-              promotion: aiMove.promotion || '',
-              san: aiMove.san,
-              fenAfter: gameCopy.fen(),
-              movedBy: 'ai',
-              nextTurn: playerColor,
-            });
-          } catch (error) {
-            console.error('Failed to persist AI move:', error);
-          }
-        }
+      setGame(gameCopy);
 
-        setGame(gameCopy);
-        
-        // Update moves list
-        setMoves(prev => {
-          const newMoves = [...prev];
-          if (aiPlayer.color === 'white') {
-            const moveNumber = newMoves.length + 1;
+      setMoves(prev => {
+        const newMoves = [...prev];
+        if (aiPlayer.color === 'white') {
+          const moveNumber = newMoves.length + 1;
+          newMoves.push({
+            moveNumber,
+            white: aiMove.san,
+            black: null,
+            san: aiMove.san,
+            fen: gameCopy.fen()
+          });
+        } else {
+          if (newMoves.length === 0) {
             newMoves.push({
-              moveNumber,
-              white: aiMove.san,
-              black: null,
+              moveNumber: 1,
+              white: null,
+              black: aiMove.san,
               san: aiMove.san,
               fen: gameCopy.fen()
             });
           } else {
-            if (newMoves.length === 0) {
-              newMoves.push({
-                moveNumber: 1,
-                white: null,
-                black: aiMove.san,
-                san: aiMove.san,
-                fen: gameCopy.fen()
-              });
-            } else {
-              const lastMove = newMoves[newMoves.length - 1];
-              lastMove.black = aiMove.san;
-              lastMove.san = aiMove.san;
-              lastMove.fen = gameCopy.fen();
-            }
+            const lastMove = newMoves[newMoves.length - 1];
+            lastMove.black = aiMove.san;
+            lastMove.san = aiMove.san;
+            lastMove.fen = gameCopy.fen();
           }
-          return newMoves;
-        });
-
-        // Update game state
-        setGameState(prev => ({
-          ...prev,
-          currentTurn: playerColor,
-          isCheck: gameCopy.inCheck(),
-          isCheckmate: gameCopy.isCheckmate(),
-          isDraw: gameCopy.isDraw()
-        }));
-
-        // Update timers
-        setGameTime(prev => ({
-          ...prev,
-          lastUpdate: Date.now()
-        }));
-
-        // Check for game end
-        if (gameCopy.isCheckmate()) {
-          handleGameEnd({ reason: 'checkmate', winner: playerColor });
-        } else if (gameCopy.isDraw()) {
-          handleGameEnd({ reason: 'draw' });
-        } else if (gameCopy.isStalemate()) {
-          handleGameEnd({ reason: 'stalemate' });
         }
+        return newMoves;
+      });
+
+      setGameState(prev => ({
+        ...prev,
+        currentTurn: playerColor,
+        isCheck: gameCopy.inCheck(),
+        isCheckmate: gameCopy.isCheckmate(),
+        isDraw: gameCopy.isDraw()
+      }));
+
+      setGameTime(prev => ({
+        ...prev,
+        lastUpdate: Date.now()
+      }));
+
+      if (gameCopy.isCheckmate()) {
+        handleGameEnd({ reason: 'checkmate', winner: playerColor });
+      } else if (gameCopy.isDraw()) {
+        handleGameEnd({ reason: 'draw' });
+      } else if (gameCopy.isStalemate()) {
+        handleGameEnd({ reason: 'stalemate' });
       }
     } catch (error) {
       console.error('AI move generation error:', error);
       toast({
-        title: "خطأ في الذكاء الاصطناعي",
-        description: "حدث خطأ أثناء توليد حركة الذكاء الاصطناعي",
-        variant: "destructive"
+        title: 'خطأ في الذكاء الاصطناعي',
+        description: 'حدث خطأ أثناء توليد حركة الذكاء الاصطناعي',
+        variant: 'destructive'
       });
     } finally {
       setAiThinking(false);
     }
-  }, [game, gameState, aiPlayer.color, playerColor, handleGameEnd, toast, persistedGameId, startCountdown, aiConfig]);
+  }, [
+    game,
+    gameState.currentTurn,
+    gameState.status,
+    aiPlayer.color,
+    playerColor,
+    handleGameEnd,
+    toast,
+    persistedGameId,
+    startCountdown,
+    requestBestMoveFromStockfish,
+    difficulty,
+  ]);
 
   // Trigger AI move when it's AI's turn
   useEffect(() => {
@@ -814,6 +953,11 @@ const AIGame = () => {
     handleGameEnd({ reason: 'resign', winner });
   };
 
+  const boardResultSticker = useMemo<'win' | 'loss' | 'draw' | null>(() => {
+    if (gameState.status !== 'finished') return null;
+    if (gameState.isDraw || !gameState.winner) return 'draw';
+    return gameState.winner === playerColor ? 'win' : 'loss';
+  }, [gameState.status, gameState.isDraw, gameState.winner, playerColor]);
   const getFinalizeResultForCurrentGame = useCallback((): 'win' | 'loss' | 'draw' => {
     if (gameState.status === 'active') {
       // Starting a new game while active is treated as resignation/forfeit.
@@ -965,6 +1109,9 @@ const AIGame = () => {
 </div>
 
             <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" onClick={() => showDrawingGuide(true)} aria-label="شرح الرسم" title="شرح الرسم">
+                <CircleHelp className="w-5 h-5" />
+              </Button>
               <Button variant="outline" onClick={handleNewGame}>
                 <RefreshCw className="w-4 h-4 ml-2" />
                 لعبة جديدة
@@ -1094,6 +1241,7 @@ const AIGame = () => {
                 onMove={handleMove}
                 orientation={playerColor}
                 allowMoves={!loading && startCountdown === null && gameState.status === 'active' && gameState.currentTurn === playerColor && !aiThinking}
+                resultSticker={boardResultSticker}
               />
             </Card>
           </div>
@@ -1341,4 +1489,18 @@ const AIGame = () => {
 };
 
 export default AIGame; 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

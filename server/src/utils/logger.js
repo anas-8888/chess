@@ -225,6 +225,25 @@ class Logger {
       return true;
     }
 
+    const noisyInfoPrefixes = [
+      'Logging configuration updated',
+      'Simple logging enabled (important events only)',
+      'All verbose logging disabled',
+      'Server started successfully on port',
+      'Environment:',
+      'Database:',
+      'Clock started for game',
+      'Processing move for game',
+      'Move saved to database:',
+      '=== HANDLE GAME MOVE:',
+      'Checking if clock is running for game',
+      'Move processed successfully for game',
+    ];
+
+    if (noisyInfoPrefixes.some((prefix) => normalized.startsWith(prefix))) {
+      return true;
+    }
+
     return false;
   }
 

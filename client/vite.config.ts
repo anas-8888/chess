@@ -1,6 +1,5 @@
-import { defineConfig } from "vite";
+﻿import { defineConfig } from "vite";
 import path from "path";
-import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
 export default defineConfig(async ({ mode }) => {
@@ -16,7 +15,12 @@ export default defineConfig(async ({ mode }) => {
   }
 
   if (mode === "development") {
-    plugins.push(componentTagger());
+    try {
+      const { componentTagger } = await import("lovable-tagger");
+      plugins.push(componentTagger());
+    } catch {
+      console.warn("[vite] lovable-tagger is unavailable. Continuing without it.");
+    }
   }
 
   return {
@@ -76,4 +80,3 @@ export default defineConfig(async ({ mode }) => {
     },
   };
 });
-

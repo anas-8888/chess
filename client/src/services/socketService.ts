@@ -29,16 +29,29 @@ type MoveConfirmedPayload = {
   timestamp: number;
 };
 
+type MoveMadePayload = {
+  gameId?: string;
+  move?: string;
+  san?: string;
+  fen?: string;
+  movedBy?: string;
+  currentTurn?: string;
+  timestamp?: number;
+};
+
 type ResignAck = {
   success: boolean;
   message?: string;
 };
 
 class SocketService {
+  private static readonly MOVE_MADE_DEDUP_WINDOW_MS = 1800;
+
   private socket: Socket | null = null;
   private isConnected = false;
   private activeGameRoomId: string | null = null;
   private connectionCallbacks = new Set<(connected: boolean) => void>();
+  private recentMoveMadeEvents = new Map<string, number>();
 
   private clockUpdateCallback: ((data: ClockUpdatePayload) => void) | null = null;
   private turnUpdateCallback: ((data: TurnUpdatePayload) => void) | null = null;
@@ -46,6 +59,55 @@ class SocketService {
   private gameTimeoutCallback: ((data: GameTimeoutPayload) => void) | null = null;
   private gameEndCallback: ((data: GameEndPayload) => void) | null = null;
   private moveConfirmedCallback: ((data: MoveConfirmedPayload) => void) | null = null;
+
+  private toMoveMadePayload(data: unknown): MoveMadePayload | null {
+    if (!data || typeof data !== 'object') return null;
+    return data as MoveMadePayload;
+  }
+
+  private buildMoveMadeKey(payload: MoveMadePayload): string | null {
+    const gameId = typeof payload.gameId === 'string' ? payload.gameId : '';
+    const fen = typeof payload.fen === 'string' ? payload.fen : '';
+    const san = typeof payload.san === 'string'
+      ? payload.san
+      : typeof payload.move === 'string'
+        ? payload.move
+        : '';
+    const movedBy = typeof payload.movedBy === 'string' ? payload.movedBy : '';
+
+    if (!gameId || !fen || !san || !movedBy) {
+      return null;
+    }
+
+    return `${gameId}::${movedBy}::${san}::${fen}`;
+  }
+
+  private pruneRecentMoveMadeEvents(now: number) {
+    for (const [key, seenAt] of this.recentMoveMadeEvents.entries()) {
+      if (now - seenAt > SocketService.MOVE_MADE_DEDUP_WINDOW_MS) {
+        this.recentMoveMadeEvents.delete(key);
+      }
+    }
+  }
+
+  private shouldDropDuplicateMoveMade(data: unknown): boolean {
+    const payload = this.toMoveMadePayload(data);
+    if (!payload) return false;
+
+    const key = this.buildMoveMadeKey(payload);
+    if (!key) return false;
+
+    const now = Date.now();
+    this.pruneRecentMoveMadeEvents(now);
+
+    const lastSeen = this.recentMoveMadeEvents.get(key);
+    if (typeof lastSeen === 'number' && now - lastSeen <= SocketService.MOVE_MADE_DEDUP_WINDOW_MS) {
+      return true;
+    }
+
+    this.recentMoveMadeEvents.set(key, now);
+    return false;
+  }
 
   connect(token: string) {
     if (this.socket) {
@@ -98,6 +160,9 @@ class SocketService {
     });
 
     this.socket.on('moveMade', (data: unknown) => {
+      if (this.shouldDropDuplicateMoveMade(data)) {
+        return;
+      }
       this.moveMadeCallback?.(data);
     });
 
@@ -128,6 +193,7 @@ class SocketService {
     this.socket.disconnect();
     this.socket = null;
     this.isConnected = false;
+    this.recentMoveMadeEvents.clear();
   }
 
   getSocket(): Socket | null {
@@ -156,6 +222,7 @@ class SocketService {
     if (this.activeGameRoomId === gameId) {
       this.activeGameRoomId = null;
     }
+    this.recentMoveMadeEvents.clear();
     if (!this.socket || !this.socket.connected) return;
     this.socket.emit('leaveGameRoom', { gameId });
   }

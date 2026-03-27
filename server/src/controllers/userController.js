@@ -1,4 +1,4 @@
-import {
+﻿import {
   getAllUsers,
   getUserById,
   getCurrentUserProfile,
@@ -28,6 +28,11 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import sequelize from '../models/index.js';
+import {
+  hasActivePlayableGame,
+  isUserOnline,
+  updateUserStatus as updateSocketUserStatus,
+} from '../socket/socketHelpers.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -529,16 +534,25 @@ export const getCurrentUserStatus = asyncHandler(async (req, res) => {
       return res.status(404).json(formatError('User not found'));
     }
 
+    let resolvedState = user.state;
+
+    if (user.state === 'in-game') {
+      const activeGame = await hasActivePlayableGame(userId);
+      if (!activeGame) {
+        resolvedState = isUserOnline(userId) ? 'online' : 'offline';
+        await updateSocketUserStatus(userId, resolvedState, { force: true });
+      }
+    }
+
     res.status(200).json({
       user_id: user.user_id,
-      state: user.state
+      state: resolvedState
     });
   } catch (error) {
     logger.error('Error getting current user status:', error);
     res.status(500).json(formatError('Failed to get user status'));
   }
 });
-
 // Get current user recent games
 export const getRecentGamesForCurrentUser = asyncHandler(async (req, res) => {
   const userId = req.user.user_id;
@@ -790,3 +804,7 @@ export const getUserTokenAndLastGame = asyncHandler(async (req, res) => {
     });
   }
 });
+
+
+
+

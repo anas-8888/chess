@@ -4,3 +4,6 @@ package-lock.json
 src/scripts/
 storage/
 *.zip
+# Large Stockfish binary (served خارج git)
+public_html/stockfish/stockfish-18-single.wasm
+package-lock.json
