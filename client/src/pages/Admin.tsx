@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,7 @@ import { API_BASE_URL } from "@/config/urls";
 import { authService } from "@/services/authService";
 import { getInitialsFromName, hasCustomAvatar } from "@/utils/avatar";
 import {
-  Home,
+  ArrowRight,
   Shield,
   Users,
   GamepadIcon,
@@ -125,6 +125,7 @@ const formatTimeControl = (seconds: number): string => {
 };
 
 const Admin = () => {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -312,11 +313,9 @@ const Admin = () => {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Link to="/dashboard">
-                <Button variant="ghost" size="icon">
-                  <Home className="h-5 w-5" />
-                </Button>
-              </Link>
+              <Button variant="ghost" size="icon" aria-label="رجوع" onClick={() => navigate(-1)}>
+                <ArrowRight className="h-5 w-5" />
+              </Button>
               <div className="flex items-center gap-2">
                 <Shield className="h-6 w-6 text-primary" />
                 <h1 className="text-xl font-bold text-foreground font-cairo">لوحة الإدارة</h1>

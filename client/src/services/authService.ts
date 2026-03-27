@@ -138,7 +138,7 @@ class AuthService {
           this.user = {
             id: data.data.user_id,
             username: data.data.username,
-            rating: data.data.rank || 1200,
+            rating: data.data.rank || 1500,
             email: data.data.email,
             avatar: data.data.thumbnail,
             type: data.data.type,

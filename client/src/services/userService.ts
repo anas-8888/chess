@@ -12,6 +12,11 @@ export interface UserProfile {
   draws: number;
   total_games: number;
   win_rate: number;
+  isPlacement?: boolean;
+  placementGamesPlayed?: number;
+  placementMatches?: number;
+  placementRemaining?: number;
+  isNewPlayer?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -83,6 +88,27 @@ export interface ActiveGameSummary {
   started_at: string;
 }
 
+export interface RatingHistoryItem {
+  gameId: number;
+  endedAt: string;
+  gameType: string;
+  opponent: string;
+  result: 'فوز' | 'خسارة' | 'تعادل';
+  delta: number;
+  ratingBefore: number;
+  ratingAfter: number;
+}
+
+export interface RatingHistoryResponse {
+  currentRating: number;
+  lastDelta: number;
+  isPlacement?: boolean;
+  placementGamesPlayed?: number;
+  placementMatches?: number;
+  placementRemaining?: number;
+  history: RatingHistoryItem[];
+}
+
 class UserService {
   private getAuthHeaders(): Record<string, string> {
     return authService.getAuthHeaders();
@@ -106,7 +132,7 @@ class UserService {
       return {
         ...profile,
         avatar: profile.avatar || profile.thumbnail,
-        rating: profile.rating || profile.rank || 1200,
+        rating: profile.rating || profile.rank || 1500,
       };
     } catch (error) {
       console.error('Error fetching user profile:', error);
@@ -274,7 +300,7 @@ class UserService {
     return {
       ...profile,
       avatar: profile.avatar || profile.thumbnail,
-      rating: profile.rating || profile.rank || 1200,
+      rating: profile.rating || profile.rank || 1500,
     };
   }
 
@@ -540,7 +566,12 @@ class UserService {
       whiteTimeLeft: number;
       blackTimeLeft: number;
     }
-  ): Promise<void> {
+  ): Promise<{
+    ratingChanges?: {
+      white?: { userId: number; delta: number; oldRating: number; newRating: number; isPlacement?: boolean; gamesPlayed?: number; kFactor?: number };
+      black?: { userId: number; delta: number; oldRating: number; newRating: number; isPlacement?: boolean; gamesPlayed?: number; kFactor?: number };
+    } | null;
+  }> {
     const response = await fetch(`${API_BASE_URL}/api/game/ai/${gameId}/finalize`, {
       method: 'POST',
       headers: this.getAuthHeaders(),
@@ -551,6 +582,24 @@ class UserService {
       const errorData = await response.json().catch(() => ({}));
       throw new Error(errorData.message || 'فشل في إنهاء مباراة الذكاء الاصطناعي');
     }
+
+    const data = await response.json();
+    return data?.data || {};
+  }
+
+  async getRatingHistory(limit = 30): Promise<RatingHistoryResponse> {
+    const response = await fetch(`${API_BASE_URL}/api/users/profile/rating-history?limit=${limit}`, {
+      method: 'GET',
+      headers: this.getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'فشل في جلب سجل التقييم');
+    }
+
+    const data = await response.json();
+    return data?.data || { currentRating: 1500, lastDelta: 0, history: [] };
   }
 }
 

@@ -192,7 +192,7 @@ const GameRoom = () => {
       setTimers({
         white: gameData.whiteTimeLeft || 600,
         black: gameData.blackTimeLeft || 600,
-        isRunning: true,
+        isRunning: gameData.status === 'active',
         lastUpdate: Date.now()
       });
       // تحديث دور اللعب من بيانات اللعبة
@@ -211,7 +211,7 @@ const GameRoom = () => {
       setTimers({
         white: gameData.whiteTimeLeft || 600,
         black: gameData.blackTimeLeft || 600,
-        isRunning: true,
+        isRunning: gameData.status === 'active',
         lastUpdate: Date.now()
       });
       // تحديث دور اللعب من بيانات اللعبة
@@ -232,7 +232,7 @@ const GameRoom = () => {
   }>({
     white: 600,
     black: 600,
-    isRunning: true,
+    isRunning: false,
     lastUpdate: Date.now()
   });
 
@@ -242,7 +242,7 @@ const GameRoom = () => {
 
   // Timer countdown effect
   useEffect(() => {
-    if (!timers.isRunning) return;
+    if (!timers.isRunning || gameState.status !== 'active') return;
 
     const interval = setInterval(() => {
       setTimers(prev => {
@@ -290,7 +290,7 @@ const GameRoom = () => {
     }, 1000); // Update every second
 
     return () => clearInterval(interval);
-  }, [timers.isRunning, gameState.currentTurn]);
+  }, [timers.isRunning, gameState.currentTurn, gameState.status]);
 
   const [moves, setMoves] = useState<GameMove[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
@@ -310,11 +310,19 @@ const GameRoom = () => {
   const [isPhysicalMove, setIsPhysicalMove] = useState(false);
   const [isProcessingMove, setIsProcessingMove] = useState(false);
   const [showGameEndModalState, setShowGameEndModalState] = useState(false);
-  const [gameEndData, setGameEndData] = useState<{ reason: string; winner?: string } | null>(null);
+  const [gameEndData, setGameEndData] = useState<{
+    reason: string;
+    winner?: string;
+    ratingDelta?: number;
+    isPlacement?: boolean;
+  } | null>(null);
   const [showResignConfirmModal, setShowResignConfirmModal] = useState(false);
+  const [startCountdown, setStartCountdown] = useState<number | null>(null);
   const gamePageRef = useRef<HTMLDivElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioUnlockedRef = useRef(false);
+  const startCountdownIntervalRef = useRef<number | null>(null);
+  const countdownInitializedRef = useRef(false);
 
   const { toast } = useToast();
   const DRAWING_GUIDE_STORAGE_KEY = 'drawing_guide_friend_v1';
@@ -326,12 +334,10 @@ const GameRoom = () => {
 
   const showDrawingGuide = useCallback((force = false) => {
     if (typeof window === 'undefined') return;
+    if (isMobileDevice()) return;
     if (!force && localStorage.getItem(DRAWING_GUIDE_STORAGE_KEY) === '1') return;
 
-    const mobile = isMobileDevice();
-    const description = mobile
-      ? 'اضغط مطوّلًا ثم اسحب لرسم سهم، واضغط مطوّلًا دون سحب لتحديد مربع. يمكن رسم عدة أسهم، وإزالتها بإعادة الضغط. هذه الرسومات للتوضيح فقط ولا تؤثر على اللعب.'
-      : 'استخدم زر الفأرة الأيمن: سحب لرسم سهم، ونقرة واحدة لتحديد مربع. يمكنك رسم عدة أسهم وإزالتها بالنقر مرة أخرى. هذه الرسومات للتوضيح فقط ولا تؤثر على اللعب.';
+    const description = 'استخدم زر الفأرة الأيمن: سحب لرسم سهم، ونقرة واحدة لتحديد مربع. يمكنك رسم عدة أسهم وإزالتها بالنقر مرة أخرى. هذه الرسومات للتوضيح فقط ولا تؤثر على اللعب.';
 
     toast({
       title: 'دليل الرسم التوضيحي',
@@ -342,6 +348,39 @@ const GameRoom = () => {
       localStorage.setItem(DRAWING_GUIDE_STORAGE_KEY, '1');
     }
   }, [isMobileDevice, toast]);
+
+  const clearStartCountdownInterval = useCallback(() => {
+    if (startCountdownIntervalRef.current !== null) {
+      window.clearInterval(startCountdownIntervalRef.current);
+      startCountdownIntervalRef.current = null;
+    }
+  }, []);
+
+  const startPreGameCountdown = useCallback(() => {
+    clearStartCountdownInterval();
+    setStartCountdown(3);
+    setTimers((prev) => ({
+      ...prev,
+      isRunning: false,
+      lastUpdate: Date.now(),
+    }));
+
+    startCountdownIntervalRef.current = window.setInterval(() => {
+      setStartCountdown((prev) => {
+        if (prev === null) return null;
+        if (prev <= 1) {
+          clearStartCountdownInterval();
+          setTimers((current) => ({
+            ...current,
+            isRunning: gameState.status === 'active',
+            lastUpdate: Date.now(),
+          }));
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [clearStartCountdownInterval, gameState.status]);
 
   const applySoundPreference = useCallback((enabled: boolean) => {
     const mediaElements = document.querySelectorAll<HTMLMediaElement>('audio, video');
@@ -539,8 +578,8 @@ const GameRoom = () => {
     if (!winner) return 'draw';
     return winner === currentPlayer ? 'win' : 'loss';
   }, [gameState.status, gameEndData?.winner, currentPlayer, gameState]);
-  const showGameEndModal = useCallback((reason: string, winner?: string) => {
-    setGameEndData({ reason, winner });
+  const showGameEndModal = useCallback((reason: string, winner?: string, ratingDelta?: number, isPlacement?: boolean) => {
+    setGameEndData({ reason, winner, ratingDelta, isPlacement });
     setShowGameEndModalState(true);
   }, []);
 
@@ -605,7 +644,7 @@ const GameRoom = () => {
           setTimers({
             white: data.whiteTimeLeft || 600,
             black: data.blackTimeLeft || 600,
-            isRunning: true,
+            isRunning: data.status === 'active',
             lastUpdate: Date.now()
           });
           
@@ -657,17 +696,84 @@ const GameRoom = () => {
     fetchGameMoves();
   }, [getValidGameIdFromUrl]);
 
+  useEffect(() => {
+    if (loading) return;
+    if (!gameData) return;
+    if (countdownInitializedRef.current) return;
+    if (gameState.status !== 'active') return;
+
+    const hasNoMoves = moves.length === 0;
+    const isInitialBoard = game.history().length === 0;
+    const initialTime = Number(gameData.initialTime || 600);
+    const clockAlreadyRunning = Boolean(timers.isRunning);
+    const hasClockMoved =
+      Number(gameData.whiteTimeLeft || timers.white) < initialTime ||
+      Number(gameData.blackTimeLeft || timers.black) < initialTime;
+    const startedAtMs = new Date(gameData.startedAt || Date.now()).getTime();
+    const gameAgeSeconds = Number.isNaN(startedAtMs)
+      ? Number.POSITIVE_INFINITY
+      : Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000));
+    const isFreshStartWindow = gameAgeSeconds <= 1;
+
+    countdownInitializedRef.current = true;
+    if (hasNoMoves && isInitialBoard && !clockAlreadyRunning && !hasClockMoved && isFreshStartWindow) {
+      startPreGameCountdown();
+    } else {
+      setStartCountdown(null);
+      clearStartCountdownInterval();
+    }
+  }, [loading, gameData, gameState.status, moves.length, game, timers.isRunning, timers.white, timers.black, startPreGameCountdown, clearStartCountdownInterval]);
+
+  useEffect(() => {
+    return () => {
+      clearStartCountdownInterval();
+    };
+  }, [clearStartCountdownInterval]);
+
   // Handler functions using useCallback to maintain stable references
   const handleClockUpdate = useCallback((data: { whiteTimeLeft: number; blackTimeLeft: number; currentTurn: string }) => {
+                    if (gameState.status !== 'active') {
+                      return;
+                    }
                     const { whiteTimeLeft, blackTimeLeft, currentTurn } = data;
                     
                     // Validate data
-                    if (typeof whiteTimeLeft !== 'number' || typeof blackTimeLeft !== 'number') {
+    if (typeof whiteTimeLeft !== 'number' || typeof blackTimeLeft !== 'number') {
                       console.error('Invalid time data received:', data);
                       return;
                     }
-                    
-    
+
+    const initialTime = Number(gameData?.initialTime || 600);
+    const serverClockAdvanced =
+      Number(whiteTimeLeft) < initialTime || Number(blackTimeLeft) < initialTime;
+    const startedAtMs = new Date(gameData?.startedAt || Date.now()).getTime();
+    const gameAgeSeconds = Number.isNaN(startedAtMs)
+      ? Number.POSITIVE_INFINITY
+      : Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000));
+    const isFreshStartWindow = gameAgeSeconds <= 1;
+
+    // While 3-2-1 is visible, keep timers frozen only in very fresh brand-new games.
+    if (startCountdown !== null && !serverClockAdvanced && isFreshStartWindow) {
+      setTimers({
+        white: whiteTimeLeft,
+        black: blackTimeLeft,
+        isRunning: false,
+        lastUpdate: Date.now()
+      });
+
+      setGameState(prev => ({
+        ...prev,
+        currentTurn
+      }));
+      return;
+    }
+
+    // If not a fresh start (or clock already progressed), remove 3-2-1 immediately.
+    if (startCountdown !== null && (serverClockAdvanced || !isFreshStartWindow)) {
+      setStartCountdown(null);
+      clearStartCountdownInterval();
+    }
+
     // Update timers with server data (this overrides local countdown)
     setTimers({
                       white: whiteTimeLeft,
@@ -681,9 +787,12 @@ const GameRoom = () => {
                         currentTurn
     }));
     
-  }, []); // Remove timers dependency
+  }, [gameState.status, startCountdown, gameData?.initialTime, gameData?.startedAt, clearStartCountdownInterval]); // Keep timers frozen once game is finished
 
   const handleTurnUpdate = useCallback((data: { currentTurn: string }) => {
+                    if (gameState.status !== 'active') {
+                      return;
+                    }
                     const { currentTurn } = data;
 
                     setGameState(prev => ({
@@ -696,11 +805,18 @@ const GameRoom = () => {
       ...prev,
       lastUpdate: Date.now() // Reset timer to prevent double counting
     }));
-  }, []);
+  }, [gameState.status]);
 
-  const handleGameEnd = useCallback((data: { reason: string; winner?: string; winnerId?: number; loserId?: number }) => {
+  const handleGameEnd = useCallback((data: {
+    reason: string;
+    winner?: string;
+    ratingChanges?: {
+      white?: { userId: number; delta: number; newRating?: number; isPlacement?: boolean; gamesPlayed?: number };
+      black?: { userId: number; delta: number; newRating?: number; isPlacement?: boolean; gamesPlayed?: number };
+    } | null;
+  }) => {
     
-    const { reason, winner, winnerId, loserId } = data;
+    const { reason, winner, ratingChanges } = data;
     
     
     // Update game state
@@ -716,6 +832,8 @@ const GameRoom = () => {
       ...prev,
       isRunning: false
     }));
+    setStartCountdown(null);
+    clearStartCountdownInterval();
 
 
     // Show appropriate message
@@ -746,10 +864,40 @@ const GameRoom = () => {
       description: message,
     });
 
+    const myUserId = Number(user?.id || 0);
+    const myRatingChange =
+      ratingChanges?.white && Number(ratingChanges.white.userId) === myUserId
+        ? ratingChanges.white
+        : ratingChanges?.black && Number(ratingChanges.black.userId) === myUserId
+          ? ratingChanges.black
+          : null;
+    const myRatingDelta = Number(myRatingChange?.delta) || 0;
+    const isPlacementChange = Boolean(myRatingChange?.isPlacement);
+    const gamesPlayedBefore = Number(myRatingChange?.gamesPlayed || 0);
+    const gamesPlayedAfter = gamesPlayedBefore + 1;
+    const placementJustCompleted = isPlacementChange && gamesPlayedAfter >= 10;
+
+    if (myRatingDelta !== 0) {
+      toast({
+        title: myRatingDelta > 0 ? `🎉 +${myRatingDelta} نقطة` : `❌ ${myRatingDelta} نقطة`,
+        description: isPlacementChange
+          ? `تم تحديث تقييمك بعد المباراة (Placement ${gamesPlayedAfter}/10)`
+          : 'تم تحديث تقييمك بعد المباراة',
+      });
+    }
+
+    if (placementJustCompleted) {
+      const finalRating = Number(myRatingChange?.newRating || 0);
+      toast({
+        title: '🎯 تم تحديد مستواك',
+        description: finalRating > 0 ? `تم تثبيت تقييمك على ${finalRating}` : 'اكتملت مرحلة تحديد المستوى',
+      });
+    }
+
     // Show game end modal
-    showGameEndModal(reason, winner);
+    showGameEndModal(reason, winner, myRatingDelta, isPlacementChange);
     
-  }, [currentPlayer, showGameEndModal]);
+  }, [currentPlayer, showGameEndModal, clearStartCountdownInterval, toast, user?.id]);
 
   const handleOpponentMove = useCallback((data: any) => {
     
@@ -818,6 +966,18 @@ const GameRoom = () => {
   const handleGameTimeout = useCallback((data: { winner: string; reason?: string }) => {
     
     const { winner, reason } = data;
+    const getArabicTimeoutReason = (rawReason?: string) => {
+      if (!rawReason) return null;
+      const normalized = rawReason.toLowerCase().trim();
+      if (normalized === 'timeout') return 'انتهى الوقت';
+      if (normalized === 'checkmate') return 'كش مات';
+      if (normalized === 'resign') return 'استسلام';
+      if (normalized === 'draw') return 'تعادل';
+      if (normalized === 'stalemate') return 'تعادل (جمود)';
+      if (normalized === 'threefold_repetition') return 'تعادل (تكرار النقلات)';
+      if (normalized === 'insufficient_material') return 'تعادل (قطع غير كافية)';
+      return 'انتهت المباراة';
+    };
     
     // Update game state
     setGameState(prev => ({
@@ -829,7 +989,7 @@ const GameRoom = () => {
     // Show timeout notification
     toast({
       title: "انتهت المباراة",
-      description: reason || `فاز ${winner === currentPlayer ? 'أنت' : 'الخصم'} بالوقت`,
+      description: getArabicTimeoutReason(reason) || `فاز ${winner === currentPlayer ? 'أنت' : 'الخصم'} بالوقت`,
     });
     
     // Stop timers
@@ -837,10 +997,12 @@ const GameRoom = () => {
       ...prev,
       isRunning: false
     }));
+    setStartCountdown(null);
+    clearStartCountdownInterval();
 
     // Show game end modal
     showGameEndModal('timeout', winner);
-  }, [currentPlayer, showGameEndModal]);
+  }, [currentPlayer, showGameEndModal, clearStartCountdownInterval]);
 
   const handleMoveConfirmed = useCallback((data: { gameId: string; move: string }) => {
     
@@ -1177,7 +1339,6 @@ const GameRoom = () => {
               <Button
                 variant="ghost"
                 size="icon"
-                className="md:hidden"
                 aria-label="رجوع"
                 onClick={() => window.history.back()}
               >
@@ -1197,15 +1358,17 @@ const GameRoom = () => {
             </div>
 
             <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => showDrawingGuide(true)}
-                aria-label="شرح الرسم"
-                title="شرح الرسم"
-              >
-                <CircleHelp className="w-5 h-5" />
-              </Button>
+              {!isMobileDevice() && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => showDrawingGuide(true)}
+                  aria-label="شرح الرسم"
+                  title="شرح الرسم"
+                >
+                  <CircleHelp className="w-5 h-5" />
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon"
@@ -1398,7 +1561,7 @@ const GameRoom = () => {
                 game={game}
                 onMove={handleMove}
                 orientation={currentPlayer}
-                allowMoves={gameState.status === 'active' && gameState.currentTurn === currentPlayer && !isProcessingMove}
+                allowMoves={startCountdown === null && gameState.status === 'active' && gameState.currentTurn === currentPlayer && !isProcessingMove}
                 resultSticker={boardResultSticker}
               />
             </Card>
@@ -1568,6 +1731,16 @@ const GameRoom = () => {
         </div>
       </div>
 
+      {startCountdown !== null && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 backdrop-blur-sm">
+          <div className="text-center">
+            <div className="text-[11rem] leading-none font-black text-white drop-shadow-[0_0_32px_rgba(255,255,255,0.5)]">
+              {startCountdown}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Game End Modal */}
       {showGameEndModalState && gameEndData && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -1607,6 +1780,13 @@ const GameRoom = () => {
                 {gameEndData.reason === 'threefold_repetition' && 'انتهت المباراة بالتعادل (تكرار الحركة)'}
                 {gameEndData.reason === 'insufficient_material' && 'انتهت المباراة بالتعادل (قطع غير كافية)'}
               </p>
+
+              {typeof gameEndData.ratingDelta === 'number' && gameEndData.ratingDelta !== 0 && (
+                <div className={`mb-4 text-2xl font-bold ${gameEndData.ratingDelta > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  {gameEndData.ratingDelta > 0 ? `+${gameEndData.ratingDelta}` : gameEndData.ratingDelta} نقطة تقييم
+                  {gameEndData.isPlacement ? ' (Placement)' : ''}
+                </div>
+              )}
               
               {/* معلومات إضافية عن اللعبة */}
               <div className="bg-muted/50 p-4 rounded-lg mb-6 text-sm">

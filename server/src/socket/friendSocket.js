@@ -7,8 +7,6 @@ import {
   handleInviteResponse,
   addUserConnection,
   removeUserConnection,
-  isUserOnline,
-  updateUserStatus,
   enableMinimalLogging,
   sendFriendsStatusToUser,
   handleGameMove,
@@ -165,14 +163,6 @@ export function initFriendSocket(io) {
     socket.on('disconnect', async () => {
       removeUserConnection(userId, socket.id);
       activeConnections.delete(socket.id);
-
-      try {
-        if (!isUserOnline(userId)) {
-          await updateUserStatus(userId, 'offline');
-        }
-      } catch (error) {
-        logger.error('Failed to update status on disconnect:', error);
-      }
     });
 
     socket.on('joinGameRoom', async ({ gameId }) => {

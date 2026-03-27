@@ -57,7 +57,7 @@ const User = sequelize.define(
     },
     rank: {
       type: DataTypes.INTEGER,
-      defaultValue: 1200,
+      defaultValue: 1500,
       validate: {
         min: 0,
         max: 3000,

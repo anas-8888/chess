@@ -274,7 +274,13 @@ export const getReceivedInvites = async (userId, options = {}) => {
  * @param {string} playMethod - Method of play (physical_board/phone)
  * @returns {Object} Created game invite
  */
-export const createGameInvite = async (fromUserId, toUserId, gameType, playMethod) => {
+const resolveInviteTimeControlMinutes = (timeControl) => {
+  const parsed = Number(timeControl);
+  if (!Number.isFinite(parsed)) return 10;
+  return Math.max(1, Math.min(60, Math.round(parsed)));
+};
+
+export const createGameInvite = async (fromUserId, toUserId, gameType, playMethod, timeControl = 10) => {
 
 
   // Check if users exist
@@ -327,6 +333,7 @@ export const createGameInvite = async (fromUserId, toUserId, gameType, playMetho
     to_user_id: toUserId,
     status: 'pending',
     game_type: gameType,
+    time_control: resolveInviteTimeControlMinutes(timeControl),
     play_method: playMethod,
     date_time: new Date(),
     expires_at: expiresAt,
@@ -479,6 +486,8 @@ export const acceptInvite = async (inviteId, userId, playMethod = 'phone') => {
   // Create a new game
   const Game = await import('../models/Game.js');
   
+  const initialTime = resolveInviteTimeControlMinutes(invite.time_control) * 60;
+
   const game = await Game.default.create({
     white_player_id: invite.from_user_id, // المرسل
     black_player_id: invite.to_user_id,   // المستقبل
@@ -486,9 +495,9 @@ export const acceptInvite = async (inviteId, userId, playMethod = 'phone') => {
     game_type: 'friend',
     ai_level: null,
     puzzle_id: null,
-    initial_time: 600, // 10 دقائق = 600 ثانية
-    white_time_left: 600,
-    black_time_left: 600,
+    initial_time: initialTime,
+    white_time_left: initialTime,
+    black_time_left: initialTime,
     white_play_method: invite.play_method, // من الدعوة
     black_play_method: playMethod, // من اختيار المستقبل
     current_fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
@@ -621,7 +630,7 @@ export const startGame = async (inviteId, userId, playMethod) => {
   const blackPlayerId = isWhiteRandom ? invite.to_user_id : invite.from_user_id;
   const whitePlayMethod = isWhiteRandom ? invite.play_method : playMethod;
   const blackPlayMethod = isWhiteRandom ? playMethod : invite.play_method;
-  const initialTime = 600;
+  const initialTime = resolveInviteTimeControlMinutes(invite.time_control) * 60;
 
   const game = await Game.create({
     white_player_id: whitePlayerId,
@@ -733,6 +742,7 @@ export const getRecentInvites = async (userId, since) => {
     from_user_name: invite.fromUser?.username || 'مستخدم',
     to_user_name: invite.toUser?.username || 'مستخدم',
     game_type: invite.game_type,
+    time_control: invite.time_control,
     play_method: invite.play_method,
     status: invite.status,
     game_id: invite.game_id,

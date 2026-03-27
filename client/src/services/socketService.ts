@@ -16,6 +16,26 @@ type GameEndPayload = {
   winner?: string;
   winnerId?: number;
   loserId?: number;
+  ratingChanges?: {
+    white?: {
+      userId: number;
+      delta: number;
+      oldRating: number;
+      newRating: number;
+      isPlacement?: boolean;
+      kFactor?: number;
+      gamesPlayed?: number;
+    };
+    black?: {
+      userId: number;
+      delta: number;
+      oldRating: number;
+      newRating: number;
+      isPlacement?: boolean;
+      kFactor?: number;
+      gamesPlayed?: number;
+    };
+  } | null;
 };
 
 type GameTimeoutPayload = {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { 
-  Home, 
+  ArrowRight, 
   Users, 
   Zap, 
   Bot, 
@@ -80,7 +80,7 @@ const PlayPage = () => {
       const queueData = {
         timeControl: selectedTime,
         physicalBoard: physicalBoard,
-        rating: 1200 // user's current rating
+        rating: 1500 // user's current rating
       };
       
       toast({
@@ -129,8 +129,7 @@ const PlayPage = () => {
     if (pendingGameMode === "random") {
       findRandomOpponent();
     } else if (pendingGameMode === "ai") {
-      // SOCKET: emit('startAIGame', { physicalMode: usePhysical, timeControl: selectedTime });
-      navigate("/game?mode=ai&physical=" + usePhysical);
+      navigate(`/ai-loading?time=${encodeURIComponent(selectedTime)}`);
     }
     setPendingGameMode(null);
   };
@@ -147,11 +146,9 @@ const PlayPage = () => {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Link to="/dashboard">
-                <Button variant="ghost" size="icon">
-                  <Home className="h-5 w-5" />
-                </Button>
-              </Link>
+              <Button variant="ghost" size="icon" aria-label="رجوع" onClick={() => navigate(-1)}>
+                <ArrowRight className="h-5 w-5" />
+              </Button>
               <div className="flex items-center gap-2">
                 <Play className="h-6 w-6 text-primary" />
                 <h1 className="text-xl font-bold text-foreground font-cairo">اختر نوع اللعب</h1>
@@ -356,8 +353,28 @@ const PlayPage = () => {
             
             <div className="space-y-4">
               <p className="text-muted-foreground text-center">
-                هل تريد اللعب عبر الهاتف أم عبر اللوحة المادية؟
+                {pendingGameMode === "ai"
+                  ? "حدد مدة مباراة الذكاء الاصطناعي ثم اختر طريقة اللعب."
+                  : "هل تريد اللعب عبر الهاتف أم عبر اللوحة المادية؟"}
               </p>
+
+              {pendingGameMode === "ai" && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium block">مدة المباراة</label>
+                  <Select value={selectedTime} onValueChange={setSelectedTime}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="اختر المدة" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {timeControls.map((time) => (
+                        <SelectItem key={time.value} value={time.value}>
+                          {time.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               
               <div className="grid gap-3">
                 <Button

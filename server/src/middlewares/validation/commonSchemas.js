@@ -72,6 +72,13 @@ export const createGameInviteSchema = z.object({
   to_user_id: z.string().regex(/^\d+$/, { message: 'معرف المستخدم يجب أن يكون رقم صحيح' }),
   game_type: z.enum(['friendly', 'competitive'], { message: 'نوع اللعبة يجب أن يكون ودية أو تنافسية' }),
   play_method: playMethodSchema,
+  time_control: z.coerce
+    .number()
+    .int('مدة المباراة يجب أن تكون رقمًا صحيحًا')
+    .min(1, 'الحد الأدنى لمدة المباراة دقيقة واحدة')
+    .max(60, 'الحد الأقصى لمدة المباراة 60 دقيقة')
+    .optional()
+    .default(10),
 });
 
 export const respondToInviteSchema = z.object({

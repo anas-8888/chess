@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   Clock, 
   Flag, 
@@ -21,7 +22,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { getInitialsFromName, hasCustomAvatar } from '@/utils/avatar';
 import { ActiveAiGameSession, GameMovePair, userService } from '@/services/userService';
 
@@ -66,6 +67,36 @@ const AI_DIFFICULTY_CONFIG: Record<
   hard: { label: 'عالي', rating: 2300, skillLevel: 20, depth: 22, moveTimeMs: 3200 },
 };
 
+const AI_TIME_CONTROL_OPTIONS = ['1', '3', '5', '10', '15', '30'] as const;
+
+const normalizeAiTimeControlOption = (secondsOrMinutes: number): (typeof AI_TIME_CONTROL_OPTIONS)[number] => {
+  const minutes = Math.max(1, Math.round(Number(secondsOrMinutes) || 10));
+  const exact = AI_TIME_CONTROL_OPTIONS.find(option => Number(option) === minutes);
+  if (exact) return exact;
+
+  let nearest = AI_TIME_CONTROL_OPTIONS[0];
+  let nearestDiff = Math.abs(Number(nearest) - minutes);
+  for (const option of AI_TIME_CONTROL_OPTIONS) {
+    const diff = Math.abs(Number(option) - minutes);
+    if (diff < nearestDiff) {
+      nearest = option;
+      nearestDiff = diff;
+    }
+  }
+  return nearest;
+};
+
+const getTimeControlFromSearch = (search: string): (typeof AI_TIME_CONTROL_OPTIONS)[number] => {
+  try {
+    const params = new URLSearchParams(search || '');
+    const timeValue = params.get('time');
+    if (!timeValue) return '10';
+    return normalizeAiTimeControlOption(Number(timeValue));
+  } catch (_error) {
+    return '10';
+  }
+};
+
 const getDifficultyFromRating = (rating?: number): AIDifficulty => {
   const safe = Number(rating) || 1500;
   if (safe <= 1250) return 'easy';
@@ -78,6 +109,8 @@ const AIGame = () => {
   const { toast } = useToast();
   const DRAWING_GUIDE_STORAGE_KEY = 'drawing_guide_ai_v1';
   const navigate = useNavigate();
+  const location = useLocation();
+  const preferredTimeControl = getTimeControlFromSearch(location.search);
   const gameStartTimeRef = useRef<string>(new Date().toISOString());
   const resultSavedRef = useRef(false);
   const clockSyncInFlightRef = useRef(false);
@@ -116,9 +149,11 @@ const AIGame = () => {
   const [moves, setMoves] = useState<GameMove[]>([]);
   const [playerColor, setPlayerColor] = useState<'white' | 'black'>('white');
   const [difficulty, setDifficulty] = useState<AIDifficulty>('medium');
+  const [aiInitialTimeSeconds, setAiInitialTimeSeconds] = useState(Number(preferredTimeControl) * 60);
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [setupColor, setSetupColor] = useState<'white' | 'black'>('white');
   const [setupDifficulty, setSetupDifficulty] = useState<AIDifficulty>('medium');
+  const [setupTimeControl, setSetupTimeControl] = useState<(typeof AI_TIME_CONTROL_OPTIONS)[number]>(preferredTimeControl);
   const [startingWithSetup, setStartingWithSetup] = useState(false);
   const [aiThinking, setAiThinking] = useState(false);
   const [startCountdown, setStartCountdown] = useState<number | null>(null);
@@ -130,6 +165,24 @@ const AIGame = () => {
   });
 
   const aiConfig = useMemo(() => AI_DIFFICULTY_CONFIG[difficulty], [difficulty]);
+  const setupInitialTimeSeconds = useMemo(() => {
+    const minutes = Math.max(1, Number(setupTimeControl) || 10);
+    return minutes * 60;
+  }, [setupTimeControl]);
+
+  const extractMyRatingChange = useCallback(
+    (ratingChanges?: {
+      white?: { userId: number; delta: number; newRating?: number; isPlacement?: boolean; gamesPlayed?: number };
+      black?: { userId: number; delta: number; newRating?: number; isPlacement?: boolean; gamesPlayed?: number };
+    } | null) => {
+      if (!ratingChanges || !user?.id) return null;
+      const myId = Number(user.id);
+      if (ratingChanges.white && Number(ratingChanges.white.userId) === myId) return ratingChanges.white;
+      if (ratingChanges.black && Number(ratingChanges.black.userId) === myId) return ratingChanges.black;
+      return null;
+    },
+    [user?.id]
+  );
 
   const isMobileDevice = useCallback(() => {
     if (typeof window === 'undefined') return false;
@@ -138,12 +191,10 @@ const AIGame = () => {
 
   const showDrawingGuide = useCallback((force = false) => {
     if (typeof window === 'undefined') return;
+    if (isMobileDevice()) return;
     if (!force && localStorage.getItem(DRAWING_GUIDE_STORAGE_KEY) === '1') return;
 
-    const mobile = isMobileDevice();
-    const description = mobile
-      ? 'اضغط مطوّلًا ثم اسحب لرسم سهم، واضغط مطوّلًا دون سحب لتحديد مربع. يمكن رسم عدة أسهم، وإزالتها بإعادة الضغط. هذه الرسومات للتوضيح فقط ولا تؤثر على اللعب.'
-      : 'استخدم زر الفأرة الأيمن: سحب لرسم سهم، ونقرة واحدة لتحديد مربع. يمكنك رسم عدة أسهم وإزالتها بالنقر مرة أخرى. هذه الرسومات للتوضيح فقط ولا تؤثر على اللعب.';
+    const description = 'استخدم زر الفأرة الأيمن: سحب لرسم سهم، ونقرة واحدة لتحديد مربع. يمكنك رسم عدة أسهم وإزالتها بالنقر مرة أخرى. هذه الرسومات للتوضيح فقط ولا تؤثر على اللعب.';
 
     toast({
       title: 'دليل الرسم التوضيحي',
@@ -164,7 +215,7 @@ const AIGame = () => {
 
   const humanPlayer = useMemo<AIPlayer>(() => ({
     name: user?.username || 'اللاعب',
-    rating: user?.rating || 1200,
+    rating: user?.rating || 1500,
     color: playerColor,
     avatar: user?.avatar || ''
   }), [user?.username, user?.rating, user?.avatar, playerColor]);
@@ -305,8 +356,12 @@ const AIGame = () => {
   }, [initializeStockfishEngine, stopPendingStockfishSearch]);
 
   useEffect(() => {
-    showDrawingGuide(false);
-  }, [showDrawingGuide]);
+    if (loading) return;
+    const timer = window.setTimeout(() => {
+      showDrawingGuide(false);
+    }, 280);
+    return () => window.clearTimeout(timer);
+  }, [loading, showSetupModal, showDrawingGuide]);
   const startPreGameCountdown = useCallback(() => {
     if (startCountdownIntervalRef.current !== null) {
       window.clearInterval(startCountdownIntervalRef.current);
@@ -363,6 +418,9 @@ const AIGame = () => {
     setDifficulty(restoredDifficulty);
     setSetupDifficulty(restoredDifficulty);
     setSetupColor(session.playerColor);
+    const restoredInitialTime = Math.max(60, Number(session.initialTime) || 600);
+    setAiInitialTimeSeconds(restoredInitialTime);
+    setSetupTimeControl(normalizeAiTimeControlOption(restoredInitialTime / 60));
     setGame(restoredGame);
     setMoves(mapMovePairsToList(movesPairs));
 
@@ -421,9 +479,10 @@ const AIGame = () => {
     }
   }, [persistedGameId, loading, gameState.status, gameState.currentTurn, gameTime.white, gameTime.black]);
 
-  const initializeAiPersistence = useCallback(async (options?: { color?: 'white' | 'black'; aiDifficulty?: AIDifficulty }) => {
+  const initializeAiPersistence = useCallback(async (options?: { color?: 'white' | 'black'; aiDifficulty?: AIDifficulty; initialTimeSeconds?: number }) => {
     const selectedColor = options?.color || playerColor;
     const selectedDifficulty = options?.aiDifficulty || difficulty;
+    const selectedInitialTime = Math.max(60, Number(options?.initialTimeSeconds || aiInitialTimeSeconds) || 600);
     const selectedConfig = AI_DIFFICULTY_CONFIG[selectedDifficulty];
 
     try {
@@ -431,13 +490,15 @@ const AIGame = () => {
         playerColor: selectedColor,
         aiLevel: selectedConfig.rating,
         difficulty: selectedDifficulty,
-        initialTime: 600,
+        initialTime: selectedInitialTime,
       });
       setActiveGameConflict({ open: false, gameId: null, message: '' });
       setPlayerColor(selectedColor);
       setDifficulty(selectedDifficulty);
+      setAiInitialTimeSeconds(selectedInitialTime);
       setSetupColor(selectedColor);
       setSetupDifficulty(selectedDifficulty);
+      setSetupTimeControl(normalizeAiTimeControlOption(selectedInitialTime / 60));
       setPersistedGameId(session.gameId);
       localStorage.setItem(storageSessionKey, String(session.gameId));
       gameStartTimeRef.current = new Date().toISOString();
@@ -464,7 +525,7 @@ const AIGame = () => {
         variant: 'destructive',
       });
     }
-  }, [playerColor, difficulty, storageSessionKey, toast, startPreGameCountdown]);
+  }, [playerColor, difficulty, aiInitialTimeSeconds, storageSessionKey, toast, startPreGameCountdown]);
 
   const handleCloseConflictingGame = useCallback(async () => {
     if (!activeGameConflict.gameId) {
@@ -527,6 +588,13 @@ const AIGame = () => {
   }, [restoreAiSession]);
 
   useEffect(() => {
+    if (!showSetupModal || persistedGameId) return;
+    const fromQuery = getTimeControlFromSearch(location.search);
+    setSetupTimeControl(fromQuery);
+    setAiInitialTimeSeconds(Number(fromQuery) * 60);
+  }, [showSetupModal, persistedGameId, location.search]);
+
+  useEffect(() => {
     if (!persistedGameId || loading || gameState.status !== 'active') return;
     const interval = window.setInterval(() => {
       syncClockToServer();
@@ -556,7 +624,7 @@ const AIGame = () => {
 
   // Timer countdown effect
   useEffect(() => {
-    if (!gameTime.isRunning) return;
+    if (!gameTime.isRunning || gameState.status !== 'active') return;
 
     const interval = setInterval(() => {
       setGameTime(prev => {
@@ -600,7 +668,7 @@ const AIGame = () => {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [gameTime.isRunning, gameState.currentTurn, playerColor]);
+  }, [gameTime.isRunning, gameState.currentTurn, gameState.status, playerColor]);
 
   const handleGameEnd = useCallback((data: { reason: string; winner?: string }) => {
     const { reason, winner } = data;
@@ -624,6 +692,27 @@ const AIGame = () => {
             finalFen: game.fen(),
             whiteTimeLeft: gameTime.white,
             blackTimeLeft: gameTime.black,
+          })
+          .then((response) => {
+            const change = extractMyRatingChange(response?.ratingChanges);
+            const delta = Number(change?.delta) || 0;
+            const isPlacementChange = Boolean(change?.isPlacement);
+            const gamesPlayedAfter = Number(change?.gamesPlayed || 0) + 1;
+            if (delta !== 0) {
+              toast({
+                title: delta > 0 ? `🎉 +${delta} نقطة` : `❌ ${delta} نقطة`,
+                description: isPlacementChange
+                  ? `تم تحديث تقييمك بعد المباراة (Placement ${gamesPlayedAfter}/10)`
+                  : 'تم تحديث تقييمك بعد المباراة',
+              });
+            }
+            if (isPlacementChange && gamesPlayedAfter >= 10) {
+              const finalRating = Number(change?.newRating || 0);
+              toast({
+                title: '🎯 تم تحديد مستواك',
+                description: finalRating > 0 ? `تم تثبيت تقييمك على ${finalRating}` : 'اكتملت مرحلة تحديد المستوى',
+              });
+            }
           })
           .catch(error => {
             console.error('Failed to finalize AI game:', error);
@@ -670,7 +759,7 @@ const AIGame = () => {
       title: "انتهت المباراة",
       description: message,
     });
-  }, [playerColor, toast, gameTime.white, gameTime.black, game, persistedGameId, storageSessionKey]);
+  }, [playerColor, toast, gameTime.white, gameTime.black, game, persistedGameId, storageSessionKey, extractMyRatingChange]);
 
   // Simple AI move generation
   const generateAIMove = useCallback(async () => {
@@ -968,7 +1057,11 @@ const AIGame = () => {
     return gameState.winner === playerColor ? 'win' : 'loss';
   }, [gameState.status, gameState.winner, playerColor]);
 
-  const resetForNewGame = useCallback(() => {
+  const resetForNewGame = useCallback((initialTimeOverride?: number) => {
+    const resolvedInitialTime = Math.max(
+      60,
+      Number(initialTimeOverride ?? aiInitialTimeSeconds) || 600
+    );
     localStorage.removeItem(storageSessionKey);
     setGame(new Chess());
     setMoves([]);
@@ -981,22 +1074,24 @@ const AIGame = () => {
       winner: null
     });
     setGameTime({
-      white: 600,
-      black: 600,
+      white: resolvedInitialTime,
+      black: resolvedInitialTime,
       isRunning: false,
       lastUpdate: Date.now()
     });
+    setAiInitialTimeSeconds(resolvedInitialTime);
     setAiThinking(false);
     setPersistedGameId(null);
     setLoading(false);
     setShowNewGameConfirm(false);
-  }, [storageSessionKey]);
+  }, [storageSessionKey, aiInitialTimeSeconds]);
 
   const openSetupModalForNewGame = useCallback(() => {
     setSetupColor(playerColor);
     setSetupDifficulty(difficulty);
+    setSetupTimeControl(normalizeAiTimeControlOption(aiInitialTimeSeconds / 60));
     setShowSetupModal(true);
-  }, [playerColor, difficulty]);
+  }, [playerColor, difficulty, aiInitialTimeSeconds]);
 
   const handleConfirmNewGame = useCallback(async () => {
     setRestartingGame(true);
@@ -1050,12 +1145,17 @@ const AIGame = () => {
     setStartingWithSetup(true);
     try {
       setShowSetupModal(false);
-      resetForNewGame();
-      await initializeAiPersistence({ color: setupColor, aiDifficulty: setupDifficulty });
+      const chosenInitial = setupInitialTimeSeconds;
+      resetForNewGame(chosenInitial);
+      await initializeAiPersistence({
+        color: setupColor,
+        aiDifficulty: setupDifficulty,
+        initialTimeSeconds: chosenInitial,
+      });
     } finally {
       setStartingWithSetup(false);
     }
-  }, [resetForNewGame, initializeAiPersistence, setupColor, setupDifficulty]);
+  }, [setupInitialTimeSeconds, resetForNewGame, initializeAiPersistence, setupColor, setupDifficulty]);
 
   const getPendingNewGameResultText = () => {
     const result = getFinalizeResultForCurrentGame();
@@ -1109,9 +1209,11 @@ const AIGame = () => {
 </div>
 
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" onClick={() => showDrawingGuide(true)} aria-label="شرح الرسم" title="شرح الرسم">
-                <CircleHelp className="w-5 h-5" />
-              </Button>
+              {!isMobileDevice() && (
+                <Button variant="ghost" size="icon" onClick={() => showDrawingGuide(true)} aria-label="شرح الرسم" title="شرح الرسم">
+                  <CircleHelp className="w-5 h-5" />
+                </Button>
+              )}
               <Button variant="outline" onClick={handleNewGame}>
                 <RefreshCw className="w-4 h-4 ml-2" />
                 لعبة جديدة
@@ -1330,6 +1432,22 @@ const AIGame = () => {
                   </Button>
                 ))}
               </div>
+            </div>
+
+            <div className="mb-5">
+              <p className="mb-2 text-sm font-semibold">اختر مدة المباراة</p>
+              <Select value={setupTimeControl} onValueChange={(value) => setSetupTimeControl(value as (typeof AI_TIME_CONTROL_OPTIONS)[number])}>
+                <SelectTrigger>
+                  <SelectValue placeholder="اختر مدة المباراة" />
+                </SelectTrigger>
+                <SelectContent>
+                  {AI_TIME_CONTROL_OPTIONS.map((minutes) => (
+                    <SelectItem key={minutes} value={minutes}>
+                      {minutes} دقيقة
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="flex gap-2">

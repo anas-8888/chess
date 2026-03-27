@@ -1,24 +1,29 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Home, Trophy, FileText, Loader2 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { ArrowRight, Trophy, FileText, Loader2, PlayCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import PlacementProgress from '@/components/PlacementProgress';
 import { useToast } from '@/hooks/use-toast';
 import {
   userService,
   type RecentGame,
   type UserProfile,
   type GameMovePair,
+  type RatingHistoryItem,
 } from '@/services/userService';
 
 const MyStatistics = () => {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [recentGames, setRecentGames] = useState<RecentGame[]>([]);
   const [expandedGameId, setExpandedGameId] = useState<number | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
+  const [ratingHistory, setRatingHistory] = useState<RatingHistoryItem[]>([]);
+  const [lastRatingDelta, setLastRatingDelta] = useState(0);
   const [gameReport, setGameReport] = useState<{
     gameId: number;
     summary: string;
@@ -118,12 +123,15 @@ const MyStatistics = () => {
     const load = async () => {
       setLoading(true);
       try {
-        const [profileData, recent] = await Promise.all([
+        const [profileData, recent, ratingData] = await Promise.all([
           userService.getProfileStats(),
           userService.getRecentGames(10),
+          userService.getRatingHistory(20),
         ]);
         setProfile(profileData);
         setRecentGames(recent);
+        setRatingHistory(ratingData.history || []);
+        setLastRatingDelta(Number(ratingData.lastDelta) || 0);
       } catch (error: any) {
         toast({
           title: 'خطأ',
@@ -150,18 +158,48 @@ const MyStatistics = () => {
     <div className="min-h-screen bg-gradient-subtle" dir="rtl">
       <header className="border-b border-border bg-card/50 backdrop-blur">
         <div className="container mx-auto px-4 py-4 flex items-center gap-3">
-          <Link to="/dashboard">
-            <Button variant="ghost" size="icon">
-              <Home className="h-5 w-5" />
-            </Button>
-          </Link>
+          <Button variant="ghost" size="icon" aria-label="رجوع" onClick={() => navigate(-1)}>
+            <ArrowRight className="h-5 w-5" />
+          </Button>
           <h1 className="text-xl font-bold font-cairo">إحصائياتي</h1>
         </div>
       </header>
 
       <main className="container mx-auto px-4 py-8 space-y-6">
+        <Card className="border-yellow-500/20 bg-card/60">
+          <CardHeader>
+            <CardTitle className="font-cairo">كيف يعمل التقييم (Rating)؟</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-muted-foreground">
+            <div>الفوز ضد لاعب أقوى يعطي نقاط أكثر، والفوز ضد لاعب أضعف يعطي نقاط أقل.</div>
+            <div>الخسارة ضد لاعب أضعف تنقص نقاط أكثر، والخسارة ضد لاعب أقوى تنقص نقاط أقل.</div>
+            <div>التعادل ضد أقوى يزيد قليلًا، وضد أضعف ينقص قليلًا.</div>
+            <div className="rounded-md border border-border bg-background/30 p-3">
+              مثال: إذا كان تقييمك 1500 ولعبت ضد 1700 وفزت، فغالبًا ستحصل على زيادة أكبر من الفوز على لاعب 1300.
+            </div>
+            <div className="h-2 rounded-full bg-muted overflow-hidden">
+              <div
+                className={`h-full ${lastRatingDelta >= 0 ? 'bg-green-500' : 'bg-red-500'}`}
+                style={{ width: `${Math.min(100, Math.max(8, Math.abs(lastRatingDelta) * 4))}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between text-foreground">
+              <span>تقييمك الحالي: <span className="font-bold text-yellow-500">{profile?.rating || 1500}</span></span>
+              <span className={lastRatingDelta >= 0 ? 'text-green-500 font-semibold' : 'text-red-500 font-semibold'}>
+                آخر تغير: {lastRatingDelta > 0 ? `+${lastRatingDelta}` : lastRatingDelta}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <PlacementProgress
+          gamesPlayed={Number(profile?.placementGamesPlayed ?? profile?.total_games ?? 0)}
+          totalMatches={Number(profile?.placementMatches ?? 10)}
+          isPlacement={Boolean(profile?.isPlacement)}
+        />
+
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <Card><CardContent className="p-4 text-center"><div className="text-sm">التقييم</div><div className="text-2xl font-bold">{profile?.rating || 1200}</div></CardContent></Card>
+          <Card><CardContent className="p-4 text-center"><div className="text-sm">التقييم</div><div className="text-2xl font-bold">{profile?.rating || 1500}</div></CardContent></Card>
           <Card><CardContent className="p-4 text-center"><div className="text-sm">انتصارات</div><div className="text-2xl font-bold">{profile?.wins || 0}</div></CardContent></Card>
           <Card><CardContent className="p-4 text-center"><div className="text-sm">خسائر</div><div className="text-2xl font-bold">{profile?.losses || 0}</div></CardContent></Card>
           <Card><CardContent className="p-4 text-center"><div className="text-sm">تعادل</div><div className="text-2xl font-bold">{profile?.draws || 0}</div></CardContent></Card>
@@ -203,6 +241,18 @@ const MyStatistics = () => {
                     </div>
                   </button>
 
+                  <div className="flex items-center justify-end">
+                    <Button asChild size="sm" variant="outline">
+                      <Link
+                        to={`/game-replay/${game.id}`}
+                        state={{ game }}
+                      >
+                        <PlayCircle className="h-4 w-4 ml-1" />
+                        مشاهدة المباراة
+                      </Link>
+                    </Button>
+                  </div>
+
                   {expandedGameId === game.id && (
                     <div className="rounded-md border bg-muted/30 p-3 space-y-3">
                       {reportLoading ? (
@@ -240,6 +290,31 @@ const MyStatistics = () => {
                       )}
                     </div>
                   )}
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-cairo">سجل تغيّر التقييم</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {ratingHistory.length === 0 ? (
+              <div className="text-muted-foreground">لا يوجد سجل تقييم حتى الآن</div>
+            ) : (
+              ratingHistory.map((item) => (
+                <div key={item.gameId} className="flex items-center justify-between rounded-lg border p-3">
+                  <div className="text-sm">
+                    <div className="font-medium">ضد: {item.opponent}</div>
+                    <div className="text-muted-foreground">
+                      {new Date(item.endedAt).toLocaleString('ar')} • {item.gameType} • {item.result}
+                    </div>
+                  </div>
+                  <div className={`text-lg font-bold ${item.delta >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {item.delta >= 0 ? `+${item.delta}` : item.delta}
+                  </div>
                 </div>
               ))
             )}

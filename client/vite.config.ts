@@ -29,8 +29,8 @@ export default defineConfig(async ({ mode }) => {
       port: 8080,
     },
     build: {
-      outDir: path.resolve(__dirname, "../server/public_html"),
-      emptyOutDir: false,
+      outDir: "dist",
+      emptyOutDir: true,
       minify: "esbuild",
       rollupOptions: {
         onwarn(warning, warn) {

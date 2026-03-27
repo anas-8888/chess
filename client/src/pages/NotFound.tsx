@@ -1,10 +1,11 @@
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Home, Search } from "lucide-react";
+import { ArrowRight, Search } from "lucide-react";
 
 const NotFound = () => {
   const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     console.error(
@@ -24,11 +25,9 @@ const NotFound = () => {
           عذراً، لا يمكن العثور على الصفحة المطلوبة
         </p>
         <div className="flex gap-3 justify-center">
-          <Button asChild variant="chess">
-            <a href="/">
-              <Home className="w-4 h-4" />
-              العودة للرئيسية
-            </a>
+          <Button variant="chess" onClick={() => navigate(-1)}>
+            <ArrowRight className="w-4 h-4" />
+            رجوع
           </Button>
           <Button asChild variant="elegant">
             <a href="/dashboard">

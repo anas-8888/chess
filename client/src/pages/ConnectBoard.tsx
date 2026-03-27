@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { 
-  Home, 
+  ArrowRight, 
   Smartphone, 
   QrCode, 
   Wifi, 
@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 const ConnectBoard = () => {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [connectionMethod, setConnectionMethod] = useState<"qr" | "serial" | null>(null);
   const [serialNumber, setSerialNumber] = useState("");
@@ -133,11 +134,9 @@ const ConnectBoard = () => {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Link to="/dashboard">
-                <Button variant="ghost" size="icon">
-                  <Home className="h-5 w-5" />
-                </Button>
-              </Link>
+              <Button variant="ghost" size="icon" aria-label="رجوع" onClick={() => navigate(-1)}>
+                <ArrowRight className="h-5 w-5" />
+              </Button>
               <div className="flex items-center gap-2">
                 <Cable className="h-6 w-6 text-primary" />
                 <h1 className="text-xl font-bold text-foreground font-cairo">ربط اللوحة المادية</h1>

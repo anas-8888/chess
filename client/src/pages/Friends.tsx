@@ -1,5 +1,5 @@
 import { useState, useEffect, useContext } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,7 +19,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { API_BASE_URL, SOCKET_BASE_URL } from "@/config/urls";
 import { getInitialsFromName, hasCustomAvatar } from "@/utils/avatar";
 import {
-  Home,
+  ArrowRight,
   Users,
   UserPlus,
   Search,
@@ -32,6 +32,10 @@ import {
   Mail,
   Shield
 } from "lucide-react";
+
+const FRIENDS_TAB_STORAGE_KEY = "friends_active_tab_v1";
+const TAB_VALUES = ["friends", "myfriends", "invites", "pending"] as const;
+type FriendsTabValue = (typeof TAB_VALUES)[number];
 
 const Friends = () => {
   const { toast } = useToast();
@@ -59,8 +63,22 @@ const Friends = () => {
   const [selectedInvite, setSelectedInvite] = useState<any>(null);
   const [acceptPlayMethod, setAcceptPlayMethod] = useState<'phone' | 'physical_board' | null>(null);
   const [isAcceptingInvite, setIsAcceptingInvite] = useState(false);
+  const [activeTab, setActiveTab] = useState<FriendsTabValue>(() => {
+    if (typeof window === "undefined") return "friends";
+    const saved = localStorage.getItem(FRIENDS_TAB_STORAGE_KEY);
+    if (saved && (TAB_VALUES as readonly string[]).includes(saved)) {
+      return saved as FriendsTabValue;
+    }
+    return "friends";
+  });
 
   const isGameStatusActiveForResume = (status?: string) => status === 'waiting' || status === 'active';
+  const timeControlOptions = ["1", "3", "5", "10", "15", "30"];
+  const formatTimeControl = (value?: string | number) => {
+    const parsed = Number(value || 10);
+    const safe = Number.isFinite(parsed) ? parsed : 10;
+    return `${safe} دقيقة`;
+  };
 
   const isInviteGameStillActive = (invite: Invite | any) => {
     if (invite?.status !== 'game_started') {
@@ -99,6 +117,10 @@ const Friends = () => {
       return cleanup;
     }
   }, [user]);
+
+  useEffect(() => {
+    localStorage.setItem(FRIENDS_TAB_STORAGE_KEY, activeTab);
+  }, [activeTab]);
 
   // Search effect
   useEffect(() => {
@@ -361,7 +383,7 @@ const Friends = () => {
         to_user_id: inviteTarget.user_id.toString(), // تأكد أنه نص
         game_type: 'friendly',
         play_method: playMethod === 'physical_board' ? 'physical_board' : 'phone',
-        time_control: 10,
+        time_control: Number(selectedTime || 10),
       };
       const response = await fetch(`${API_BASE_URL}/api/invites/game`, {
         method: 'POST',
@@ -578,11 +600,12 @@ const Friends = () => {
     switch (status) {
       case 'pending':
         return (
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
             <Button
               onClick={() => acceptInvite(invite.id)}
               variant="chess"
               size="sm"
+              className="w-full sm:w-auto"
             >
               <Check className="h-4 w-4 ml-1" />
               قبول
@@ -591,6 +614,7 @@ const Friends = () => {
               onClick={() => declineInvite(invite.id)}
               variant="outline"
               size="sm"
+              className="w-full sm:w-auto"
             >
               <X className="h-4 w-4 ml-1" />
               رفض
@@ -604,6 +628,7 @@ const Friends = () => {
             onClick={() => startGame(invite)}
             variant="chess"
             size="sm"
+            className="w-full sm:w-auto"
           >
             <MessageCircle className="h-4 w-4 ml-1" />
             الدخول للمباراة
@@ -620,6 +645,7 @@ const Friends = () => {
             onClick={() => joinGame(invite)}
             variant="chess"
             size="sm"
+            className="w-full sm:w-auto"
           >
             <MessageCircle className="h-4 w-4 ml-1" />
             دخول المباراة
@@ -798,7 +824,7 @@ const Friends = () => {
     switch (status) {
       case 'pending':
         return (
-          <Button variant="ghost" size="sm" onClick={() => cancelInvite(invite.id)}>
+          <Button variant="ghost" size="sm" className="w-full sm:w-auto" onClick={() => cancelInvite(invite.id)}>
             <X className="h-4 w-4 ml-1" />
             إلغاء
           </Button>
@@ -810,6 +836,7 @@ const Friends = () => {
             onClick={() => startGame(invite)}
             variant="chess"
             size="sm"
+            className="w-full sm:w-auto"
           >
             <MessageCircle className="h-4 w-4 ml-1" />
             الدخول للمباراة
@@ -826,6 +853,7 @@ const Friends = () => {
             onClick={() => joinGame(invite)}
             variant="chess"
             size="sm"
+            className="w-full sm:w-auto"
           >
             <MessageCircle className="h-4 w-4 ml-1" />
             دخول المباراة
@@ -842,38 +870,44 @@ const Friends = () => {
     friend.username.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate('/dashboard');
+  };
+
   return (
     <div className="min-h-screen bg-gradient-subtle" dir="rtl">
       {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur">
-        <div className="container mx-auto px-4 py-4">
+        <div className="container mx-auto px-3 sm:px-4 py-3 sm:py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Link to="/dashboard">
-                <Button variant="ghost" size="icon">
-                  <Home className="h-5 w-5" />
-                </Button>
-              </Link>
-              <div className="flex items-center gap-2">
-                <Users className="h-6 w-6 text-primary" />
-                <h1 className="text-xl font-bold text-foreground font-cairo">الأصدقاء والدعوات</h1>
+            <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+              <Button variant="ghost" size="icon" onClick={handleBack}>
+                <ArrowRight className="h-5 w-5" />
+              </Button>
+              <div className="flex items-center gap-2 min-w-0">
+                <Users className="h-5 w-5 sm:h-6 sm:w-6 text-primary shrink-0" />
+                <h1 className="text-lg sm:text-xl font-bold text-foreground font-cairo truncate">الأصدقاء والدعوات</h1>
               </div>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="container mx-auto px-4 py-8">
-        <Tabs defaultValue="friends" className="space-y-6">
-                   <TabsList className="grid w-full grid-cols-4">
-           <TabsTrigger value="friends">إضافة أصدقاء </TabsTrigger>
-           <TabsTrigger value="myfriends">
+      <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as FriendsTabValue)} className="space-y-6">
+                   <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto p-1 gap-1">
+           <TabsTrigger className="h-auto min-h-10 px-2 py-2 text-xs sm:text-sm leading-tight whitespace-normal" value="friends">إضافة أصدقاء</TabsTrigger>
+           <TabsTrigger className="h-auto min-h-10 px-2 py-2 text-xs sm:text-sm leading-tight whitespace-normal" value="myfriends">
              أصدقائي ({friends.length})
            </TabsTrigger>
-           <TabsTrigger value="invites">
+           <TabsTrigger className="h-auto min-h-10 px-2 py-2 text-xs sm:text-sm leading-tight whitespace-normal" value="invites">
              الدعوات الواردة ({getFilteredReceivedInvites().length})
            </TabsTrigger>
-           <TabsTrigger value="pending">
+           <TabsTrigger className="h-auto min-h-10 px-2 py-2 text-xs sm:text-sm leading-tight whitespace-normal" value="pending">
               الدعوات المرسلة ({getFilteredSentInvites().length})
             </TabsTrigger>
          </TabsList>
@@ -888,7 +922,7 @@ const Friends = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex gap-3">
+                <div className="flex gap-2 sm:gap-3">
                   <div className="relative flex-1">
                     <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
                     <Input
@@ -912,23 +946,24 @@ const Friends = () => {
                       <div className="space-y-2">
                         <h4 className="text-sm font-medium text-muted-foreground">نتائج البحث:</h4>
                         {searchResults.map((user) => (
-                          <div key={user.user_id} className="flex items-center justify-between p-3 border rounded-lg">
-                            <div className="flex items-center gap-3">
-                              <Avatar className="h-8 w-8">
+                          <div key={user.user_id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 border rounded-lg">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <Avatar className="h-8 w-8 shrink-0">
                                 <AvatarImage src={hasCustomAvatar(user.thumbnail) ? user.thumbnail : undefined} />
                                 <AvatarFallback>{getInitialsFromName(user.username)}</AvatarFallback>
                               </Avatar>
-                              <div>
-                                <h4 className="font-medium">{user.username}</h4>
+                              <div className="min-w-0">
+                                <h4 className="font-medium truncate">{user.username}</h4>
                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                   <Crown className="h-3 w-3" />
-                                  <span>{user.rank || 1200}</span>
+                                  <span>{user.rank || 1500}</span>
                                 </div>
                               </div>
                             </div>
                             <Button
                               size="sm"
                               variant="outline"
+                              className="w-full sm:w-auto"
                               onClick={() => sendFriendRequest(user.user_id.toString())}
                             >
                               إرسال طلب صداقة
@@ -962,9 +997,9 @@ const Friends = () => {
                 ) : incomingRequests.length > 0 ? (
                   <div className="space-y-3">
                     {incomingRequests.map((request) => (
-                      <div key={request.id} className="flex items-center justify-between p-3 border rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-8 w-8">
+                      <div key={request.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 border rounded-lg">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <Avatar className="h-8 w-8 shrink-0">
                             <AvatarImage
                               src={
                                 hasCustomAvatar(request.from_user?.thumbnail)
@@ -974,18 +1009,19 @@ const Friends = () => {
                             />
                             <AvatarFallback>{getInitialsFromName(request.from_user?.username)}</AvatarFallback>
                           </Avatar>
-                          <div>
-                            <h4 className="font-medium">{request.from_user?.username}</h4>
+                          <div className="min-w-0">
+                            <h4 className="font-medium truncate">{request.from_user?.username}</h4>
                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
                               <Clock className="h-3 w-3" />
                               <span>{getTimeAgo(request.created_at)}</span>
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="grid grid-cols-2 sm:flex items-center gap-2">
                           <Button
                             size="sm"
                             variant="chess"
+                            className="w-full"
                             onClick={() => acceptFriendRequest(request.id.toString())}
                           >
                             <Check className="h-3 w-3 ml-1" />
@@ -994,6 +1030,7 @@ const Friends = () => {
                           <Button
                             size="sm"
                             variant="outline"
+                            className="w-full"
                             onClick={() => rejectFriendRequest(request.id.toString())}
                           >
                             <X className="h-3 w-3 ml-1" />
@@ -1017,15 +1054,15 @@ const Friends = () => {
              {friends.length > 0 ? (
                friends.map((friend) => (
                  <Card key={friend.user_id}>
-                   <CardContent className="p-6">
-                     <div className="flex items-center justify-between">
-                       <div className="flex items-center gap-4">
-                         <Avatar className="h-10 w-10">
+                   <CardContent className="p-3 sm:p-6">
+                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                       <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                         <Avatar className="h-10 w-10 shrink-0">
                            <AvatarImage src={hasCustomAvatar(friend.thumbnail) ? friend.thumbnail : undefined} />
                            <AvatarFallback>{getInitialsFromName(friend.username)}</AvatarFallback>
                          </Avatar>
-                         <div className="space-y-1">
-                           <h3 className="font-semibold font-cairo">{friend.username}</h3>
+                         <div className="space-y-1 min-w-0">
+                           <h3 className="font-semibold font-cairo truncate">{friend.username}</h3>
                            <div className="flex items-center gap-2">
                              {getStatusBadge(friend.state, false)}
                              <div className="flex items-center gap-1 text-sm text-muted-foreground">
@@ -1036,11 +1073,12 @@ const Friends = () => {
                          </div>
                        </div>
 
-                       <div className="flex items-center gap-2">
+                       <div className="grid grid-cols-1 sm:flex items-center gap-2 w-full sm:w-auto">
                          {friend.state === 'online' && (
                            <Button
                              variant="chess"
                              size="sm"
+                             className="w-full sm:w-auto"
                              onClick={() => handleOpenInviteModal(friend)}
                            >
                              <MessageCircle className="h-4 w-4 ml-1" />
@@ -1050,6 +1088,7 @@ const Friends = () => {
                          <Button 
                            variant="outline"
                            size="sm"
+                           className="w-full sm:w-auto"
                            onClick={() => handleDeleteClick(friend)}
                          >
                            <X className="h-4 w-4 ml-1" />
@@ -1074,31 +1113,35 @@ const Friends = () => {
            <TabsContent value="invites" className="space-y-4">
             {getFilteredReceivedInvites().map((invite) => (
               <Card key={invite.id} className="border-primary/20">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <Avatar className="h-10 w-10">
+                <CardContent className="p-3 sm:p-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                      <Avatar className="h-10 w-10 shrink-0">
                         <AvatarImage
                           src={hasCustomAvatar(invite.fromUser?.thumbnail) ? invite.fromUser?.thumbnail : undefined}
                         />
                         <AvatarFallback>{getInitialsFromName(invite.fromUser?.username)}</AvatarFallback>
                       </Avatar>
-                                             <div className="space-y-1">
-                         <h3 className="font-semibold font-cairo">{invite.fromUser?.username || 'مستخدم غير معروف'}</h3>
+                                             <div className="space-y-1 min-w-0">
+                         <h3 className="font-semibold font-cairo truncate">{invite.fromUser?.username || 'مستخدم غير معروف'}</h3>
                          <div className="flex items-center gap-2">
                            {getStatusBadge(invite.fromUser?.state, false)}
                            <div className="flex items-center gap-1 text-sm text-muted-foreground">
                              <Crown className="h-3 w-3" />
-                             <span>{invite.fromUser?.rank || 1200}</span>
+                             <span>{invite.fromUser?.rank || 1500}</span>
                            </div>
                          </div>
                          <div className="text-sm text-muted-foreground">
                            {getTimeAgo(invite.date_time)}
                          </div>
+                         <div className="text-sm text-muted-foreground flex items-center gap-1">
+                           <Clock className="h-3 w-3" />
+                           <span>المدة: {formatTimeControl(invite.time_control)}</span>
+                         </div>
                        </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex w-full sm:w-auto flex-col sm:flex-row items-stretch sm:items-center gap-2">
                       <Badge variant="default" className={getStatusColor(invite.status)}>
                         {getStatusText(invite.status)}
                       </Badge>
@@ -1123,24 +1166,28 @@ const Friends = () => {
           <TabsContent value="pending" className="space-y-4">
             {getFilteredSentInvites().map((invite) => (
               <Card key={invite.id}>
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <Avatar className="h-10 w-10">
+                <CardContent className="p-3 sm:p-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                      <Avatar className="h-10 w-10 shrink-0">
                         <AvatarImage
                           src={hasCustomAvatar(invite.toUser?.thumbnail) ? invite.toUser?.thumbnail : undefined}
                         />
                         <AvatarFallback>{getInitialsFromName(invite.toUser?.username)}</AvatarFallback>
                       </Avatar>
-                      <div className="space-y-1">
-                        <h3 className="font-semibold font-cairo">{invite.toUser?.username}</h3>
+                      <div className="space-y-1 min-w-0">
+                        <h3 className="font-semibold font-cairo truncate">{invite.toUser?.username}</h3>
                         <div className="text-sm text-muted-foreground">
                           {getTimeAgo(invite.date_time)}
+                        </div>
+                        <div className="text-sm text-muted-foreground flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          <span>المدة: {formatTimeControl(invite.time_control)}</span>
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex w-full sm:w-auto flex-col sm:flex-row items-stretch sm:items-center gap-2">
                       <Badge variant="default" className={getStatusColor(invite.status)}>
                         {getStatusText(invite.status)}
                       </Badge>
@@ -1177,7 +1224,7 @@ const Friends = () => {
                </span>
              </DialogDescription>
            </DialogHeader>
-           <DialogFooter className="flex gap-2">
+           <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2">
              <Button variant="outline" onClick={cancelDelete}>
                إلغاء
              </Button>
@@ -1195,10 +1242,25 @@ const Friends = () => {
            <DialogHeader>
              <DialogTitle className="font-cairo">إرسال دعوة لعب</DialogTitle>
              <DialogDescription className="font-cairo">
-               اختر طريقة اللعب:
+               اختر طريقة اللعب ومدة المباراة:
              </DialogDescription>
            </DialogHeader>
            <div className="flex flex-col gap-4">
+             <div className="space-y-2">
+               <span className="text-sm font-medium font-cairo">مدة المباراة</span>
+               <Select value={selectedTime} onValueChange={setSelectedTime}>
+                 <SelectTrigger>
+                   <SelectValue placeholder="اختر مدة المباراة" />
+                 </SelectTrigger>
+                 <SelectContent>
+                   {timeControlOptions.map((minutes) => (
+                     <SelectItem key={minutes} value={minutes}>
+                       {formatTimeControl(minutes)}
+                     </SelectItem>
+                   ))}
+                 </SelectContent>
+               </Select>
+             </div>
              <Button
                variant={playMethod === 'phone' ? 'chess' : 'outline'}
                onClick={() => setPlayMethod('phone')}
@@ -1212,7 +1274,7 @@ const Friends = () => {
                رقعة مادية
              </Button>
            </div>
-           <DialogFooter className="flex gap-2 mt-4">
+           <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 mt-4">
              <Button variant="outline" onClick={() => setShowInviteModal(false)} disabled={isSendingInvite}>
                إلغاء
              </Button>
@@ -1233,7 +1295,7 @@ const Friends = () => {
            <DialogHeader>
              <DialogTitle className="font-cairo">قبول دعوة اللعب</DialogTitle>
              <DialogDescription className="font-cairo">
-               اختر طريقة اللعب التي تفضلها:
+               مدة المباراة: {formatTimeControl(selectedInvite?.time_control)}. اختر طريقة اللعب التي تفضلها:
              </DialogDescription>
            </DialogHeader>
            <div className="flex flex-col gap-4">
@@ -1250,7 +1312,7 @@ const Friends = () => {
                رقعة مادية
              </Button>
            </div>
-           <DialogFooter className="flex gap-2 mt-4">
+           <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 mt-4">
              <Button variant="outline" onClick={() => setShowAcceptInviteModal(false)} disabled={isAcceptingInvite}>
                إلغاء
              </Button>

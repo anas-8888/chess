@@ -5,6 +5,7 @@ import User from '../models/User.js';
 import Game from '../models/Game.js'; // Added import for Game model
 import logger from '../utils/logger.js';
 import { handleGameMove, handleGameEnd } from '../socket/socketHelpers.js';
+import { applyGameRatingChanges } from '../services/ratingService.js';
 
 const AI_SYSTEM_EMAIL = 'ai.bot@system.local';
 const AI_SYSTEM_USERNAME = 'ai_bot';
@@ -535,6 +536,8 @@ export const resignGame = async (req, res) => {
         winner_id: winnerId,
         ended_at: new Date(),
       });
+      const { updateUserStatusAfterGameEnd } = await import('../socket/socketHelpers.js');
+      await updateUserStatusAfterGameEnd(Number(id));
     }
 
     return res.status(200).json({
@@ -642,12 +645,23 @@ export const recordAiGameResult = async (req, res) => {
       ended_at: safeEndedAt,
     });
 
+    const ratingChanges = await applyGameRatingChanges({
+      gameId: game.id,
+      winnerId,
+    });
+
     return res.status(201).json({
       success: true,
       message: 'AI game result recorded successfully',
       data: {
         gameId: game.id,
         result,
+        ratingChanges: ratingChanges?.applied
+          ? {
+              white: ratingChanges.white,
+              black: ratingChanges.black,
+            }
+          : null,
       },
     });
   } catch (error) {
@@ -949,6 +963,10 @@ export const finalizeAiGame = async (req, res) => {
       white_time_left: Math.max(0, Number(whiteTimeLeft) || 0),
       black_time_left: Math.max(0, Number(blackTimeLeft) || 0),
     });
+    const ratingChanges = await applyGameRatingChanges({
+      gameId: game.id,
+      winnerId,
+    });
     const { isUserOnline, updateUserStatus } = await import('../socket/socketHelpers.js');
     const nextState = isUserOnline(userId) ? 'online' : 'offline';
     await updateUserStatus(userId, nextState, { force: true });
@@ -956,6 +974,14 @@ export const finalizeAiGame = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: 'AI game finalized',
+      data: {
+        ratingChanges: ratingChanges?.applied
+          ? {
+              white: ratingChanges.white,
+              black: ratingChanges.black,
+            }
+          : null,
+      },
     });
   } catch (error) {
     logger.error('Failed to finalize AI game:', error);

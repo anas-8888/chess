@@ -166,7 +166,7 @@ export const getMyFriendsForDashboard = asyncHandler(async (req, res) => {
       username: friend.username,
       avatar: friend.thumbnail || null,
       status: friend.state || 'offline',
-      rating: friend.rank || 1200
+      rating: friend.rank || 1500
     }));
     
     logger.debug('Dashboard:', dashboardFriends.length);

@@ -47,7 +47,7 @@ const PROMOTION_TO_PIECE_TYPE: Record<(typeof PROMOTION_TARGETS)[number]['type']
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const;
 const RANKS = [8, 7, 6, 5, 4, 3, 2, 1] as const;
 const MOVE_ANIMATION_MS = 620;
-const CAPTURE_FALL_MS = 360;
+const CAPTURE_FALL_MS = 520;
 const LEFT_CLASS = [
   'left-[0%]',
   'left-[12.5%]',
@@ -129,6 +129,7 @@ type CapturedPieceAnimation = {
 };
 
 type BoardSnapshot = Record<Square, Piece | undefined>;
+type ArrowAnnotation = { from: Square; to: Square };
 
 const getSquarePosition = (square: Square) => {
   const file = square[0] as (typeof FILES)[number];
@@ -225,10 +226,23 @@ const ChessBoard: React.FC<ChessBoardProps> = ({ game, onMove, orientation, allo
   const [capturedPieceAnimation, setCapturedPieceAnimation] = useState<CapturedPieceAnimation | null>(null);
   const [pendingPromotion, setPendingPromotion] = useState<PendingPromotion | null>(null);
   const [hiddenSquares, setHiddenSquares] = useState<Set<Square>>(new Set());
+  const [arrowAnnotations, setArrowAnnotations] = useState<ArrowAnnotation[]>([]);
+  const [markedSquares, setMarkedSquares] = useState<Set<Square>>(new Set());
+  const [annotationDrag, setAnnotationDrag] = useState<ArrowAnnotation | null>(null);
   const previousBoardRef = useRef<BoardSnapshot | null>(null);
   const animationTimeoutRef = useRef<number | null>(null);
   const captureAnimationTimeoutRef = useRef<number | null>(null);
   const skipDetectedMoveRef = useRef<string | null>(null);
+  const annotationFromRef = useRef<Square | null>(null);
+  const rightMouseActiveRef = useRef(false);
+  const longPressTimeoutRef = useRef<number | null>(null);
+  const longPressActiveRef = useRef(false);
+  const touchTargetSquareRef = useRef<Square | null>(null);
+  const suppressNextTapRef = useRef(false);
+  const isMobileDevice = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+  }, []);
 
   const files = useMemo(() => (orientation === 'white' ? [...FILES] : [...FILES].reverse()), [orientation]);
   const ranks = useMemo(() => (orientation === 'white' ? [...RANKS] : [...RANKS].reverse()), [orientation]);
@@ -245,6 +259,10 @@ const ChessBoard: React.FC<ChessBoardProps> = ({ game, onMove, orientation, allo
       return `${baseClasses} bg-chess-highlight ring-2 ring-primary`;
     }
 
+    if (markedSquares.has(square)) {
+      return `${baseClasses} ring-2 ring-primary/85`;
+    }
+
     if (possibleMoves.includes(square)) {
       return `${baseClasses} before:absolute before:inset-2 before:bg-primary/40 before:rounded-full before:content-['']`;
     }
@@ -255,6 +273,146 @@ const ChessBoard: React.FC<ChessBoardProps> = ({ game, onMove, orientation, allo
 
     return `${baseClasses} hover:bg-primary/10`;
   };
+
+  const getSquareFromPoint = useCallback((x: number, y: number): Square | null => {
+    const element = document.elementFromPoint(x, y);
+    if (!element) return null;
+    const squareElement = (element as HTMLElement).closest('[data-square]') as HTMLElement | null;
+    const value = squareElement?.dataset?.square;
+    if (!value || value.length !== 2) return null;
+    return value as Square;
+  }, []);
+
+  const toggleMarkedSquare = useCallback((square: Square) => {
+    if (isMobileDevice) return;
+    setMarkedSquares((prev) => {
+      const next = new Set(prev);
+      if (next.has(square)) next.delete(square);
+      else next.add(square);
+      return next;
+    });
+  }, [isMobileDevice]);
+
+  const toggleArrow = useCallback((from: Square, to: Square) => {
+    if (isMobileDevice) return;
+    setArrowAnnotations((prev) => {
+      const existingIndex = prev.findIndex((arrow) => arrow.from === from && arrow.to === to);
+      if (existingIndex >= 0) {
+        const next = [...prev];
+        next.splice(existingIndex, 1);
+        return next;
+      }
+      return [...prev, { from, to }];
+    });
+  }, [isMobileDevice]);
+
+  const resetAnnotationGesture = useCallback(() => {
+    annotationFromRef.current = null;
+    rightMouseActiveRef.current = false;
+    longPressActiveRef.current = false;
+    touchTargetSquareRef.current = null;
+    setAnnotationDrag(null);
+  }, []);
+
+  const clearLongPressTimer = useCallback(() => {
+    if (longPressTimeoutRef.current) {
+      window.clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
+  }, []);
+
+  const finalizeAnnotation = useCallback((target: Square | null) => {
+    const from = annotationFromRef.current;
+    if (!from) {
+      resetAnnotationGesture();
+      return;
+    }
+
+    const to = target || from;
+    if (from === to) {
+      toggleMarkedSquare(from);
+    } else {
+      toggleArrow(from, to);
+    }
+    resetAnnotationGesture();
+  }, [resetAnnotationGesture, toggleArrow, toggleMarkedSquare]);
+
+  const handleSquareContextMenu = useCallback((e: React.MouseEvent) => {
+    if (isMobileDevice) return;
+    e.preventDefault();
+  }, [isMobileDevice]);
+
+  const handleSquareMouseDown = useCallback((e: React.MouseEvent, square: Square) => {
+    if (isMobileDevice) return;
+    if (e.button !== 2) return;
+    e.preventDefault();
+    annotationFromRef.current = square;
+    rightMouseActiveRef.current = true;
+    setAnnotationDrag({ from: square, to: square });
+  }, [isMobileDevice]);
+
+  const handleSquareMouseEnter = useCallback((square: Square) => {
+    if (isMobileDevice) return;
+    if (!rightMouseActiveRef.current || !annotationFromRef.current) return;
+    setAnnotationDrag({ from: annotationFromRef.current, to: square });
+  }, [isMobileDevice]);
+
+  const handleSquareMouseUp = useCallback((e: React.MouseEvent, square: Square) => {
+    if (isMobileDevice) return;
+    if (e.button !== 2) return;
+    e.preventDefault();
+    if (!rightMouseActiveRef.current) return;
+    finalizeAnnotation(square);
+  }, [finalizeAnnotation, isMobileDevice]);
+
+  const handleSquareTouchStart = useCallback((square: Square) => {
+    if (isMobileDevice) return;
+    clearLongPressTimer();
+    annotationFromRef.current = square;
+    touchTargetSquareRef.current = square;
+    longPressActiveRef.current = false;
+    longPressTimeoutRef.current = window.setTimeout(() => {
+      longPressActiveRef.current = true;
+      suppressNextTapRef.current = true;
+      const from = annotationFromRef.current;
+      if (from) {
+        setAnnotationDrag({ from, to: from });
+      }
+    }, 340);
+  }, [clearLongPressTimer, isMobileDevice]);
+
+  const handleSquareTouchMove = useCallback((e: React.TouchEvent) => {
+    if (isMobileDevice) return;
+    if (!annotationFromRef.current) return;
+    const point = e.touches[0];
+    if (!point) return;
+    const hoveredSquare = getSquareFromPoint(point.clientX, point.clientY);
+    if (hoveredSquare) {
+      touchTargetSquareRef.current = hoveredSquare;
+      if (longPressActiveRef.current && annotationFromRef.current) {
+        setAnnotationDrag({ from: annotationFromRef.current, to: hoveredSquare });
+      }
+    }
+  }, [getSquareFromPoint, isMobileDevice]);
+
+  const handleSquareTouchEnd = useCallback(() => {
+    if (isMobileDevice) return;
+    clearLongPressTimer();
+    if (longPressActiveRef.current) {
+      suppressNextTapRef.current = true;
+      finalizeAnnotation(touchTargetSquareRef.current || annotationFromRef.current);
+      return;
+    }
+    annotationFromRef.current = null;
+    touchTargetSquareRef.current = null;
+    longPressActiveRef.current = false;
+  }, [clearLongPressTimer, finalizeAnnotation, isMobileDevice]);
+
+  const handleSquareTouchCancel = useCallback(() => {
+    if (isMobileDevice) return;
+    clearLongPressTimer();
+    resetAnnotationGesture();
+  }, [clearLongPressTimer, resetAnnotationGesture, isMobileDevice]);
 
   const startCapturedPieceFall = useCallback(
     (square: Square, capturedPiece: Piece) => {
@@ -342,6 +500,11 @@ const ChessBoard: React.FC<ChessBoardProps> = ({ game, onMove, orientation, allo
   );
 
   const handleSquareClick = useCallback((square: Square) => {
+    if (suppressNextTapRef.current) {
+      suppressNextTapRef.current = false;
+      return;
+    }
+
     if (!allowMoves) return;
 
     if (selectedSquare) {
@@ -391,6 +554,11 @@ const ChessBoard: React.FC<ChessBoardProps> = ({ game, onMove, orientation, allo
   }, [pendingPromotion, performMove]);
 
   const fen = game.fen();
+  const renderedArrows = useMemo(() => {
+    if (isMobileDevice) return [];
+    if (!annotationDrag) return arrowAnnotations;
+    return [...arrowAnnotations.filter((arrow) => !(arrow.from === annotationDrag.from && arrow.to === annotationDrag.to)), annotationDrag];
+  }, [annotationDrag, arrowAnnotations, isMobileDevice]);
 
   const stickerConfig = useMemo(() => {
     if (!resultSticker) return null;
@@ -446,15 +614,32 @@ const ChessBoard: React.FC<ChessBoardProps> = ({ game, onMove, orientation, allo
   }, [game, fen, startMoveAnimation]);
 
   useEffect(() => {
+    if (!isMobileDevice) return;
+    setArrowAnnotations([]);
+    setMarkedSquares(new Set());
+    resetAnnotationGesture();
+  }, [isMobileDevice, resetAnnotationGesture]);
+
+  useEffect(() => {
+    const onMouseUp = (event: MouseEvent) => {
+      if (isMobileDevice) return;
+      if (!rightMouseActiveRef.current) return;
+      const targetSquare = getSquareFromPoint(event.clientX, event.clientY) || annotationDrag?.to || annotationFromRef.current;
+      finalizeAnnotation(targetSquare);
+    };
+
+    window.addEventListener('mouseup', onMouseUp);
     return () => {
+      window.removeEventListener('mouseup', onMouseUp);
       if (animationTimeoutRef.current) {
         window.clearTimeout(animationTimeoutRef.current);
       }
       if (captureAnimationTimeoutRef.current) {
         window.clearTimeout(captureAnimationTimeoutRef.current);
       }
+      clearLongPressTimer();
     };
-  }, []);
+  }, [annotationDrag, clearLongPressTimer, finalizeAnnotation, getSquareFromPoint, isMobileDevice]);
 
   return (
     <>
@@ -477,6 +662,37 @@ const ChessBoard: React.FC<ChessBoardProps> = ({ game, onMove, orientation, allo
           </div>
 
           <div className="relative grid grid-cols-8 gap-0 rounded overflow-hidden">
+          {!isMobileDevice && renderedArrows.length > 0 && (
+            <svg className="pointer-events-none absolute inset-0 z-10 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+              <defs>
+                <marker id="board-arrow-head" markerWidth="4" markerHeight="4" refX="3.2" refY="2" orient="auto">
+                  <path d="M0,0 L0,4 L4,2 z" fill="rgba(214, 177, 95, 0.9)" />
+                </marker>
+              </defs>
+              {renderedArrows.map((arrow, idx) => {
+                const from = toVisualPosition(arrow.from, orientation);
+                const to = toVisualPosition(arrow.to, orientation);
+                const x1 = from.x * 12.5 + 6.25;
+                const y1 = from.y * 12.5 + 6.25;
+                const x2 = to.x * 12.5 + 6.25;
+                const y2 = to.y * 12.5 + 6.25;
+                return (
+                  <line
+                    key={`${arrow.from}-${arrow.to}-${idx}`}
+                    x1={x1}
+                    y1={y1}
+                    x2={x2}
+                    y2={y2}
+                    stroke="rgba(214, 177, 95, 0.82)"
+                    strokeWidth="1.15"
+                    strokeLinecap="round"
+                    markerEnd="url(#board-arrow-head)"
+                  />
+                );
+              })}
+            </svg>
+          )}
+
           {ranks.map((rank, rankIndex) =>
             files.map((file, fileIndex) => {
               const square = (file + rank) as Square;
@@ -487,7 +703,16 @@ const ChessBoard: React.FC<ChessBoardProps> = ({ game, onMove, orientation, allo
                 <div
                   key={square}
                   className={getSquareClasses(square, fileIndex, rankIndex)}
+                  data-square={square}
                   onClick={() => handleSquareClick(square)}
+                  onContextMenu={handleSquareContextMenu}
+                  onMouseDown={(e) => handleSquareMouseDown(e, square)}
+                  onMouseEnter={() => handleSquareMouseEnter(square)}
+                  onMouseUp={(e) => handleSquareMouseUp(e, square)}
+                  onTouchStart={() => handleSquareTouchStart(square)}
+                  onTouchMove={handleSquareTouchMove}
+                  onTouchEnd={handleSquareTouchEnd}
+                  onTouchCancel={handleSquareTouchCancel}
                 >
                   {piece && pieceImageSrc && !hiddenSquares.has(square) && (
                     <img
@@ -512,11 +737,12 @@ const ChessBoard: React.FC<ChessBoardProps> = ({ game, onMove, orientation, allo
             <div
               className={`pointer-events-none absolute z-20 flex h-[12.5%] w-[12.5%] items-center justify-center ${capturedPieceAnimation.leftClass} ${capturedPieceAnimation.topClass}`}
               style={{
-                transition: `transform ${CAPTURE_FALL_MS}ms cubic-bezier(0.12,0.78,0.3,1), opacity ${Math.max(220, CAPTURE_FALL_MS - 40)}ms ease`,
+                transition: `transform ${CAPTURE_FALL_MS}ms cubic-bezier(0.1,0.9,0.24,1), opacity ${Math.max(260, CAPTURE_FALL_MS - 60)}ms ease, filter ${Math.max(260, CAPTURE_FALL_MS - 80)}ms ease`,
                 transform: capturedPieceAnimation.active
-                  ? 'translateY(150%) rotate(22deg) scale(0.82)'
+                  ? 'translateY(260%) rotate(48deg) scale(0.66)'
                   : 'translateY(0%) rotate(0deg) scale(1)',
                 opacity: capturedPieceAnimation.active ? 0 : 1,
+                filter: capturedPieceAnimation.active ? 'blur(3.2px) saturate(0.75)' : 'blur(0px) saturate(1)',
               }}
             >
               <img
@@ -525,7 +751,7 @@ const ChessBoard: React.FC<ChessBoardProps> = ({ game, onMove, orientation, allo
                 draggable={false}
                 loading="eager"
                 decoding="async"
-                className="h-[74%] w-[74%] object-contain drop-shadow-[0_4px_8px_rgba(0,0,0,0.45)]"
+                className="h-[74%] w-[74%] object-contain drop-shadow-[0_8px_18px_rgba(0,0,0,0.6)]"
               />
             </div>
           )}
@@ -560,6 +786,24 @@ const ChessBoard: React.FC<ChessBoardProps> = ({ game, onMove, orientation, allo
                 decoding="async"
                 className="h-[74%] w-[74%] object-contain drop-shadow-[0_2px_4px_rgba(0,0,0,0.35)]"
               />
+            </div>
+          )}
+
+          {!isMobileDevice && (arrowAnnotations.length > 0 || markedSquares.size > 0) && (
+            <div className="pointer-events-none absolute top-2 left-2 z-50">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="pointer-events-auto h-7 px-2 text-[11px] font-cairo"
+                onClick={() => {
+                  setArrowAnnotations([]);
+                  setMarkedSquares(new Set());
+                  resetAnnotationGesture();
+                }}
+              >
+                مسح الرسم
+              </Button>
             </div>
           )}
           </div>

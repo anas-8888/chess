@@ -45,9 +45,9 @@ async function startServer() {
 
     // تشغيل السيرفر
     server.listen(PORT, () => {
-      logger.info(`Server started successfully on port ${PORT}`);
-      logger.info(`Environment: ${config.nodeEnv}`);
-      logger.info(`Database: ${config.db.host}:${config.db.port}/${config.db.database}`);
+      logger.info(`Server started successfully on port ${PORT}`, null, { source: 'server.js', force: true });
+      logger.info(`Environment: ${config.nodeEnv}`, null, { source: 'server.js', force: true });
+      logger.info(`Database: ${config.db.host}:${config.db.port}/${config.db.database}`, null, { source: 'server.js', force: true });
     });
   } catch (error) {
     logger.error('Server startup failed:', error.message);

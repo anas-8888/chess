@@ -33,6 +33,7 @@ import {
   isUserOnline,
   updateUserStatus as updateSocketUserStatus,
 } from '../socket/socketHelpers.js';
+import { INITIAL_RATING, PLACEMENT_MATCHES } from '../utils/elo.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -500,6 +501,9 @@ export const getProfileWithStats = asyncHandler(async (req, res) => {
 
     const total_games = wins + losses + draws;
     const win_rate = total_games > 0 ? (wins / total_games) * 100 : 0;
+    const placementGamesPlayed = Math.min(total_games, PLACEMENT_MATCHES);
+    const isPlacement = total_games < PLACEMENT_MATCHES;
+    const placementRemaining = Math.max(0, PLACEMENT_MATCHES - total_games);
 
     return res.status(200).json({
       success: true,
@@ -512,6 +516,11 @@ export const getProfileWithStats = asyncHandler(async (req, res) => {
         win_rate,
         rating: user.rank,
         avatar: user.thumbnail,
+        isPlacement,
+        placementGamesPlayed,
+        placementMatches: PLACEMENT_MATCHES,
+        placementRemaining,
+        isNewPlayer: isPlacement,
       },
       message: 'تم جلب بيانات المستخدم والإحصائيات بنجاح',
     });
@@ -617,6 +626,95 @@ export const getRecentGamesForCurrentUser = asyncHandler(async (req, res) => {
   });
 });
 
+// Get rating history for current user
+export const getRatingHistoryForCurrentUser = asyncHandler(async (req, res) => {
+  const userId = req.user.user_id;
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 30));
+  const totalCompletedGames = await Game.count({
+    where: {
+      [Op.or]: [{ white_player_id: userId }, { black_player_id: userId }],
+      status: 'ended',
+      ended_at: { [Op.ne]: null },
+    },
+  });
+
+  const rows = await sequelize.query(
+    `
+      SELECT
+        g.id,
+        g.game_type,
+        g.ended_at,
+        g.winner_id,
+        g.white_player_id,
+        g.black_player_id,
+        g.white_rank_change,
+        g.black_rank_change,
+        wp.username AS white_username,
+        bp.username AS black_username
+      FROM game g
+      INNER JOIN users wp ON wp.user_id = g.white_player_id
+      INNER JOIN users bp ON bp.user_id = g.black_player_id
+      WHERE
+        g.status = 'ended'
+        AND g.ended_at IS NOT NULL
+        AND (g.white_player_id = :userId OR g.black_player_id = :userId)
+      ORDER BY g.ended_at DESC
+      LIMIT :limit
+    `,
+    {
+      replacements: { userId, limit },
+      type: QueryTypes.SELECT,
+    }
+  );
+
+  const user = await User.findByPk(userId, {
+    attributes: ['user_id', 'rank'],
+  });
+  const currentRating = Number(user?.rank) || INITIAL_RATING;
+
+  let rollingAfter = currentRating;
+  const history = rows.map((game) => {
+    const isWhite = Number(game.white_player_id) === Number(userId);
+    const deltaRaw = isWhite ? game.white_rank_change : game.black_rank_change;
+    const delta = Number(deltaRaw) || 0;
+    const opponent = isWhite ? game.black_username : game.white_username;
+
+    let result = 'تعادل';
+    if (game.winner_id) {
+      result = Number(game.winner_id) === Number(userId) ? 'فوز' : 'خسارة';
+    }
+
+    const ratingAfter = rollingAfter;
+    const ratingBefore = ratingAfter - delta;
+    rollingAfter = ratingBefore;
+
+    return {
+      gameId: Number(game.id),
+      endedAt: game.ended_at,
+      gameType: game.game_type,
+      opponent,
+      result,
+      delta,
+      ratingBefore,
+      ratingAfter,
+    };
+  });
+
+  return res.status(200).json({
+    success: true,
+    data: {
+      currentRating,
+      lastDelta: history.length > 0 ? history[0].delta : 0,
+      isPlacement: totalCompletedGames < PLACEMENT_MATCHES,
+      placementGamesPlayed: Math.min(totalCompletedGames, PLACEMENT_MATCHES),
+      placementMatches: PLACEMENT_MATCHES,
+      placementRemaining: Math.max(0, PLACEMENT_MATCHES - totalCompletedGames),
+      history,
+    },
+    message: 'تم جلب سجل تغيّر التقييم بنجاح',
+  });
+});
+
 // Get current active/waiting game for logged-in user
 export const getCurrentActiveGame = asyncHandler(async (req, res) => {
   const userId = req.user.user_id;
@@ -699,6 +797,14 @@ export const endCurrentGame = asyncHandler(async (req, res) => {
     await stopClock(String(gameId));
   } catch (error) {
     logger.error('Failed to stop game clock while ending game:', error);
+  }
+
+  // مزامنة حالة اللاعبين بعد إنهاء المباراة مباشرة
+  try {
+    const { updateUserStatusAfterGameEnd } = await import('../socket/socketHelpers.js');
+    await updateUserStatusAfterGameEnd(gameId);
+  } catch (error) {
+    logger.error('Failed to update player statuses while ending game:', error);
   }
 
   return res.status(200).json({

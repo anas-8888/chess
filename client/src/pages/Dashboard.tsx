@@ -9,6 +9,7 @@ import {
   Users, 
   Mail, 
   Trophy, 
+  Puzzle,
   Clock, 
   User,
   LogOut,
@@ -62,6 +63,10 @@ interface ActiveGame {
   time_left: number;
 }
 
+const DASHBOARD_TAB_STORAGE_KEY = 'dashboard_active_tab_v1';
+const DASHBOARD_TAB_VALUES = ['play', 'games'] as const;
+type DashboardTabValue = (typeof DASHBOARD_TAB_VALUES)[number];
+
 const Dashboard = () => {
   const { user: authUser, logout } = useAuth();
   const { toast } = useToast();
@@ -74,6 +79,14 @@ const Dashboard = () => {
   const [endingGameId, setEndingGameId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const { updateStatus } = useAuth();
+  const [activeTab, setActiveTab] = useState<DashboardTabValue>(() => {
+    if (typeof window === 'undefined') return 'play';
+    const savedTab = localStorage.getItem(DASHBOARD_TAB_STORAGE_KEY);
+    if (savedTab && (DASHBOARD_TAB_VALUES as readonly string[]).includes(savedTab)) {
+      return savedTab as DashboardTabValue;
+    }
+    return 'play';
+  });
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -114,6 +127,11 @@ const Dashboard = () => {
     };
     fetchUserData();
   }, [toast, updateStatus]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(DASHBOARD_TAB_STORAGE_KEY, activeTab);
+  }, [activeTab]);
 
   // Update status when component mounts
   useEffect(() => {
@@ -518,7 +536,7 @@ const Dashboard = () => {
                       <div className="flex items-center gap-2">
                         <Badge variant="outline" className="border-border text-foreground">
                           <Trophy className="w-3 h-3 ml-1 text-muted-foreground" />
-                          {user.rating || 1200}
+                          {user.rating || 1500}
                         </Badge>
                       </div>
                     </div>
@@ -538,6 +556,10 @@ const Dashboard = () => {
                   <DropdownMenuItem onClick={() => navigate('/friends')} className="justify-start gap-2">
                     <Users className="h-4 w-4 shrink-0" />
                     الأصدقاء
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate('/connect-board')} className="justify-start gap-2">
+                    <Trophy className="h-4 w-4 shrink-0" />
+                    ربط الرقعة
                   </DropdownMenuItem>
                   {authUser?.type === 'admin' && (
                     <DropdownMenuItem onClick={() => navigate('/admin')} className="justify-start gap-2">
@@ -571,7 +593,7 @@ const Dashboard = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2">
-            <Tabs defaultValue="play" className="w-full">
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as DashboardTabValue)} className="w-full">
               <TabsList className="grid w-full grid-cols-2 mb-6 bg-card border border-border p-1">
                 <TabsTrigger value="play" className="flex items-center gap-2">
                   <Play className="w-4 h-4" />
@@ -650,19 +672,19 @@ const Dashboard = () => {
                   </Card>
 
                   <Card className="border-border bg-card hover:shadow-card transition-shadow cursor-pointer"
-                        onClick={() => navigate('/connect-board')}>
+                        onClick={() => navigate('/puzzle')}>
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
-                        <Trophy className="w-5 h-5 text-primary" />
-                        الربط المادي
+                        <Puzzle className="w-5 h-5 text-primary" />
+                        حل الألغاز
                       </CardTitle>
                       <CardDescription>
-                        إدارة الاتصال بلوحة الشطرنج المادية
+                        تدريب تكتيكي يومي لتحسين مستواك
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
                       <Button variant="outline" className="w-full border-border">
-                        فتح الاتصال
+                        ابدأ حل الألغاز
                       </Button>
                     </CardContent>
                   </Card>
@@ -673,11 +695,20 @@ const Dashboard = () => {
 
               <TabsContent value="games">
                 <Card className="border-border bg-card">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Clock className="w-5 h-5 text-primary" />
-                      آخر النشاط
-                    </CardTitle>
+                  <CardHeader className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <CardTitle className="flex items-center gap-2">
+                        <Clock className="w-5 h-5 text-primary" />
+                        آخر النشاط
+                      </CardTitle>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => navigate('/my-statistics')}
+                      >
+                        عرض جميع الإحصائيات
+                      </Button>
+                    </div>
                     <CardDescription>آخر 12 مباراة مسجلة في حسابك</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
@@ -700,31 +731,21 @@ const Dashboard = () => {
                               {game.result}
                             </Badge>
                           </div>
-                          <div className="mt-3 flex items-center justify-end gap-2">
-                            {game.status === 'active' || game.status === 'waiting' ? (
-                              <>
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  onClick={() => handleEndGame(game.id)}
-                                  disabled={endingGameId === game.id}
-                                >
-                                  {endingGameId === game.id ? 'جارٍ الإنهاء...' : 'إنهاء'}
-                                </Button>
-                                <Button size="sm" onClick={() => navigate(`/game?id=${game.id}`)}>
-                                  متابعة
-                                </Button>
-                              </>
-                            ) : (
+                          {(game.status === 'active' || game.status === 'waiting') && (
+                            <div className="mt-3 flex items-center justify-end gap-2">
                               <Button
                                 size="sm"
-                                variant="outline"
-                                onClick={() => navigate('/my-statistics')}
+                                variant="destructive"
+                                onClick={() => handleEndGame(game.id)}
+                                disabled={endingGameId === game.id}
                               >
-                                عرض التقرير
+                                {endingGameId === game.id ? 'جارٍ الإنهاء...' : 'إنهاء'}
                               </Button>
-                            )}
-                          </div>
+                              <Button size="sm" onClick={() => navigate(`/game?id=${game.id}`)}>
+                                متابعة
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       ))
                     )}
@@ -794,7 +815,7 @@ const Dashboard = () => {
                           <p className="font-medium text-sm text-foreground">{invite.fromUser?.username || 'مستخدم غير معروف'}</p>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             <Crown className="w-3 h-3 text-muted-foreground" />
-                            <span>{invite.fromUser?.rank || 1200}</span>
+                            <span>{invite.fromUser?.rank || 1500}</span>
                             <span>•</span>
                             <span>{getTimeAgo(invite.date_time)}</span>
                           </div>

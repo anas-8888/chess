@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Home, KeyRound, LogOut, Save, Upload } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowRight, KeyRound, LogOut, Save, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { userService } from '@/services/userService';
 
 const Settings = () => {
+  const navigate = useNavigate();
   const { logout } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
@@ -254,11 +255,9 @@ const Settings = () => {
       <header className="border-b border-border bg-card/50 backdrop-blur">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link to="/dashboard">
-              <Button variant="ghost" size="icon">
-                <Home className="h-5 w-5" />
-              </Button>
-            </Link>
+            <Button variant="ghost" size="icon" aria-label="رجوع" onClick={() => navigate(-1)}>
+              <ArrowRight className="h-5 w-5" />
+            </Button>
             <h1 className="text-xl font-bold font-cairo">ملفي الشخصي</h1>
           </div>
           <Button variant="outline" onClick={logout}>

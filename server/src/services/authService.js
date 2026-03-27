@@ -87,7 +87,7 @@ export async function registerUser(data) {
       email: email.toLowerCase(),
       password_hash: passwordHash,
       type: 'user',
-      rank: 1200,
+      rank: 1500,
       puzzle_level: 1,
       state: 'online',
     });

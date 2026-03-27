@@ -7,6 +7,7 @@ import GameMove from '../models/GameMove.js';
 import { Op } from 'sequelize';
 import logger from '../utils/logger.js';
 import { Chess } from 'chess.js';
+import { applyGameRatingChanges } from '../services/ratingService.js';
 
 // Store active user connections - تحسين لتتبع جميع الاتصالات لكل مستخدم
 const activeUsers = new Map(); // userId -> Set of socketIds
@@ -25,7 +26,7 @@ let previousStats = { totalUsers: 0, totalConnections: 0 };
 // Configuration for logging
 const LOG_CONFIG = {
   showDetailedConnections: false, // تعطيل الرسائل التفصيلية للاتصالات
-  showStatusUpdates: true,        // إظهار تحديثات الحالة
+  showStatusUpdates: false,       // تعطيل رسائل حالة المستخدم لتخفيف اللوغ
   showStats: true                // إظهار الإحصائيات
 };
 
@@ -54,7 +55,7 @@ export function disableDetailedLogging() {
 export function enableMinimalLogging() {
   updateLogConfig({
     showDetailedConnections: false,
-    showStatusUpdates: true,  // إظهار فقط تحديثات الحالة المهمة
+    showStatusUpdates: false, // تعطيل رسائل الحالة (online/offline/in-game)
     showStats: false
   });
   logger.info('Simple logging enabled (important events only)');
@@ -139,12 +140,9 @@ export function removeUserConnection(userId, socketId) {
     try {
       const user = await User.findByPk(userId);
       if (!user) return;
-
-      if (user.state === 'in-game') {
-        return;
-      }
-
-      await updateUserStatus(userId, 'offline');
+      // إذا لم يعد هناك أي socket فعال بعد المهلة، اعتبر المستخدم غير متصل
+      // حتى لو كانت حالته السابقة in-game (لتجنب حالات التعليق الوهمية).
+      await updateUserStatus(userId, 'offline', { force: true });
     } catch (error) {
       logger.error('Failed to set user status to offline:', error);
     }
@@ -220,16 +218,7 @@ export async function updateUserStatus(userId, status, options = {}) {
     
     const connectionsCount = getUserConnections(userId).size;
     
-    // طباعة رسائل محسنة فقط إذا كان مفعلاً
-    if (LOG_CONFIG.showStatusUpdates) {
-      if (status === 'online' && connectionsCount > 0) {
-        logger.info(`🟢 User ${userId} is online (${connectionsCount} connections)`);
-      } else if (status === 'offline') {
-        logger.info(`🔴 User ${userId} is offline`);
-      } else if (status === 'in-game') {
-        logger.info(`🎮 User ${userId} is in game`);
-      }
-    }
+    // intentionally muted: status update info logs are noisy in production/dev
     
     // إرسال تحديث الحالة لجميع أصدقاء المستخدم فقط إذا تغيرت الحالة
     await broadcastFriendStatusUpdate(userId, status);
@@ -819,7 +808,12 @@ export async function handleGameEnd(nsp, gameId, reason, winner = null, loser = 
     } else if (reason === 'checkmate' || reason === 'resign') {
       winnerId = winner === 'white' ? game.white_player_id : game.black_player_id;
       loserId = winner === 'white' ? game.black_player_id : game.white_player_id;
-    } else if (reason === 'draw') {
+    } else if (
+      reason === 'draw' ||
+      reason === 'stalemate' ||
+      reason === 'threefold_repetition' ||
+      reason === 'insufficient_material'
+    ) {
       // في حالة التعادل، لا يوجد فائز
       winnerId = null;
       loserId = null;
@@ -831,6 +825,12 @@ export async function handleGameEnd(nsp, gameId, reason, winner = null, loser = 
       winner_id: winnerId,
       ended_at: new Date()
     });
+
+    // Apply ELO exactly once per finished game.
+    const ratingOutcome = await applyGameRatingChanges({
+      gameId: game.id,
+      winnerId: winnerId,
+    });
     
     // إيقاف المؤقت
     await stopClock(gameId);
@@ -841,7 +841,13 @@ export async function handleGameEnd(nsp, gameId, reason, winner = null, loser = 
       reason: reason,
       winner: winner,
       winnerId: winnerId,
-      loserId: loserId
+      loserId: loserId,
+      ratingChanges: ratingOutcome?.applied
+        ? {
+            white: ratingOutcome.white,
+            black: ratingOutcome.black,
+          }
+        : null,
     });
     
     // إرسال حدث gameTimeout إذا كان السبب هو انتهاء الوقت
@@ -855,12 +861,9 @@ export async function handleGameEnd(nsp, gameId, reason, winner = null, loser = 
       });
     }
     
-    // تحديث حالة اللاعبين
-    const whiteUser = await User.findByPk(game.white_player_id);
-    const blackUser = await User.findByPk(game.black_player_id);
-    
-    if (whiteUser) await whiteUser.update({ state: 'online' });
-    if (blackUser) await blackUser.update({ state: 'online' });
+    // تحديث حالة اللاعبين تلقائياً حسب اتصالهم الفعلي (online/offline)
+    // وعدم إبقائهم stuck على in-game بعد انتهاء المباراة.
+    await updateUserStatusAfterGameEnd(gameId);
     
     logger.info(`Game ${gameId} ended - Reason: ${reason}, Winner: ${winner}`);
     

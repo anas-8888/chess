@@ -10,11 +10,12 @@ import {
   ArrowLeft,
   Loader2
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { userService } from '@/services/userService';
 
 const AILoading = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [loadingText, setLoadingText] = useState('جاري تهيئة جلسة اللعب...');
   const [progress, setProgress] = useState(0);
 
@@ -60,7 +61,7 @@ const AILoading = () => {
 
       if (completed >= total) {
         setLoadingText('كل شيء جاهز!');
-        navigate('/ai-game', { replace: true });
+        navigate(`/ai-game${location.search || ''}`, { replace: true });
       }
     };
 
@@ -76,7 +77,7 @@ const AILoading = () => {
     return () => {
       cancelled = true;
     };
-  }, [navigate]);
+  }, [navigate, location.search]);
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center">

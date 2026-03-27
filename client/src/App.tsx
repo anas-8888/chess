@@ -21,6 +21,7 @@ import AIGame from "./pages/AIGame";
 import AILoading from "./pages/AILoading";
 import Settings from "./pages/Settings";
 import MyStatistics from "./pages/MyStatistics";
+import GameReplay from "./pages/GameReplay";
 import NotFound from "./pages/NotFound";
 import ActiveGameSticky from "./components/ActiveGameSticky";
 
@@ -52,6 +53,7 @@ const App = () => (
             <Route path="/ai-game" element={<ProtectedRoute><AIGame /></ProtectedRoute>} />
             <Route path="/my-profile" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/my-statistics" element={<ProtectedRoute><MyStatistics /></ProtectedRoute>} />
+            <Route path="/game-replay/:gameId" element={<ProtectedRoute><GameReplay /></ProtectedRoute>} />
             
             {/* Catch-all route */}
             <Route path="*" element={<NotFound />} />

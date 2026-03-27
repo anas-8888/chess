@@ -156,11 +156,16 @@ class Logger {
     }
   }
 
-  info(message, data = null) {
+  info(message, data = null, options = {}) {
+    return this.infoWithOptions(message, data, options);
+  }
+
+  infoWithOptions(message, data = null, options = {}) {
+    const shouldForce = Boolean(options?.force) || options?.source === 'server.js';
     if (
       this.shouldLog('info') &&
-      !this.isSuppressedInfoMessage(message) &&
-      !this.isMessageRepeated(message, 'info')
+      (shouldForce || !this.isSuppressedInfoMessage(message)) &&
+      (shouldForce || !this.isMessageRepeated(message, 'info'))
     ) {
       console.log(this.formatMessage('info', message, data));
     }
@@ -241,6 +246,14 @@ class Logger {
     ];
 
     if (noisyInfoPrefixes.some((prefix) => normalized.startsWith(prefix))) {
+      return true;
+    }
+
+    // Suppress noisy user presence/status flip logs.
+    if (/^[🟢🔴]\s+User\s+\d+\s+is\s+(online|offline)(\s+\(\d+\s+connections\))?$/i.test(normalized)) {
+      return true;
+    }
+    if (/^\d+\s+(online|offline|in-game)\s+(online|offline|in-game)$/i.test(normalized)) {
       return true;
     }
 

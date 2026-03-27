@@ -26,6 +26,7 @@ export interface Invite {
   } | null;
   game_id?: number;
   game_type: string;
+  time_control?: number;
   play_method: string;
   date_time: string;
   expires_at: string;

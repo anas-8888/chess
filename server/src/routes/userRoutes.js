@@ -25,6 +25,7 @@ import {
   updateUserStatus,
   getProfileWithStats,
   getRecentGamesForCurrentUser,
+  getRatingHistoryForCurrentUser,
   getCurrentActiveGame,
   endCurrentGame,
   getCurrentUserStatus,
@@ -61,6 +62,7 @@ router.use(protect);
 router.get('/profile', getProfile);
 router.get('/profile/stats', getProfileWithStats);
 router.get('/profile/recent-games', getRecentGamesForCurrentUser);
+router.get('/profile/rating-history', getRatingHistoryForCurrentUser);
 router.get('/games/active', getCurrentActiveGame);
 router.post('/games/:gameId/end', endCurrentGame);
 router.get('/status', getCurrentUserStatus);

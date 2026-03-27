@@ -126,11 +126,15 @@ export const createGameInvite = asyncHandler(async (req, res) => {
     return res.status(400).json(formatError('بيانات الدعوة غير صحيحة', validation.error.errors));
   }
   
-  const { to_user_id, game_type, play_method } = validation.data;
+  const { to_user_id, game_type, play_method, time_control } = validation.data;
   
-  console.log('Creating game invite:', { fromUserId, to_user_id, game_type, play_method });
-  
-  const invite = await inviteService.createGameInvite(fromUserId, to_user_id, game_type, play_method);
+  const invite = await inviteService.createGameInvite(
+    fromUserId,
+    to_user_id,
+    game_type,
+    play_method,
+    time_control
+  );
   
   return res.status(201).json(formatResponse(invite, 'تم إنشاء دعوة اللعب بنجاح'));
 });
@@ -285,7 +289,7 @@ export const getPendingInvitesForDashboard = asyncHandler(async (req, res) => {
             id: fromUser.user_id.toString(),
             username: fromUser.username,
             avatar: fromUser.thumbnail || null,
-            rating: fromUser.rank || 1200
+            rating: fromUser.rank || 1500
           },
           game_type: invite.game_type || 'standard',
           time_control: invite.time_control || 10,
@@ -415,7 +419,7 @@ export const declineInviteForDashboard = asyncHandler(async (req, res) => {
  */
 export const sendInviteToFriend = asyncHandler(async (req, res) => {
   const fromUserId = req.user.user_id;
-  const { friend_id, time_control = 10, game_type = 'standard' } = req.body;
+  const { friend_id, time_control = 10, game_type = 'friendly' } = req.body;
   
   if (!friend_id) {
     return res.status(400).json({
@@ -425,7 +429,13 @@ export const sendInviteToFriend = asyncHandler(async (req, res) => {
   }
   
   try {
-    const invite = await inviteService.createGameInvite(fromUserId, friend_id, game_type, 'friend');
+    const invite = await inviteService.createGameInvite(
+      fromUserId,
+      friend_id,
+      game_type,
+      'phone',
+      time_control
+    );
     
     return res.status(201).json({
       success: true,
