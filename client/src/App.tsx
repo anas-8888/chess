@@ -12,7 +12,6 @@ import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import GameRoom from "./pages/GameRoom";
 import Puzzle from "./pages/Puzzle";
-import Play from "./pages/Play";
 import Friends from "./pages/Friends";
 import Admin from "./pages/Admin";
 import ConnectBoard from "./pages/ConnectBoard";
@@ -44,7 +43,6 @@ const App = () => (
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/game" element={<ProtectedRoute><GameRoom /></ProtectedRoute>} />
             <Route path="/puzzle" element={<ProtectedRoute><Puzzle /></ProtectedRoute>} />
-            <Route path="/play" element={<ProtectedRoute><Play /></ProtectedRoute>} />
             <Route path="/friends" element={<ProtectedRoute><Friends /></ProtectedRoute>} />
             <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
             <Route path="/connect-board" element={<ProtectedRoute><ConnectBoard /></ProtectedRoute>} />

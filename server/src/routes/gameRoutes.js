@@ -3,6 +3,8 @@ import {
   getGameDetails,
   updateGameTime,
   getGameMoves,
+  getGameChatMessages,
+  postGameChatMessage,
   getGameDuration,
   controlPlayer,
   getGameState,
@@ -30,6 +32,8 @@ router.get('/:id', validateGameId, getGameDetails);
 
 // الحصول على نقلات اللعبة
 router.get('/:id/moves', validateGameId, getGameMoves);
+router.get('/:id/chat', protect, validateGameId, getGameChatMessages);
+router.post('/:id/chat', protect, validateGameId, postGameChatMessage);
 
 // الحصول على مدة اللعبة
 router.get('/:id/duration', validateGameId, getGameDuration);

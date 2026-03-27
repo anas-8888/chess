@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, Trophy, FileText, Loader2, PlayCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Trophy, FileText, Loader2, PlayCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,9 +13,9 @@ import {
   type GameMovePair,
   type RatingHistoryItem,
 } from '@/services/userService';
+import AppNavHeader from '@/components/AppNavHeader';
 
 const MyStatistics = () => {
-  const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -107,11 +107,11 @@ const MyStatistics = () => {
       const moves = await userService.getGameMoves(game.id);
       const report = buildGameReport(game, moves);
       setGameReport(report);
-    } catch (error: any) {
+    } catch (error: unknown) {
       setGameReport(null);
       toast({
         title: 'خطأ',
-        description: error.message || 'فشل في جلب تقرير المباراة',
+        description: error instanceof Error ? error.message : 'فشل في جلب تقرير المباراة',
         variant: 'destructive',
       });
     } finally {
@@ -132,10 +132,10 @@ const MyStatistics = () => {
         setRecentGames(recent);
         setRatingHistory(ratingData.history || []);
         setLastRatingDelta(Number(ratingData.lastDelta) || 0);
-      } catch (error: any) {
+      } catch (error: unknown) {
         toast({
           title: 'خطأ',
-          description: error.message || 'فشل في تحميل الإحصائيات',
+          description: error instanceof Error ? error.message : 'فشل في تحميل الإحصائيات',
           variant: 'destructive',
         });
       } finally {
@@ -144,7 +144,7 @@ const MyStatistics = () => {
     };
 
     load();
-  }, []);
+  }, [toast]);
 
   if (loading) {
     return (
@@ -156,14 +156,7 @@ const MyStatistics = () => {
 
   return (
     <div className="min-h-screen bg-gradient-subtle" dir="rtl">
-      <header className="border-b border-border bg-card/50 backdrop-blur">
-        <div className="container mx-auto px-4 py-4 flex items-center gap-3">
-          <Button variant="ghost" size="icon" aria-label="رجوع" onClick={() => navigate(-1)}>
-            <ArrowRight className="h-5 w-5" />
-          </Button>
-          <h1 className="text-xl font-bold font-cairo">إحصائياتي</h1>
-        </div>
-      </header>
+      <AppNavHeader />
 
       <main className="container mx-auto px-4 py-8 space-y-6">
         <Card className="border-yellow-500/20 bg-card/60">

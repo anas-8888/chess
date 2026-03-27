@@ -1,336 +1,510 @@
--- =====================================================
--- Smart Chess Database Schema
--- =====================================================
+-- phpMyAdmin SQL Dump
+-- version 5.2.1
+-- https://www.phpmyadmin.net/
+--
+-- Host: 127.0.0.1
+-- Generation Time: Mar 27, 2026 at 02:00 PM
+-- Server version: 10.4.32-MariaDB
+-- PHP Version: 8.0.30
 
--- إنشاء قاعدة البيانات
-CREATE DATABASE IF NOT EXISTS chess_db 
-CHARACTER SET utf8mb4 
-COLLATE utf8mb4_unicode_ci;
+SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
+START TRANSACTION;
+SET time_zone = "+00:00";
 
-USE chess_db;
 
--- =====================================================
--- جدول المستخدمين
--- =====================================================
-CREATE TABLE users (
-    user_id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) NOT NULL UNIQUE,
-    type ENUM('user', 'admin') NOT NULL DEFAULT 'user',
-    email VARCHAR(100) NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL,
-    thumbnail VARCHAR(255) DEFAULT '/img/default-avatar.png',
-    rank INT DEFAULT 1500,
-    puzzle_level INT DEFAULT 1,
-    state ENUM('online', 'offline', 'in-game') DEFAULT 'offline' NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP NULL,
-    
-    -- Constraints
-    CHECK (rank >= 0 AND rank <= 3000),
-    CHECK (puzzle_level >= 1 AND puzzle_level <= 10),
-    CHECK (LENGTH(username) >= 3 AND LENGTH(username) <= 50),
-    CHECK (username REGEXP '^[a-zA-Z0-9_]+$')
-);
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!40101 SET NAMES utf8mb4 */;
 
--- =====================================================
--- جدول الجلسات
--- =====================================================
-CREATE TABLE session (
-    id VARCHAR(512) PRIMARY KEY,
-    user_id INT NOT NULL,
-    ip_address VARCHAR(45),
-    user_agent VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP NULL,
-    last_activity TIMESTAMP NULL,
-    deleted_at TIMESTAMP NULL,
-    
-    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
-);
+--
+-- Database: `chess_db`
+--
 
--- =====================================================
--- جدول التصنيفات
--- =====================================================
-CREATE TABLE category (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP NULL
-);
+-- --------------------------------------------------------
 
--- =====================================================
--- جدول الدورات
--- =====================================================
-CREATE TABLE course (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    category_id INT NOT NULL,
-    name VARCHAR(200) NOT NULL,
-    details VARCHAR(200),
-    level ENUM('beginner', 'intermediate', 'pro') DEFAULT 'beginner',
-    image_url VARCHAR(255),
-    hours DECIMAL(4,1),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP NULL,
-    
-    FOREIGN KEY (category_id) REFERENCES category(id) ON DELETE CASCADE
-);
+--
+-- Table structure for table `category`
+--
 
--- =====================================================
--- جدول فيديوهات الدورات
--- =====================================================
-CREATE TABLE course_video (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    course_id INT NOT NULL,
-    title VARCHAR(200) NOT NULL,
-    url VARCHAR(255) NOT NULL,
-    position INT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP NULL,
-    
-    FOREIGN KEY (course_id) REFERENCES course(id) ON DELETE CASCADE
-);
+CREATE TABLE `category` (
+  `id` int(11) NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `deleted_at` timestamp NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- =====================================================
--- جدول دورات المستخدمين
--- =====================================================
-CREATE TABLE user_course (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    course_id INT NOT NULL,
-    purchase_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-    deleted_at TIMESTAMP NULL,
-    
-    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-    FOREIGN KEY (course_id) REFERENCES course(id) ON DELETE CASCADE,
-    UNIQUE KEY unique_user_course (user_id, course_id)
-);
+-- --------------------------------------------------------
 
--- =====================================================
--- جدول الأصدقاء
--- =====================================================
-CREATE TABLE friend (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    friend_user_id INT NOT NULL,
-    status ENUM('pending', 'accepted', 'rejected') DEFAULT 'pending' NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP NULL,
-    
-    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-    FOREIGN KEY (friend_user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-    UNIQUE KEY unique_friendship (user_id, friend_user_id),
-    CHECK (user_id != friend_user_id)
-);
+--
+-- Table structure for table `course`
+--
 
--- =====================================================
--- جدول الألغاز
--- =====================================================
-CREATE TABLE puzzle (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(200),
-    level ENUM('easy', 'medium', 'hard') DEFAULT 'easy',
-    fen VARCHAR(200) NOT NULL,
-    details VARCHAR(200),
-    solution JSON NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP NULL
-);
+CREATE TABLE `course` (
+  `id` int(11) NOT NULL,
+  `category_id` int(11) NOT NULL,
+  `name` varchar(200) NOT NULL,
+  `details` varchar(200) DEFAULT NULL,
+  `level` enum('beginner','intermediate','pro') DEFAULT 'beginner',
+  `image_url` varchar(255) DEFAULT NULL,
+  `hours` decimal(4,1) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `deleted_at` timestamp NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- =====================================================
--- جدول رقعة الشطرنج للمستخدمين
--- =====================================================
-CREATE TABLE user_board (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    serial_number VARCHAR(100) NOT NULL UNIQUE,
-    name VARCHAR(100),
-    connected BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP NULL,
-    
-    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
-);
+-- --------------------------------------------------------
 
--- =====================================================
--- جدول الألعاب
--- =====================================================
-CREATE TABLE game (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    white_player_id INT NOT NULL,
-    black_player_id INT NOT NULL,
-    started_by_user_id INT NOT NULL,
-    game_type ENUM('friend', 'ranked', 'ai', 'puzzle') NOT NULL,
-    ai_level INT NULL,
-    puzzle_id INT NULL,
-    initial_time INT NOT NULL,
-    white_time_left INT NOT NULL,
-    black_time_left INT NOT NULL,
-    white_play_method ENUM('phone', 'physical_board') NOT NULL,
-    black_play_method ENUM('phone', 'physical_board') NOT NULL,
-    current_fen VARCHAR(100) NOT NULL DEFAULT 'startpos',
-    status ENUM('waiting', 'active', 'ended') NOT NULL DEFAULT 'waiting',
-    current_turn ENUM('white', 'black') NOT NULL DEFAULT 'white',
-    winner_id INT NULL,
-    white_rank_change INT NULL,
-    black_rank_change INT NULL,
-    started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    ended_at TIMESTAMP NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
-    FOREIGN KEY (white_player_id) REFERENCES users(user_id) ON DELETE CASCADE,
-    FOREIGN KEY (black_player_id) REFERENCES users(user_id) ON DELETE CASCADE,
-    FOREIGN KEY (started_by_user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-    FOREIGN KEY (winner_id) REFERENCES users(user_id) ON DELETE SET NULL,
-    FOREIGN KEY (puzzle_id) REFERENCES puzzle(id) ON DELETE SET NULL,
-    CHECK (white_player_id != black_player_id)
-);
+--
+-- Table structure for table `course_video`
+--
 
--- =====================================================
--- جدول حركات اللعبة
--- =====================================================
-CREATE TABLE game_move (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    game_id INT NOT NULL,
-    move_number INT NOT NULL,
-    player_id INT NOT NULL,
-    uci VARCHAR(8) NOT NULL,
-    san VARCHAR(16) NULL,
-    fen_after VARCHAR(100) NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    FOREIGN KEY (game_id) REFERENCES game(id) ON DELETE CASCADE,
-    FOREIGN KEY (player_id) REFERENCES users(user_id) ON DELETE CASCADE
-);
+CREATE TABLE `course_video` (
+  `id` int(11) NOT NULL,
+  `course_id` int(11) NOT NULL,
+  `title` varchar(200) NOT NULL,
+  `url` varchar(255) NOT NULL,
+  `position` int(11) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `deleted_at` timestamp NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- =====================================================
--- جدول الدعوات
--- =====================================================
-CREATE TABLE invites (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    from_user_id INT NOT NULL,
-    to_user_id INT NOT NULL,
-    status ENUM('pending', 'accepted', 'rejected', 'expired', 'game_started') DEFAULT 'pending' NOT NULL,
-    game_type ENUM('friendly', 'competitive') DEFAULT 'friendly' NOT NULL,
-    time_control INT DEFAULT 10 NOT NULL,
-    play_method ENUM('physical_board', 'phone') DEFAULT 'phone',
-    date_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP NULL,
-    game_id INT NULL,
-    deleted_at TIMESTAMP NULL,
-    
-    FOREIGN KEY (from_user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-    FOREIGN KEY (to_user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-    FOREIGN KEY (game_id) REFERENCES game(id) ON DELETE SET NULL,
-    CHECK (from_user_id != to_user_id)
-);
+-- --------------------------------------------------------
 
--- =====================================================
--- إنشاء الفهارس لتحسين الأداء
--- =====================================================
+--
+-- Table structure for table `friend`
+--
 
--- فهارس جدول المستخدمين
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_username ON users(username);
-CREATE INDEX idx_users_rank ON users(rank);
-CREATE INDEX idx_users_state ON users(state);
+CREATE TABLE `friend` (
+  `id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `friend_user_id` int(11) NOT NULL,
+  `status` enum('pending','accepted','rejected') NOT NULL DEFAULT 'pending',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `deleted_at` timestamp NULL DEFAULT NULL
+) ;
 
--- فهارس جدول الجلسات
-CREATE INDEX idx_session_user_id ON session(user_id);
-CREATE INDEX idx_session_expires_at ON session(expires_at);
+-- --------------------------------------------------------
 
--- فهارس جدول الألعاب
-CREATE INDEX idx_game_white_player ON game(white_player_id);
-CREATE INDEX idx_game_black_player ON game(black_player_id);
-CREATE INDEX idx_game_status ON game(status);
-CREATE INDEX idx_game_type ON game(game_type);
-CREATE INDEX idx_game_started_at ON game(started_at);
+--
+-- Table structure for table `game`
+--
 
--- فهارس جدول حركات اللعبة
-CREATE INDEX idx_game_move_game_id ON game_move(game_id);
-CREATE INDEX idx_game_move_player_id ON game_move(player_id);
-CREATE INDEX idx_game_move_move_number ON game_move(move_number);
+CREATE TABLE `game` (
+  `id` int(11) NOT NULL,
+  `white_player_id` int(11) NOT NULL,
+  `black_player_id` int(11) NOT NULL,
+  `started_by_user_id` int(11) NOT NULL,
+  `game_type` enum('friend','ranked','ai','puzzle') NOT NULL,
+  `ai_level` tinyint(4) DEFAULT NULL,
+  `puzzle_id` int(11) DEFAULT NULL,
+  `initial_time` int(11) NOT NULL,
+  `white_time_left` int(11) NOT NULL,
+  `black_time_left` int(11) NOT NULL,
+  `white_play_method` enum('phone','physical_board') NOT NULL,
+  `black_play_method` enum('phone','physical_board') NOT NULL,
+  `current_fen` varchar(100) NOT NULL DEFAULT 'startpos',
+  `status` enum('waiting','active','ended') NOT NULL DEFAULT 'waiting',
+  `current_turn` enum('white','black') NOT NULL DEFAULT 'white',
+  `winner_id` int(11) DEFAULT NULL,
+  `white_rank_change` int(11) DEFAULT NULL,
+  `black_rank_change` int(11) DEFAULT NULL,
+  `started_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `ended_at` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ;
 
--- فهارس جدول الأصدقاء
-CREATE INDEX idx_friend_user_id ON friend(user_id);
-CREATE INDEX idx_friend_friend_user_id ON friend(friend_user_id);
-CREATE INDEX idx_friend_status ON friend(status);
+-- --------------------------------------------------------
 
--- فهارس جدول الدعوات
-CREATE INDEX idx_invites_from_user ON invites(from_user_id);
-CREATE INDEX idx_invites_to_user ON invites(to_user_id);
-CREATE INDEX idx_invites_status ON invites(status);
-CREATE INDEX idx_invites_expires_at ON invites(expires_at);
+--
+-- Table structure for table `game_move`
+--
 
--- فهارس جدول الدورات
-CREATE INDEX idx_course_category ON course(category_id);
-CREATE INDEX idx_course_level ON course(level);
+CREATE TABLE `game_move` (
+  `id` int(11) NOT NULL,
+  `game_id` int(11) NOT NULL,
+  `move_number` int(11) NOT NULL,
+  `player_id` int(11) NOT NULL,
+  `uci` varchar(8) NOT NULL,
+  `san` varchar(16) DEFAULT NULL,
+  `fen_after` varchar(100) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- فهارس جدول فيديوهات الدورات
-CREATE INDEX idx_course_video_course_id ON course_video(course_id);
-CREATE INDEX idx_course_video_position ON course_video(position);
+-- --------------------------------------------------------
 
--- فهارس جدول دورات المستخدمين
-CREATE INDEX idx_user_course_user_id ON user_course(user_id);
-CREATE INDEX idx_user_course_course_id ON user_course(course_id);
+--
+-- Table structure for table `invites`
+--
 
--- فهارس جدول الألغاز
-CREATE INDEX idx_puzzle_level ON puzzle(level);
+CREATE TABLE `invites` (
+  `id` int(11) NOT NULL,
+  `from_user_id` int(11) NOT NULL,
+  `to_user_id` int(11) NOT NULL,
+  `status` enum('pending','accepted','rejected','expired','game_started') NOT NULL DEFAULT 'pending',
+  `game_type` enum('friendly','competitive') NOT NULL DEFAULT 'friendly',
+  `time_control` int(11) NOT NULL DEFAULT 10,
+  `play_method` enum('physical_board','phone') DEFAULT 'phone',
+  `date_time` timestamp NOT NULL DEFAULT current_timestamp(),
+  `expires_at` timestamp NULL DEFAULT NULL,
+  `game_id` int(11) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
+) ;
 
--- فهارس جدول رقعة الشطرنج
-CREATE INDEX idx_user_board_user_id ON user_board(user_id);
-CREATE INDEX idx_user_board_serial ON user_board(serial_number);
+-- --------------------------------------------------------
 
--- =====================================================
--- إنشاء مستخدم افتراضي للمشرف
--- =====================================================
-INSERT INTO users (username, type, email, password_hash, rank, puzzle_level) 
-VALUES ('admin', 'admin', 'admin@chess.com', '$2b$10$default_hash_here', 1500, 1);
+--
+-- Table structure for table `puzzle`
+--
 
--- =====================================================
--- إنشاء تصنيفات افتراضية
--- =====================================================
-INSERT INTO category (name) VALUES 
-('أساسيات الشطرنج'),
-('الافتتاحيات'),
-('الوسطيات'),
-('النهايات'),
-('الاستراتيجيات'),
-('التكتيكات');
+CREATE TABLE `puzzle` (
+  `id` int(11) NOT NULL,
+  `name` varchar(200) DEFAULT NULL,
+  `level` enum('easy','medium','hard') DEFAULT 'easy',
+  `fen` varchar(200) NOT NULL,
+  `details` varchar(200) DEFAULT NULL,
+  `solution` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL CHECK (json_valid(`solution`)),
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `deleted_at` timestamp NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- =====================================================
--- إنشاء ألغاز افتراضية
--- =====================================================
-INSERT INTO puzzle (name, level, fen, details, solution) VALUES 
-('مات في حركة واحدة', 'easy', 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'ابحث عن مات في حركة واحدة', '["e2e4"]'),
-('كش مزدوج', 'medium', 'rnbqkb1r/pppp1ppp/5n2/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 1', 'كش مزدوج للأسود', '["d2d4", "e5d4"]');
+-- --------------------------------------------------------
 
--- =====================================================
--- إنشاء دورات افتراضية
--- =====================================================
-INSERT INTO course (category_id, name, details, level, hours) VALUES 
-(1, 'مقدمة في الشطرنج', 'تعلم أساسيات اللعبة', 'beginner', 2.0),
-(2, 'الافتتاحيات الأساسية', 'أفضل الافتتاحيات للمبتدئين', 'beginner', 3.0),
-(3, 'استراتيجيات الوسطية', 'كيفية تطوير اللعبة', 'intermediate', 4.0);
+--
+-- Table structure for table `session`
+--
 
--- =====================================================
--- إنشاء فيديوهات للدورات
--- =====================================================
-INSERT INTO course_video (course_id, title, url, position) VALUES 
-(1, 'تعريف القطع', 'https://example.com/video1.mp4', 1),
-(1, 'حركة القطع', 'https://example.com/video2.mp4', 2),
-(2, 'افتتاحية الملك', 'https://example.com/video3.mp4', 1),
-(2, 'افتتاحية الوزير', 'https://example.com/video4.mp4', 2);
+CREATE TABLE `session` (
+  `id` varchar(512) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `ip_address` varchar(45) DEFAULT NULL,
+  `user_agent` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `expires_at` timestamp NULL DEFAULT NULL,
+  `last_activity` timestamp NULL DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
--- =====================================================
--- رسالة نجاح
--- =====================================================
-SELECT 'Database created successfully!' as message;
+-- --------------------------------------------------------
 
+--
+-- Table structure for table `users`
+--
+
+CREATE TABLE `users` (
+  `user_id` int(11) NOT NULL,
+  `username` varchar(50) NOT NULL,
+  `type` enum('user','admin') NOT NULL DEFAULT 'user',
+  `is_banned` tinyint(1) NOT NULL DEFAULT 0,
+  `banned_at` timestamp NULL DEFAULT NULL,
+  `banned_reason` varchar(255) DEFAULT NULL,
+  `email` varchar(100) NOT NULL,
+  `password_hash` varchar(255) NOT NULL,
+  `thumbnail` varchar(255) DEFAULT '/img/default-avatar.png',
+  `rank` int(11) NOT NULL DEFAULT 1500,
+  `puzzle_level` int(11) DEFAULT 1,
+  `state` enum('online','offline','in-game') NOT NULL DEFAULT 'offline',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `deleted_at` timestamp NULL DEFAULT NULL
+) ;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `user_board`
+--
+
+CREATE TABLE `user_board` (
+  `id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `serial_number` varchar(100) NOT NULL,
+  `name` varchar(100) DEFAULT NULL,
+  `connected` tinyint(1) DEFAULT 0,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `deleted_at` timestamp NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `user_course`
+--
+
+CREATE TABLE `user_course` (
+  `id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `course_id` int(11) NOT NULL,
+  `purchase_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `is_deleted` tinyint(1) NOT NULL DEFAULT 0,
+  `deleted_at` timestamp NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Indexes for dumped tables
+--
+
+--
+-- Indexes for table `category`
+--
+ALTER TABLE `category`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Indexes for table `course`
+--
+ALTER TABLE `course`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_course_category` (`category_id`),
+  ADD KEY `idx_course_level` (`level`);
+
+--
+-- Indexes for table `course_video`
+--
+ALTER TABLE `course_video`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_course_video_course_id` (`course_id`),
+  ADD KEY `idx_course_video_position` (`position`);
+
+--
+-- Indexes for table `friend`
+--
+ALTER TABLE `friend`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `unique_friendship` (`user_id`,`friend_user_id`),
+  ADD KEY `idx_friend_user_id` (`user_id`),
+  ADD KEY `idx_friend_friend_user_id` (`friend_user_id`),
+  ADD KEY `idx_friend_status` (`status`);
+
+--
+-- Indexes for table `game`
+--
+ALTER TABLE `game`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `started_by_user_id` (`started_by_user_id`),
+  ADD KEY `winner_id` (`winner_id`),
+  ADD KEY `puzzle_id` (`puzzle_id`),
+  ADD KEY `idx_game_white_player` (`white_player_id`),
+  ADD KEY `idx_game_black_player` (`black_player_id`),
+  ADD KEY `idx_game_status` (`status`),
+  ADD KEY `idx_game_type` (`game_type`),
+  ADD KEY `idx_game_started_at` (`started_at`),
+  ADD KEY `idx_game_status_created` (`status`,`created_at`),
+  ADD KEY `idx_game_user_status_ended` (`white_player_id`,`status`,`ended_at`),
+  ADD KEY `idx_game_user_status_ended_black` (`black_player_id`,`status`,`ended_at`),
+  ADD KEY `idx_game_ended_at` (`ended_at`);
+
+--
+-- Indexes for table `game_move`
+--
+ALTER TABLE `game_move`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_game_move_game_id` (`game_id`),
+  ADD KEY `idx_game_move_player_id` (`player_id`),
+  ADD KEY `idx_game_move_move_number` (`move_number`);
+
+--
+-- Indexes for table `invites`
+--
+ALTER TABLE `invites`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `game_id` (`game_id`),
+  ADD KEY `idx_invites_from_user` (`from_user_id`),
+  ADD KEY `idx_invites_to_user` (`to_user_id`),
+  ADD KEY `idx_invites_status` (`status`),
+  ADD KEY `idx_invites_expires_at` (`expires_at`),
+  ADD KEY `idx_invites_status_date_deleted` (`status`,`date_time`,`deleted_at`);
+
+--
+-- Indexes for table `puzzle`
+--
+ALTER TABLE `puzzle`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_puzzle_level` (`level`);
+
+--
+-- Indexes for table `session`
+--
+ALTER TABLE `session`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_session_user_id` (`user_id`),
+  ADD KEY `idx_session_expires_at` (`expires_at`),
+  ADD KEY `idx_session_user_expires_deleted` (`user_id`,`expires_at`,`deleted_at`);
+
+--
+-- Indexes for table `users`
+--
+ALTER TABLE `users`
+  ADD PRIMARY KEY (`user_id`),
+  ADD UNIQUE KEY `username` (`username`),
+  ADD UNIQUE KEY `email` (`email`),
+  ADD KEY `idx_users_email` (`email`),
+  ADD KEY `idx_users_username` (`username`),
+  ADD KEY `idx_users_rank` (`rank`),
+  ADD KEY `idx_users_state` (`state`),
+  ADD KEY `idx_users_is_banned_created` (`is_banned`,`created_at`);
+
+--
+-- Indexes for table `user_board`
+--
+ALTER TABLE `user_board`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `serial_number` (`serial_number`),
+  ADD KEY `idx_user_board_user_id` (`user_id`),
+  ADD KEY `idx_user_board_serial` (`serial_number`);
+
+--
+-- Indexes for table `user_course`
+--
+ALTER TABLE `user_course`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `unique_user_course` (`user_id`,`course_id`),
+  ADD KEY `idx_user_course_user_id` (`user_id`),
+  ADD KEY `idx_user_course_course_id` (`course_id`);
+
+--
+-- AUTO_INCREMENT for dumped tables
+--
+
+--
+-- AUTO_INCREMENT for table `category`
+--
+ALTER TABLE `category`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `course`
+--
+ALTER TABLE `course`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `course_video`
+--
+ALTER TABLE `course_video`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `friend`
+--
+ALTER TABLE `friend`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `game`
+--
+ALTER TABLE `game`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `game_move`
+--
+ALTER TABLE `game_move`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `invites`
+--
+ALTER TABLE `invites`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `puzzle`
+--
+ALTER TABLE `puzzle`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `users`
+--
+ALTER TABLE `users`
+  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `user_board`
+--
+ALTER TABLE `user_board`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `user_course`
+--
+ALTER TABLE `user_course`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- Constraints for dumped tables
+--
+
+--
+-- Constraints for table `course`
+--
+ALTER TABLE `course`
+  ADD CONSTRAINT `course_ibfk_1` FOREIGN KEY (`category_id`) REFERENCES `category` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `course_video`
+--
+ALTER TABLE `course_video`
+  ADD CONSTRAINT `course_video_ibfk_1` FOREIGN KEY (`course_id`) REFERENCES `course` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `friend`
+--
+ALTER TABLE `friend`
+  ADD CONSTRAINT `friend_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `friend_ibfk_2` FOREIGN KEY (`friend_user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `game`
+--
+ALTER TABLE `game`
+  ADD CONSTRAINT `game_ibfk_1` FOREIGN KEY (`white_player_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `game_ibfk_2` FOREIGN KEY (`black_player_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `game_ibfk_3` FOREIGN KEY (`started_by_user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `game_ibfk_4` FOREIGN KEY (`winner_id`) REFERENCES `users` (`user_id`) ON DELETE SET NULL,
+  ADD CONSTRAINT `game_ibfk_5` FOREIGN KEY (`puzzle_id`) REFERENCES `puzzle` (`id`) ON DELETE SET NULL;
+
+--
+-- Constraints for table `game_move`
+--
+ALTER TABLE `game_move`
+  ADD CONSTRAINT `game_move_ibfk_1` FOREIGN KEY (`game_id`) REFERENCES `game` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `game_move_ibfk_2` FOREIGN KEY (`player_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `invites`
+--
+ALTER TABLE `invites`
+  ADD CONSTRAINT `invites_ibfk_1` FOREIGN KEY (`from_user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `invites_ibfk_2` FOREIGN KEY (`to_user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `invites_ibfk_3` FOREIGN KEY (`game_id`) REFERENCES `game` (`id`) ON DELETE SET NULL;
+
+--
+-- Constraints for table `session`
+--
+ALTER TABLE `session`
+  ADD CONSTRAINT `session_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `user_board`
+--
+ALTER TABLE `user_board`
+  ADD CONSTRAINT `user_board_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `user_course`
+--
+ALTER TABLE `user_course`
+  ADD CONSTRAINT `user_course_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `user_course_ibfk_2` FOREIGN KEY (`course_id`) REFERENCES `course` (`id`) ON DELETE CASCADE;
+COMMIT;
+
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;

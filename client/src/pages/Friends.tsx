@@ -1,6 +1,7 @@
-import { useState, useEffect, useContext } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
+import AppNavHeader from "@/components/AppNavHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,18 +9,16 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { userService } from "@/services/userService";
-import { friendService } from "@/services/friendService";
+import { friendService, type Friend } from "@/services/friendService";
 import { inviteService, type Invite } from "@/services/inviteService";
 import { authService } from "@/services/authService";
 import { useAuth } from "@/contexts/AuthContext";
 import { API_BASE_URL, SOCKET_BASE_URL } from "@/config/urls";
 import { getInitialsFromName, hasCustomAvatar } from "@/utils/avatar";
 import {
-  ArrowRight,
   Users,
   UserPlus,
   Search,
@@ -28,39 +27,78 @@ import {
   MessageCircle,
   Check,
   X,
-  MoreVertical,
   Mail,
-  Shield
 } from "lucide-react";
 
 const FRIENDS_TAB_STORAGE_KEY = "friends_active_tab_v1";
 const TAB_VALUES = ["friends", "myfriends", "invites", "pending"] as const;
 type FriendsTabValue = (typeof TAB_VALUES)[number];
 
+type SearchResultUser = {
+  user_id: number | string;
+  username: string;
+  thumbnail?: string;
+  rank?: number;
+  state?: string;
+};
+
+type IncomingFriendRequest = {
+  id: number | string;
+  from_user?: {
+    id?: number | string;
+    user_id?: number | string;
+    username?: string;
+    thumbnail?: string;
+  };
+  created_at: string;
+};
+
+type InviteValidationResult = {
+  isValid: boolean;
+  message: string;
+};
+
+type CreateInvitePayload = {
+  to_user_id: string;
+  game_type: "friendly";
+  play_method: "phone" | "physical_board";
+  time_control: number;
+};
+
+type GameCreatedPayload = {
+  gameId?: number | string;
+};
+
+type FriendStatusChangedPayload = {
+  userId?: number | string;
+  id?: number | string;
+  status?: "online" | "offline" | "in-game";
+};
+
 const Friends = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedTime, setSelectedTime] = useState("10");
-  const [friends, setFriends] = useState<any[]>([]);
-  const [invites, setInvites] = useState<any[]>([]);
-  const [pendingInvites, setPendingInvites] = useState<any[]>([]);
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [invites, setInvites] = useState<Invite[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<Invite[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchResultUser[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
+  const [incomingRequests, setIncomingRequests] = useState<IncomingFriendRequest[]>([]);
   const [isLoadingIncoming, setIsLoadingIncoming] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [friendToDelete, setFriendToDelete] = useState<any>(null);
+  const [friendToDelete, setFriendToDelete] = useState<Friend | null>(null);
   const { user } = useAuth();
   // مودال دعوة اللعب
   const [showInviteModal, setShowInviteModal] = useState(false);
-  const [inviteTarget, setInviteTarget] = useState<any>(null);
-  const [playMethod, setPlayMethod] = useState<'phone' | 'physical_board' | null>(null);
+  const [inviteTarget, setInviteTarget] = useState<Friend | null>(null);
+  const [playMethod, setPlayMethod] = useState<'phone' | 'physical_board'>('phone');
   const [isSendingInvite, setIsSendingInvite] = useState(false);
 
   // متغيرات مودال قبول الدعوة
   const [showAcceptInviteModal, setShowAcceptInviteModal] = useState(false);
-  const [selectedInvite, setSelectedInvite] = useState<any>(null);
+  const [selectedInvite, setSelectedInvite] = useState<Invite | null>(null);
   const [acceptPlayMethod, setAcceptPlayMethod] = useState<'phone' | 'physical_board' | null>(null);
   const [isAcceptingInvite, setIsAcceptingInvite] = useState(false);
   const [activeTab, setActiveTab] = useState<FriendsTabValue>(() => {
@@ -80,7 +118,7 @@ const Friends = () => {
     return `${safe} دقيقة`;
   };
 
-  const isInviteGameStillActive = (invite: Invite | any) => {
+  const isInviteGameStillActive = (invite: Invite) => {
     if (invite?.status !== 'game_started') {
       return true;
     }
@@ -106,36 +144,7 @@ const Friends = () => {
     });
   };
 
-  
-  useEffect(() => {
-    loadFriendsData();
-    loadInvites();
-    loadIncomingRequests();
-    
-    if (user?.id) {
-      const cleanup = setupSocketListeners();
-      return cleanup;
-    }
-  }, [user]);
-
-  useEffect(() => {
-    localStorage.setItem(FRIENDS_TAB_STORAGE_KEY, activeTab);
-  }, [activeTab]);
-
-  // Search effect
-  useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      if (searchTerm.length >= 2) {
-        searchUsers(searchTerm);
-      } else {
-        setSearchResults([]);
-      }
-    }, 500); // Debounce search
-
-    return () => clearTimeout(timeoutId);
-  }, [searchTerm]);
-
-  const loadFriendsData = async () => {
+  const loadFriendsData = useCallback(async () => {
     try {
       // REST: GET /api/friends -> fetch user's friends list
       const friendsData = await friendService.getFriends();
@@ -148,9 +157,9 @@ const Friends = () => {
         variant: "destructive"
       });
     }
-  };
+  }, [toast]);
 
-  const loadInvites = async () => {
+  const loadInvites = useCallback(async () => {
     try {
       const invitesData = await inviteService.getReceivedInvites();
       setInvites(invitesData);
@@ -165,12 +174,12 @@ const Friends = () => {
         variant: "destructive"
       });
     }
-  };
+  }, [toast]);
 
-  const loadIncomingRequests = async () => {
+  const loadIncomingRequests = useCallback(async () => {
     try {
       setIsLoadingIncoming(true);
-      const requests = await friendService.getIncomingRequests();
+      const requests = await friendService.getIncomingRequests() as IncomingFriendRequest[];
       setIncomingRequests(requests);
     } catch (error) {
       console.error('Error loading incoming requests:', error);
@@ -182,9 +191,9 @@ const Friends = () => {
     } finally {
       setIsLoadingIncoming(false);
     }
-  };
+  }, [toast]);
 
-  const setupSocketListeners = () => {
+  const setupSocketListeners = useCallback(() => {
     const socket = io(`${SOCKET_BASE_URL}/friends`, {
       auth: {
         token: authService.getToken(),
@@ -206,11 +215,11 @@ const Friends = () => {
 
 
 
-    socket.on('game_created', (gameData) => {
+    socket.on('game_created', (gameData: GameCreatedPayload) => {
       window.location.href = `/game?id=${gameData.gameId}`;
     });
 
-    socket.on('friendStatusChanged', (friendData) => {
+    socket.on('friendStatusChanged', (friendData: FriendStatusChangedPayload) => {
       setFriends((prev) =>
         prev.map((friend) => {
           const friendId = Number(friend.user_id ?? friend.id);
@@ -231,9 +240,24 @@ const Friends = () => {
     return () => {
       socket.disconnect();
     };
-  };
+  }, [user?.id]);
 
-  const searchUsers = async (query: string) => {
+  useEffect(() => {
+    loadFriendsData();
+    loadInvites();
+    loadIncomingRequests();
+    
+    if (user?.id) {
+      const cleanup = setupSocketListeners();
+      return cleanup;
+    }
+  }, [loadFriendsData, loadInvites, loadIncomingRequests, setupSocketListeners, user?.id]);
+
+  useEffect(() => {
+    localStorage.setItem(FRIENDS_TAB_STORAGE_KEY, activeTab);
+  }, [activeTab]);
+
+  const searchUsers = useCallback(async (query: string) => {
     if (query.length < 2) {
       setSearchResults([]);
       return;
@@ -241,7 +265,7 @@ const Friends = () => {
 
     try {
       setIsSearching(true);
-      const results = await userService.searchUsers(query);
+      const results = await userService.searchUsers(query) as SearchResultUser[];
       setSearchResults(results);
     } catch (error) {
       console.error('Error searching users:', error);
@@ -254,7 +278,20 @@ const Friends = () => {
     } finally {
       setIsSearching(false);
     }
-  };
+  }, [toast]);
+
+  // Search effect
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (searchTerm.length >= 2) {
+        searchUsers(searchTerm);
+      } else {
+        setSearchResults([]);
+      }
+    }, 500); // Debounce search
+
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm, searchUsers]);
 
   const sendFriendRequest = async (userId: string) => {
     try {
@@ -314,7 +351,7 @@ const Friends = () => {
     }
   };
 
-  const handleDeleteClick = (friend: any) => {
+  const handleDeleteClick = (friend: Friend) => {
     setFriendToDelete(friend);
     setShowDeleteConfirm(true);
   };
@@ -349,7 +386,7 @@ const Friends = () => {
   };
 
   // دالة فتح المودال مع التحقق من حالة المستخدم الحالي
-  const handleOpenInviteModal = async (friend: any) => {
+  const handleOpenInviteModal = async (friend: Friend) => {
     try {
       // جلب حالة المستخدم الحالي من الباك اند
       const userStatus = await userService.getCurrentUserStatus();
@@ -362,7 +399,7 @@ const Friends = () => {
         return;
       }
       setInviteTarget(friend);
-      setPlayMethod(null);
+      setPlayMethod('phone');
       setShowInviteModal(true);
     } catch (error) {
       console.error('Error checking user status:', error);
@@ -379,7 +416,7 @@ const Friends = () => {
     if (!inviteTarget || !playMethod) return;
     setIsSendingInvite(true);
     try {
-      const body: any = {
+      const body: CreateInvitePayload = {
         to_user_id: inviteTarget.user_id.toString(), // تأكد أنه نص
         game_type: 'friendly',
         play_method: playMethod === 'physical_board' ? 'physical_board' : 'phone',
@@ -402,10 +439,11 @@ const Friends = () => {
         description: `تم إرسال دعوة لعب إلى ${inviteTarget.username}`,
       });
       setShowInviteModal(false);
-    } catch (error: any) {
+      await loadInvites();
+    } catch (error: unknown) {
       toast({
         title: 'خطأ',
-        description: error.message || 'فشل في إرسال الدعوة',
+        description: error instanceof Error ? error.message : 'فشل في إرسال الدعوة',
         variant: 'destructive',
       });
     } finally {
@@ -453,7 +491,7 @@ const Friends = () => {
   };
 
   // دالة التحقق من شروط قبول الدعوة
-  const validateInviteAcceptance = async (invite: any) => {
+  const validateInviteAcceptance = async (invite: Invite): Promise<InviteValidationResult> => {
     try {
       // 3. التحقق من أن الدعوة لم تنتهي صلاحيتها
       const now = new Date();
@@ -594,7 +632,7 @@ const Friends = () => {
   };
 
   // دالة معالجة أزرار الدعوة بناءً على الحالة
-  const renderInviteButtons = (invite: any) => {
+  const renderInviteButtons = (invite: Invite) => {
     const status = invite.status;
     
     switch (status) {
@@ -658,7 +696,7 @@ const Friends = () => {
   };
 
   // دالة بدء المباراة
-  const startGame = async (invite: Invite | any) => {
+  const startGame = async (invite: Invite) => {
     try {
       if (invite?.status === 'game_started' && (invite?.game_id || invite?.game?.id)) {
         await joinGame(invite);
@@ -692,7 +730,7 @@ const Friends = () => {
   };
 
   // دالة دخول/استئناف المباراة مع التحقق من حالتها الفعلية
-  const joinGame = async (invite: Invite | any) => {
+  const joinGame = async (invite: Invite) => {
     const gameId = invite?.game_id || invite?.game?.id;
     if (!gameId) {
       toast({
@@ -818,7 +856,7 @@ const Friends = () => {
   };
 
   // دالة معالجة أزرار الدعوات المرسلة
-  const renderSentInviteButtons = (invite: any) => {
+  const renderSentInviteButtons = (invite: Invite) => {
     const status = invite.status;
     
     switch (status) {
@@ -870,32 +908,29 @@ const Friends = () => {
     friend.username.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleBack = () => {
-    if (window.history.length > 1) {
-      navigate(-1);
-      return;
-    }
-    navigate('/dashboard');
+  const hasActiveSentInviteForFriend = (friendUserId: string | number) => {
+    const friendId = String(friendUserId);
+    return pendingInvites.some((invite) => {
+      const status = invite?.status;
+      const isActiveStatus =
+        status === 'pending' ||
+        status === 'accepted' ||
+        (status === 'game_started' && isInviteGameStillActive(invite));
+      if (!isActiveStatus) return false;
+
+      const inviteTargetId = String(
+        invite?.toUser?.user_id ??
+        invite?.toUser?.id ??
+        invite?.to_user_id ??
+        ''
+      );
+      return inviteTargetId === friendId;
+    });
   };
 
   return (
     <div className="min-h-screen bg-gradient-subtle" dir="rtl">
-      {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur">
-        <div className="container mx-auto px-3 sm:px-4 py-3 sm:py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-              <Button variant="ghost" size="icon" onClick={handleBack}>
-                <ArrowRight className="h-5 w-5" />
-              </Button>
-              <div className="flex items-center gap-2 min-w-0">
-                <Users className="h-5 w-5 sm:h-6 sm:w-6 text-primary shrink-0" />
-                <h1 className="text-lg sm:text-xl font-bold text-foreground font-cairo truncate">الأصدقاء والدعوات</h1>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
+      <AppNavHeader />
 
       <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as FriendsTabValue)} className="space-y-6">
@@ -1007,7 +1042,7 @@ const Friends = () => {
                                   : undefined
                               }
                             />
-                            <AvatarFallback>{getInitialsFromName(request.from_user?.username)}</AvatarFallback>
+                            <AvatarFallback>{getInitialsFromName(request.from_user?.username || "مستخدم")}</AvatarFallback>
                           </Avatar>
                           <div className="min-w-0">
                             <h4 className="font-medium truncate">{request.from_user?.username}</h4>
@@ -1074,17 +1109,21 @@ const Friends = () => {
                        </div>
 
                        <div className="grid grid-cols-1 sm:flex items-center gap-2 w-full sm:w-auto">
-                         {friend.state === 'online' && (
-                           <Button
-                             variant="chess"
-                             size="sm"
-                             className="w-full sm:w-auto"
-                             onClick={() => handleOpenInviteModal(friend)}
-                           >
-                             <MessageCircle className="h-4 w-4 ml-1" />
-                             دعوة إلى اللعب
-                           </Button>
-                         )}
+                         {friend.state === 'online' && (() => {
+                           const hasActiveInvite = hasActiveSentInviteForFriend(friend.user_id);
+                           return (
+                             <Button
+                               variant={hasActiveInvite ? "outline" : "chess"}
+                               size="sm"
+                               className="w-full sm:w-auto"
+                               onClick={() => handleOpenInviteModal(friend)}
+                               disabled={hasActiveInvite}
+                             >
+                               <MessageCircle className="h-4 w-4 ml-1" />
+                               {hasActiveInvite ? "تم إرسال دعوة" : "دعوة إلى اللعب"}
+                             </Button>
+                           );
+                         })()}
                          <Button 
                            variant="outline"
                            size="sm"
@@ -1120,12 +1159,12 @@ const Friends = () => {
                         <AvatarImage
                           src={hasCustomAvatar(invite.fromUser?.thumbnail) ? invite.fromUser?.thumbnail : undefined}
                         />
-                        <AvatarFallback>{getInitialsFromName(invite.fromUser?.username)}</AvatarFallback>
+                        <AvatarFallback>{getInitialsFromName(invite.fromUser?.username || "مستخدم")}</AvatarFallback>
                       </Avatar>
                                              <div className="space-y-1 min-w-0">
                          <h3 className="font-semibold font-cairo truncate">{invite.fromUser?.username || 'مستخدم غير معروف'}</h3>
                          <div className="flex items-center gap-2">
-                           {getStatusBadge(invite.fromUser?.state, false)}
+                           {getStatusBadge(invite.fromUser?.state || 'offline', false)}
                            <div className="flex items-center gap-1 text-sm text-muted-foreground">
                              <Crown className="h-3 w-3" />
                              <span>{invite.fromUser?.rank || 1500}</span>
@@ -1173,7 +1212,7 @@ const Friends = () => {
                         <AvatarImage
                           src={hasCustomAvatar(invite.toUser?.thumbnail) ? invite.toUser?.thumbnail : undefined}
                         />
-                        <AvatarFallback>{getInitialsFromName(invite.toUser?.username)}</AvatarFallback>
+                        <AvatarFallback>{getInitialsFromName(invite.toUser?.username || "مستخدم")}</AvatarFallback>
                       </Avatar>
                       <div className="space-y-1 min-w-0">
                         <h3 className="font-semibold font-cairo truncate">{invite.toUser?.username}</h3>

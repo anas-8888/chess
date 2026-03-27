@@ -5,6 +5,7 @@ export interface Invite {
   id: string;
   fromUser: {
     user_id: string;
+    id?: string;
     username: string;
     email: string;
     thumbnail?: string;
@@ -13,6 +14,7 @@ export interface Invite {
   };
   toUser: {
     user_id: string;
+    id?: string;
     username: string;
     email: string;
     thumbnail?: string;
@@ -28,6 +30,7 @@ export interface Invite {
   game_type: string;
   time_control?: number;
   play_method: string;
+  to_user_id?: string;
   date_time: string;
   expires_at: string;
   status: string;

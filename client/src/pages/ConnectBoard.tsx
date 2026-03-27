@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
+import AppNavHeader from "@/components/AppNavHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { 
-  ArrowRight, 
   Smartphone, 
   QrCode, 
   Wifi, 
@@ -16,13 +16,19 @@ import {
   Cable
 } from "lucide-react";
 
+type BoardInfo = {
+  model: string;
+  version: string;
+  battery: number;
+  serialNumber: string;
+};
+
 const ConnectBoard = () => {
-  const navigate = useNavigate();
   const { toast } = useToast();
   const [connectionMethod, setConnectionMethod] = useState<"qr" | "serial" | null>(null);
   const [serialNumber, setSerialNumber] = useState("");
   const [connectionStatus, setConnectionStatus] = useState<"disconnected" | "connecting" | "connected">("disconnected");
-  const [boardInfo, setBoardInfo] = useState<any>(null);
+  const [boardInfo, setBoardInfo] = useState<BoardInfo | null>(null);
 
   const connectViaQR = () => {
     setConnectionStatus("connecting");
@@ -129,29 +135,20 @@ const ConnectBoard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-subtle" dir="rtl">
-      {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" size="icon" aria-label="رجوع" onClick={() => navigate(-1)}>
-                <ArrowRight className="h-5 w-5" />
-              </Button>
-              <div className="flex items-center gap-2">
-                <Cable className="h-6 w-6 text-primary" />
-                <h1 className="text-xl font-bold text-foreground font-cairo">ربط اللوحة المادية</h1>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {getStatusIcon()}
-              <span className="text-sm font-medium">{getStatusText()}</span>
-            </div>
-          </div>
-        </div>
-      </header>
+      <AppNavHeader />
 
       <div className="container mx-auto px-4 py-8">
+        <div className="mb-5 flex items-center justify-between rounded-lg border border-border/60 bg-card/40 p-3">
+          <div className="flex items-center gap-2">
+            <Cable className="h-5 w-5 text-primary" />
+            <h1 className="text-base sm:text-lg font-bold text-foreground font-cairo">ربط اللوحة المادية</h1>
+          </div>
+          <div className="flex items-center gap-2">
+            {getStatusIcon()}
+            <span className="text-sm font-medium">{getStatusText()}</span>
+          </div>
+        </div>
+
         {connectionStatus === "connected" && boardInfo ? (
           /* Connected State */
           <div className="max-w-2xl mx-auto space-y-6">
@@ -189,7 +186,7 @@ const ConnectBoard = () => {
                   <Button onClick={disconnect} variant="outline" className="flex-1">
                     قطع الاتصال
                   </Button>
-                  <Link to="/play" className="flex-1">
+                  <Link to="/dashboard" className="flex-1">
                     <Button variant="chess" className="w-full">
                       ابدأ اللعب
                     </Button>

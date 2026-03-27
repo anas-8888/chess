@@ -48,6 +48,31 @@ export const createPuzzleValidation = [
     .isLength({ max: 200 })
     .withMessage('details must be less than 200 characters'),
 
+  body('objective')
+    .optional()
+    .isLength({ max: 200 })
+    .withMessage('objective must be less than 200 characters'),
+
+  body('startsWith')
+    .optional()
+    .isIn(['white', 'black'])
+    .withMessage('startsWith must be one of: white, black'),
+
+  body('points')
+    .optional()
+    .isInt({ min: 1, max: 200 })
+    .withMessage('points must be between 1 and 200'),
+
+  body('orderIndex')
+    .optional()
+    .isInt({ min: 0, max: 100000 })
+    .withMessage('orderIndex must be between 0 and 100000'),
+
+  body('isActive')
+    .optional()
+    .isBoolean()
+    .withMessage('isActive must be boolean'),
+
   body('solution')
     .isArray({ min: 1 })
     .withMessage('solution must be a non-empty array'),
@@ -87,6 +112,31 @@ export const updatePuzzleValidation = [
     .isLength({ max: 200 })
     .withMessage('details must be less than 200 characters'),
 
+  body('objective')
+    .optional()
+    .isLength({ max: 200 })
+    .withMessage('objective must be less than 200 characters'),
+
+  body('startsWith')
+    .optional()
+    .isIn(['white', 'black'])
+    .withMessage('startsWith must be one of: white, black'),
+
+  body('points')
+    .optional()
+    .isInt({ min: 1, max: 200 })
+    .withMessage('points must be between 1 and 200'),
+
+  body('orderIndex')
+    .optional()
+    .isInt({ min: 0, max: 100000 })
+    .withMessage('orderIndex must be between 0 and 100000'),
+
+  body('isActive')
+    .optional()
+    .isBoolean()
+    .withMessage('isActive must be boolean'),
+
   body('solution')
     .optional()
     .isArray({ min: 1 })
@@ -115,8 +165,8 @@ export const listPuzzlesValidation = [
 
   query('limit')
     .optional()
-    .isInt({ min: 1, max: 100 })
-    .withMessage('limit must be between 1 and 100'),
+    .isInt({ min: 1, max: 500 })
+    .withMessage('limit must be between 1 and 500'),
 
   query('level')
     .optional()
@@ -129,5 +179,29 @@ export const listPuzzlesValidation = [
     .isLength({ min: 1, max: 200 })
     .withMessage('name must be between 1 and 200 characters'),
 
+  query('includeInactive')
+    .optional()
+    .isIn(['0', '1', 'true', 'false'])
+    .withMessage('includeInactive must be 0/1/true/false'),
+
+  handleValidationErrors,
+];
+
+export const checkPuzzleMoveValidation = [
+  param('id').isInt({ min: 1 }).withMessage('Invalid puzzle ID'),
+  body('moves').isArray({ min: 1 }).withMessage('moves must be a non-empty array'),
+  handleValidationErrors,
+];
+
+export const finishPuzzleAttemptValidation = [
+  param('id').isInt({ min: 1 }).withMessage('Invalid puzzle ID'),
+  body('status')
+    .isIn(['solved', 'failed', 'abandoned'])
+    .withMessage('status must be one of: solved, failed, abandoned'),
+  body('moves').optional().isArray().withMessage('moves must be an array'),
+  body('mistakesCount').optional().isInt({ min: 0 }).withMessage('mistakesCount must be >= 0'),
+  body('hintsUsed').optional().isInt({ min: 0 }).withMessage('hintsUsed must be >= 0'),
+  body('usedSolution').optional().isBoolean().withMessage('usedSolution must be boolean'),
+  body('elapsedSeconds').optional().isInt({ min: 0 }).withMessage('elapsedSeconds must be >= 0'),
   handleValidationErrors,
 ];

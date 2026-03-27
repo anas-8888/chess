@@ -17,7 +17,7 @@ export const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     // Add auth token if available
-    const token = localStorage.getItem('auth_token');
+    const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -33,12 +33,44 @@ api.interceptors.response.use(
   (response) => {
     return response;
   },
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config;
+    
     // Handle auth errors
-    if (error.response?.status === 401) {
-      localStorage.removeItem('auth_token');
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+      
+      // Try to refresh token
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          const refreshResponse = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ token })
+          });
+          
+          if (refreshResponse.ok) {
+            const refreshData = await refreshResponse.json();
+            if (refreshData.success && refreshData.data && refreshData.data.token) {
+              const newToken = refreshData.data.token;
+              localStorage.setItem('token', newToken);
+              originalRequest.headers.Authorization = `Bearer ${newToken}`;
+              return api(originalRequest);
+            }
+          }
+        } catch (refreshError) {
+          console.error('Token refresh failed:', refreshError);
+        }
+      }
+      
+      // If refresh failed or no token, logout
+      localStorage.removeItem('token');
       window.location.href = '/auth';
     }
+    
     return Promise.reject(error);
   }
 );

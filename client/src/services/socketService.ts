@@ -64,6 +64,57 @@ type ResignAck = {
   message?: string;
 };
 
+type QuickMatchJoinedPayload = {
+  joined: boolean;
+  alreadyQueued: boolean;
+  range: number;
+  waitSeconds: number;
+  timeMinutes: number;
+  incrementSeconds: number;
+};
+
+type QuickMatchSearchProgressPayload = {
+  range: number;
+  waitSeconds: number;
+  timeMinutes: number;
+  incrementSeconds: number;
+};
+
+type QuickMatchFoundPayload = {
+  gameId: number;
+  playerColor: 'white' | 'black';
+  opponent: {
+    id: number;
+    username: string;
+    rank: number;
+    thumbnail?: string;
+  };
+  timeMinutes: number;
+  incrementSeconds: number;
+  initialTime: number;
+  countdownSeconds: number;
+};
+
+type QuickMatchErrorPayload = {
+  message: string;
+};
+
+type RejoinGamePayload = {
+  gameId: string | number;
+  status?: string;
+  gameType?: string;
+};
+
+type GameChatMessagePayload = {
+  id: number;
+  gameId: number;
+  userId: number;
+  username: string;
+  thumbnail?: string | null;
+  message: string;
+  createdAt: string;
+};
+
 class SocketService {
   private static readonly MOVE_MADE_DEDUP_WINDOW_MS = 1800;
 
@@ -79,6 +130,14 @@ class SocketService {
   private gameTimeoutCallback: ((data: GameTimeoutPayload) => void) | null = null;
   private gameEndCallback: ((data: GameEndPayload) => void) | null = null;
   private moveConfirmedCallback: ((data: MoveConfirmedPayload) => void) | null = null;
+  private quickMatchJoinedCallback: ((data: QuickMatchJoinedPayload) => void) | null = null;
+  private quickMatchSearchProgressCallback: ((data: QuickMatchSearchProgressPayload) => void) | null = null;
+  private quickMatchFoundCallback: ((data: QuickMatchFoundPayload) => void) | null = null;
+  private quickMatchErrorCallback: ((data: QuickMatchErrorPayload) => void) | null = null;
+  private quickMatchCancelledCallback: ((data: { removed: boolean }) => void) | null = null;
+  private quickMatchNotFoundCallback: ((data: { message: string; waitSeconds?: number }) => void) | null = null;
+  private gameChatMessageCallback: ((data: GameChatMessagePayload) => void) | null = null;
+  private rejoinGameCallback: ((data: RejoinGamePayload) => void) | null = null;
 
   private toMoveMadePayload(data: unknown): MoveMadePayload | null {
     if (!data || typeof data !== 'object') return null;
@@ -198,6 +257,38 @@ class SocketService {
       this.moveConfirmedCallback?.(data);
     });
 
+    this.socket.on('quickMatch:joined', (data: QuickMatchJoinedPayload) => {
+      this.quickMatchJoinedCallback?.(data);
+    });
+
+    this.socket.on('quickMatch:searchProgress', (data: QuickMatchSearchProgressPayload) => {
+      this.quickMatchSearchProgressCallback?.(data);
+    });
+
+    this.socket.on('quickMatch:found', (data: QuickMatchFoundPayload) => {
+      this.quickMatchFoundCallback?.(data);
+    });
+
+    this.socket.on('quickMatch:error', (data: QuickMatchErrorPayload) => {
+      this.quickMatchErrorCallback?.(data);
+    });
+
+    this.socket.on('quickMatch:cancelled', (data: { removed: boolean }) => {
+      this.quickMatchCancelledCallback?.(data);
+    });
+
+    this.socket.on('quickMatch:notFound', (data: { message: string; waitSeconds?: number }) => {
+      this.quickMatchNotFoundCallback?.(data);
+    });
+
+    this.socket.on('rejoin_game', (data: RejoinGamePayload) => {
+      this.rejoinGameCallback?.(data);
+    });
+
+    this.socket.on('gameChatMessage', (data: GameChatMessagePayload) => {
+      this.gameChatMessageCallback?.(data);
+    });
+
     return this.socket;
   }
 
@@ -279,6 +370,22 @@ class SocketService {
     });
   }
 
+  sendGameChatMessage(payload: { gameId: string; message: string }): Promise<{ success: boolean; data?: GameChatMessagePayload; message?: string }> {
+    return new Promise((resolve) => {
+      if (!this.socket || !this.socket.connected) {
+        resolve({ success: false, message: 'Socket is not connected' });
+        return;
+      }
+      this.socket.emit('gameChat:send', payload, (ack?: { success: boolean; data?: GameChatMessagePayload; message?: string }) => {
+        if (!ack) {
+          resolve({ success: false, message: 'No response from server' });
+          return;
+        }
+        resolve(ack);
+      });
+    });
+  }
+
   onClockUpdate(callback: (data: ClockUpdatePayload) => void) {
     this.clockUpdateCallback = callback;
   }
@@ -303,6 +410,38 @@ class SocketService {
     this.moveConfirmedCallback = callback;
   }
 
+  onQuickMatchJoined(callback: (data: QuickMatchJoinedPayload) => void) {
+    this.quickMatchJoinedCallback = callback;
+  }
+
+  onQuickMatchSearchProgress(callback: (data: QuickMatchSearchProgressPayload) => void) {
+    this.quickMatchSearchProgressCallback = callback;
+  }
+
+  onQuickMatchFound(callback: (data: QuickMatchFoundPayload) => void) {
+    this.quickMatchFoundCallback = callback;
+  }
+
+  onQuickMatchError(callback: (data: QuickMatchErrorPayload) => void) {
+    this.quickMatchErrorCallback = callback;
+  }
+
+  onQuickMatchCancelled(callback: (data: { removed: boolean }) => void) {
+    this.quickMatchCancelledCallback = callback;
+  }
+
+  onQuickMatchNotFound(callback: (data: { message: string; waitSeconds?: number }) => void) {
+    this.quickMatchNotFoundCallback = callback;
+  }
+
+  onRejoinGame(callback: (data: RejoinGamePayload) => void) {
+    this.rejoinGameCallback = callback;
+  }
+
+  onGameChatMessage(callback: (data: GameChatMessagePayload) => void) {
+    this.gameChatMessageCallback = callback;
+  }
+
   offClockUpdate() {
     this.clockUpdateCallback = null;
   }
@@ -325,6 +464,55 @@ class SocketService {
 
   offMoveConfirmed() {
     this.moveConfirmedCallback = null;
+  }
+
+  offQuickMatchJoined() {
+    this.quickMatchJoinedCallback = null;
+  }
+
+  offQuickMatchSearchProgress() {
+    this.quickMatchSearchProgressCallback = null;
+  }
+
+  offQuickMatchFound() {
+    this.quickMatchFoundCallback = null;
+  }
+
+  offQuickMatchError() {
+    this.quickMatchErrorCallback = null;
+  }
+
+  offQuickMatchCancelled() {
+    this.quickMatchCancelledCallback = null;
+  }
+
+  offQuickMatchNotFound() {
+    this.quickMatchNotFoundCallback = null;
+  }
+
+  offRejoinGame() {
+    this.rejoinGameCallback = null;
+  }
+
+  offGameChatMessage() {
+    this.gameChatMessageCallback = null;
+  }
+
+  joinQuickMatchQueue(payload: {
+    rating?: number;
+    timeMinutes: number;
+    incrementSeconds?: number;
+    playMethod?: 'phone' | 'physical_board';
+  }) {
+    if (!this.socket || !this.socket.connected) return false;
+    this.socket.emit('quickMatch:join', payload);
+    return true;
+  }
+
+  cancelQuickMatchQueue() {
+    if (!this.socket || !this.socket.connected) return false;
+    this.socket.emit('quickMatch:cancel');
+    return true;
   }
 }
 

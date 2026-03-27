@@ -91,6 +91,7 @@ const buildHelmetOptions = (forceHttpsHeaders) => ({
       ],
       imgSrc: [
         "'self'",
+        'blob:',
         'data:',
         'https:',
         'https://i.imgur.com',

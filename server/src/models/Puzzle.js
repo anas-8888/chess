@@ -23,6 +23,30 @@ const Puzzle = sequelize.define(
     details: {
       type: DataTypes.STRING(200),
     },
+    objective: {
+      type: DataTypes.STRING(200),
+      allowNull: true,
+    },
+    starts_with: {
+      type: DataTypes.ENUM('white', 'black'),
+      allowNull: false,
+      defaultValue: 'white',
+    },
+    points: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 10,
+    },
+    order_index: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    },
+    is_active: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+    },
     solution: {
       type: DataTypes.JSON,
       allowNull: false,

@@ -1,17 +1,14 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowRight, KeyRound, LogOut, Save, Upload } from 'lucide-react';
+import { KeyRound, Save, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/contexts/AuthContext';
+import AppNavHeader from '@/components/AppNavHeader';
 import { userService } from '@/services/userService';
 
 const Settings = () => {
-  const navigate = useNavigate();
-  const { logout } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -67,7 +64,6 @@ const Settings = () => {
     try {
       await userService.updateProfile({
         username: form.username,
-        email: form.email,
         avatar: form.avatar,
       });
       toast({
@@ -223,11 +219,18 @@ const Settings = () => {
       const result = await userService.uploadAvatar(selectedImageFile);
       const avatarUrl = result.avatar || result.thumbnail;
       setForm(prev => ({ ...prev, avatar: avatarUrl }));
+      
+      // حفظ الصورة مباشرة في قاعدة البيانات بعد الرفع
+      await userService.updateProfile({
+        username: form.username,
+        avatar: avatarUrl,
+      });
+      
       setSelectedImageData(null);
       setSelectedImageFile(null);
       toast({
-        title: 'تم الرفع',
-        description: 'تم رفع الصورة الشخصية بنجاح',
+        title: 'تم الحفظ',
+        description: 'تم رفع وحفظ الصورة الشخصية بنجاح',
       });
     } catch (error: any) {
       toast({
@@ -252,22 +255,9 @@ const Settings = () => {
 
   return (
     <div className="min-h-screen bg-gradient-subtle" dir="rtl">
-      <header className="border-b border-border bg-card/50 backdrop-blur">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" aria-label="رجوع" onClick={() => navigate(-1)}>
-              <ArrowRight className="h-5 w-5" />
-            </Button>
-            <h1 className="text-xl font-bold font-cairo">ملفي الشخصي</h1>
-          </div>
-          <Button variant="outline" onClick={logout}>
-            <LogOut className="h-4 w-4 ml-2" />
-            تسجيل الخروج
-          </Button>
-        </div>
-      </header>
+      <AppNavHeader />
 
-      <main className="container mx-auto px-4 py-8 space-y-6">
+      <main className="container mx-auto max-w-4xl px-4 py-8 space-y-6">
         <Card>
           <CardHeader>
             <CardTitle>الملف الشخصي</CardTitle>
@@ -315,8 +305,11 @@ const Settings = () => {
                 id="email"
                 type="email"
                 value={form.email}
-                onChange={e => setForm(prev => ({ ...prev, email: e.target.value }))}
+                readOnly
+                disabled
+                className="cursor-not-allowed opacity-80"
               />
+              <p className="text-xs text-muted-foreground">لا يمكن تعديل البريد الإلكتروني من هذه الصفحة.</p>
             </div>
             <div className="flex justify-end">
               <Button onClick={saveProfile} disabled={savingProfile}>

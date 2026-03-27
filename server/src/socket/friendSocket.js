@@ -1,6 +1,8 @@
 import Game from '../models/Game.js';
 import Invite from '../models/Invite.js';
+import User from '../models/User.js';
 import { Op } from 'sequelize';
+import { query } from '../config/db.js';
 import {
   authenticateSocket,
   handleGameInvite,
@@ -16,6 +18,12 @@ import {
 } from './socketHelpers.js';
 import logger from '../utils/logger.js';
 import { startGame as startGameFromInviteService } from '../services/inviteService.js';
+import {
+  initQuickMatchService,
+  joinQuickMatchQueue,
+  cancelQuickMatchQueue,
+  handleQuickMatchDisconnect,
+} from '../services/quickMatchService.js';
 
 const activeConnections = new Map();
 
@@ -63,6 +71,7 @@ export function initFriendSocket(io) {
   const nsp = io.of('/friends');
 
   enableMinimalLogging();
+  initQuickMatchService(nsp);
 
   setInterval(() => {
     cleanupExpiredInvites().catch((error) => {
@@ -141,7 +150,12 @@ export function initFriendSocket(io) {
           return socket.emit('error', { message: 'تعذر بدء المباراة' });
         }
 
-        await startClock(nsp, gameId);
+        // تأخير بدء المؤقتات لمدة 3 ثواني للسماح للاعبين بالدخول
+        setTimeout(() => {
+          startClock(nsp, gameId).catch(error => {
+            logger.error('Failed to start clock:', error);
+          });
+        }, 3000);
 
         const gameData = {
           inviteId,
@@ -161,8 +175,34 @@ export function initFriendSocket(io) {
     });
 
     socket.on('disconnect', async () => {
+      handleQuickMatchDisconnect(userId);
       removeUserConnection(userId, socket.id);
       activeConnections.delete(socket.id);
+    });
+
+    socket.on('quickMatch:join', async (payload = {}) => {
+      try {
+        const queueResult = await joinQuickMatchQueue({
+          userId,
+          rating: payload.rating,
+          timeMinutes: payload.timeMinutes,
+          incrementSeconds: payload.incrementSeconds,
+          playMethod: payload.playMethod,
+        });
+
+        socket.emit('quickMatch:joined', queueResult);
+      } catch (error) {
+        socket.emit('quickMatch:error', {
+          message: error?.message || 'تعذر بدء البحث عن خصم حالياً',
+        });
+      }
+    });
+
+    socket.on('quickMatch:cancel', () => {
+      const removed = cancelQuickMatchQueue(userId);
+      socket.emit('quickMatch:cancelled', {
+        removed,
+      });
     });
 
     socket.on('joinGameRoom', async ({ gameId }) => {
@@ -186,15 +226,27 @@ export function initFriendSocket(io) {
         const isParticipant =
           Number(game.white_player_id) === Number(userId) ||
           Number(game.black_player_id) === Number(userId);
-
+        let canWatchAsAdmin = false;
         if (!isParticipant) {
+          const viewer = await User.findByPk(userId, {
+            attributes: ['user_id', 'type'],
+          });
+          canWatchAsAdmin = viewer?.type === 'admin';
+        }
+
+        if (!isParticipant && !canWatchAsAdmin) {
           logger.warn(`User ${userId} is not a participant in game ${normalizedGameId}`);
           socket.leave(`game::${normalizedGameId}`);
           return;
         }
 
         if (game.status === 'active') {
-          await startClock(nsp, normalizedGameId);
+          // تأخير بدء المؤقتات لمدة 3 ثواني للسماح للاعبين بالدخول
+          setTimeout(() => {
+            startClock(nsp, normalizedGameId).catch(error => {
+              logger.error('Failed to start clock:', error);
+            });
+          }, 3000);
         }
 
         socket.to(`game::${normalizedGameId}`).emit('playerConnected', {
@@ -237,6 +289,90 @@ export function initFriendSocket(io) {
         await handleGameMove(nsp, moveData.gameId, moveData);
       } catch (error) {
         logger.error('Error handling move:', error);
+      }
+    });
+
+    socket.on('gameChat:send', async (payload, ack) => {
+      try {
+        const gameId = Number(payload?.gameId || 0);
+        const message = typeof payload?.message === 'string' ? payload.message.trim() : '';
+
+        if (!gameId || !message) {
+          if (typeof ack === 'function') {
+            ack({ success: false, message: 'Game ID and message are required' });
+          }
+          return;
+        }
+
+        if (message.length > 500) {
+          if (typeof ack === 'function') {
+            ack({ success: false, message: 'Message too long' });
+          }
+          return;
+        }
+
+        const game = await Game.findByPk(gameId, {
+          attributes: ['id', 'white_player_id', 'black_player_id'],
+        });
+        if (!game) {
+          if (typeof ack === 'function') {
+            ack({ success: false, message: 'Game not found' });
+          }
+          return;
+        }
+
+        const isParticipant =
+          Number(game.white_player_id) === Number(userId) ||
+          Number(game.black_player_id) === Number(userId);
+        if (!isParticipant) {
+          if (typeof ack === 'function') {
+            ack({ success: false, message: 'Not authorized to send game chat message' });
+          }
+          return;
+        }
+
+        const insertResult = await query(
+          `INSERT INTO game_chat_message (game_id, user_id, message)
+           VALUES (?, ?, ?)`,
+          [gameId, userId, message]
+        );
+        const insertedId = Number(insertResult?.insertId || 0);
+
+        const rows = await query(
+          `SELECT
+              gm.id,
+              gm.game_id,
+              gm.user_id,
+              gm.message,
+              gm.created_at,
+              u.username,
+              u.thumbnail
+           FROM game_chat_message gm
+           INNER JOIN users u ON u.user_id = gm.user_id
+           WHERE gm.id = ?
+           LIMIT 1`,
+          [insertedId]
+        );
+        const row = rows?.[0];
+        const chatMessage = {
+          id: Number(row?.id || insertedId),
+          gameId: Number(row?.game_id || gameId),
+          userId: Number(row?.user_id || userId),
+          username: row?.username || 'مستخدم',
+          thumbnail: row?.thumbnail || null,
+          message: row?.message || message,
+          createdAt: row?.created_at || new Date().toISOString(),
+        };
+
+        nsp.to(`game::${gameId}`).emit('gameChatMessage', chatMessage);
+        if (typeof ack === 'function') {
+          ack({ success: true, data: chatMessage });
+        }
+      } catch (error) {
+        logger.error('Error handling game chat message:', error);
+        if (typeof ack === 'function') {
+          ack({ success: false, message: 'Failed to send game chat message' });
+        }
       }
     });
 

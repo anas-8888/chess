@@ -126,6 +126,11 @@
     @apply bg-background text-foreground font-cairo antialiased;
     font-feature-settings: "kern" 1;
     line-height: 1.65;
+    direction: rtl;
+  }
+
+  #root {
+    direction: rtl;
   }
   
   h1, h2, h3, h4, h5, h6 {

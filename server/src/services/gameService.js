@@ -58,7 +58,9 @@ export const getGameDetailsService = async (gameId) => {
         currentFen: game.current_fen,
         status: game.status,
         currentTurn: game.current_turn || 'white',
-        startedAt: game.started_at
+        startedAt: game.started_at,
+        endedAt: game.ended_at,
+        winnerId: game.winner_id || null
       }
     };
 

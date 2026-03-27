@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Chess, Square } from 'chess.js';
 import ChessBoard from '@/components/ChessBoard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,6 +28,7 @@ import { useToast } from '@/hooks/use-toast';
 import { api } from '@/config/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { socketService } from '@/services/socketService';
+import { friendService } from '@/services/friendService';
 
 interface Player {
   id: number;
@@ -55,15 +56,18 @@ interface GameData {
   currentTurn: string;
   startedAt: string; // Added for game duration
   duration?: string; // Added for game duration
+  endedAt?: string | null;
+  winnerId?: number | null;
 }
 
 interface ChatMessage {
-  id: string;
-  userId: string;
+  id: string | number;
+  userId: string | number;
   username: string;
   message: string;
   type: 'text' | 'emoji' | 'system';
-  timestamp: Date;
+  timestamp: Date | string;
+  thumbnail?: string | null;
 }
 
 interface GameMove {
@@ -174,6 +178,11 @@ const GameRoom = () => {
 
   // تحديد اللاعب الحالي بناءً على معرف المستخدم
   const [currentPlayer, setCurrentPlayer] = useState<'white' | 'black'>('white');
+  const isSpectatorMode = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('spectator') === '1';
+  }, []);
   
   // إعداد بيانات اللاعبين
   useEffect(() => {
@@ -236,73 +245,43 @@ const GameRoom = () => {
     lastUpdate: Date.now()
   });
 
+  const [, setRenderTick] = useState(0); // لإعادة التصيير بسلاسة
+
   // Update timers display when timers state changes
   useEffect(() => {
   }, [timers, gameState, currentPlayer]);
 
-  // Timer countdown effect
+  // Timer countdown effect - فقط لإعادة تصيير العرض بسلاسة
   useEffect(() => {
     if (!timers.isRunning || gameState.status !== 'active') return;
 
     const interval = setInterval(() => {
-      setTimers(prev => {
-        const now = Date.now();
-        const timeDiff = (now - prev.lastUpdate) / 1000; // Convert to seconds
+      // Force re-render to update displayed time
+      setRenderTick(prev => prev + 1);
+      
+      // Check for timeout based on calculated times
+      const now = Date.now();
+      const timeSinceUpdate = (now - timers.lastUpdate) / 1000;
+      
+      let whiteRemaining = Math.max(0, timers.white - (gameState.currentTurn === 'white' ? timeSinceUpdate : 0));
+      let blackRemaining = Math.max(0, timers.black - (gameState.currentTurn === 'black' ? timeSinceUpdate : 0));
+      
+      if (whiteRemaining <= 0 || blackRemaining <= 0) {
+        const timeoutPlayer = whiteRemaining <= 0 ? 'white' : 'black';
+        const winner = timeoutPlayer === 'white' ? 'black' : 'white';
         
-        let newWhiteTime = prev.white;
-        let newBlackTime = prev.black;
-        
-        // Only decrease time for the current player
-        if (gameState.currentTurn === 'white') {
-          newWhiteTime = Math.max(0, Math.floor(prev.white - timeDiff));
-        } else if (gameState.currentTurn === 'black') {
-          newBlackTime = Math.max(0, Math.floor(prev.black - timeDiff));
-        }
-        
-        // Check for timeout
-        if (newWhiteTime <= 0 || newBlackTime <= 0) {
-          const timeoutPlayer = newWhiteTime <= 0 ? 'white' : 'black';
-          const winner = timeoutPlayer === 'white' ? 'black' : 'white';
-          
-          // معالجة انتهاء الوقت
-          handleGameEnd({ 
-            reason: 'timeout', 
-            winner: winner 
-          });
-          
-          // Stop the timer
-          return {
-            ...prev,
-            white: newWhiteTime,
-            black: newBlackTime,
-            isRunning: false,
-            lastUpdate: now
-          };
-        }
-        
-        return {
-          ...prev,
-          white: newWhiteTime,
-          black: newBlackTime,
-          lastUpdate: now
-        };
-      });
-    }, 1000); // Update every second
+        handleGameEnd({ 
+          reason: 'timeout', 
+          winner: winner 
+        });
+      }
+    }, 100); // Update frequently for smooth display
 
     return () => clearInterval(interval);
-  }, [timers.isRunning, gameState.currentTurn, gameState.status]);
+  }, [timers.isRunning, gameState.currentTurn, gameState.status, timers.lastUpdate]);
 
   const [moves, setMoves] = useState<GameMove[]>([]);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    {
-      id: '1',
-      userId: 'system',
-      username: 'النظام',
-      message: 'بدأت المباراة! حظاً موفقاً للاعبين',
-      type: 'system',
-      timestamp: new Date()
-    }
-  ]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [isSoundEnabled, setIsSoundEnabled] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -323,6 +302,7 @@ const GameRoom = () => {
   const audioUnlockedRef = useRef(false);
   const startCountdownIntervalRef = useRef<number | null>(null);
   const countdownInitializedRef = useRef(false);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
 
   const { toast } = useToast();
   const DRAWING_GUIDE_STORAGE_KEY = 'drawing_guide_friend_v1';
@@ -567,17 +547,36 @@ const GameRoom = () => {
     return /^\d+$/.test(rawGameId) ? rawGameId : null;
   }, []);
 
+  const shouldSkipPreGameCountdown = useCallback((): boolean => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('skip_countdown') === '1';
+  }, []);
+
   // دالة لعرض مودال انتهاء اللعبة
   const boardResultSticker = React.useMemo<'win' | 'loss' | 'draw' | null>(() => {
-    if (gameState.status !== 'finished') return null;
+    const normalizedStatus = (gameState.status || '').toLowerCase();
+    const isEnded = normalizedStatus === 'finished' || normalizedStatus === 'ended';
+    if (!isEnded) return null;
 
     const winnerFromEnd = gameEndData?.winner;
     const winnerFromState = (gameState as any).winner as string | null | undefined;
-    const winner = winnerFromEnd || winnerFromState;
+    let winner = winnerFromEnd || winnerFromState;
+
+    // fallback عند فتح مباراة منتهية مباشرة بدون event gameEnd عبر socket
+    if (!winner && gameData?.winnerId) {
+      const winnerId = Number(gameData.winnerId);
+      if (winnerId === Number(gameData.whitePlayer?.id)) winner = 'white';
+      if (winnerId === Number(gameData.blackPlayer?.id)) winner = 'black';
+    }
 
     if (!winner) return 'draw';
     return winner === currentPlayer ? 'win' : 'loss';
-  }, [gameState.status, gameEndData?.winner, currentPlayer, gameState]);
+  }, [gameState.status, gameEndData?.winner, currentPlayer, gameState, gameData]);
+
+  const isGameEndedForUi = React.useMemo(() => {
+    const normalized = (gameState.status || '').toLowerCase();
+    return normalized === 'ended' || normalized === 'finished';
+  }, [gameState.status]);
   const showGameEndModal = useCallback((reason: string, winner?: string, ratingDelta?: number, isPlacement?: boolean) => {
     setGameEndData({ reason, winner, ratingDelta, isPlacement });
     setShowGameEndModalState(true);
@@ -588,6 +587,58 @@ const GameRoom = () => {
     window.location.href = '/dashboard';
   }, []);
 
+  const quickMatchOpponent = useMemo(() => {
+    if (!gameData || !user) return null;
+
+    const currentUserId = Number(user.id);
+    if (!Number.isFinite(currentUserId)) return null;
+
+    if (Number(gameData.whitePlayer.id) === currentUserId) {
+      return gameData.blackPlayer;
+    }
+    if (Number(gameData.blackPlayer.id) === currentUserId) {
+      return gameData.whitePlayer;
+    }
+
+    return null;
+  }, [gameData, user]);
+
+  const isCurrentUserPlayer = useMemo(() => {
+    if (!gameData || !user) return false;
+    const currentUserId = Number(user.id);
+    if (!Number.isFinite(currentUserId)) return false;
+    return (
+      Number(gameData.whitePlayer.id) === currentUserId ||
+      Number(gameData.blackPlayer.id) === currentUserId
+    );
+  }, [gameData, user]);
+
+  const currentUserNumericId = useMemo(() => {
+    const parsed = Number(user?.id || 0);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }, [user?.id]);
+
+  const handleQuickRematch = useCallback(() => {
+    window.location.href = '/dashboard';
+  }, []);
+
+  const handleAddOpponentAsFriend = useCallback(async () => {
+    if (!quickMatchOpponent) return;
+    try {
+      await friendService.sendFriendRequest(String(quickMatchOpponent.id));
+      toast({
+        title: 'تم إرسال الطلب',
+        description: `تم إرسال طلب صداقة إلى ${quickMatchOpponent.name}`,
+      });
+    } catch (error) {
+      toast({
+        title: 'تعذر إرسال طلب الصداقة',
+        description: error instanceof Error ? error.message : 'حاول مرة أخرى.',
+        variant: 'destructive',
+      });
+    }
+  }, [quickMatchOpponent, toast]);
+
     // جلب بيانات اللعبة من الـ API
   useEffect(() => {
     const fetchGameData = async () => {
@@ -596,7 +647,22 @@ const GameRoom = () => {
         setError(null);
         
         // الحصول على معرف اللعبة من الـ URL
-        const gameId = getValidGameIdFromUrl();
+        let gameId = getValidGameIdFromUrl();
+        if (!gameId) {
+          try {
+            const activeGameResponse = await api.get('/api/users/games/active');
+            const activeGameId = activeGameResponse?.data?.data?.id;
+            if (activeGameId) {
+              gameId = String(activeGameId);
+              const url = new URL(window.location.href);
+              url.searchParams.set('id', gameId);
+              window.history.replaceState({}, '', `${url.pathname}?${url.searchParams.toString()}`);
+            }
+          } catch (_fallbackError) {
+            // no active game fallback found
+          }
+        }
+
         if (!gameId) {
           setError('Invalid or missing game ID in URL');
           return;
@@ -697,10 +763,51 @@ const GameRoom = () => {
   }, [getValidGameIdFromUrl]);
 
   useEffect(() => {
+    const fetchGameChat = async () => {
+      try {
+        const gameId = getValidGameIdFromUrl();
+        if (!gameId) return;
+
+        const response = await api.get(`/api/game/${gameId}/chat`);
+        if (!response?.data?.success) return;
+
+        const messages = Array.isArray(response.data.data?.messages) ? response.data.data.messages : [];
+        setChatMessages(
+          messages.map((msg: any) => ({
+            id: msg.id,
+            userId: msg.userId,
+            username: msg.username || 'مستخدم',
+            thumbnail: msg.thumbnail || null,
+            message: msg.message || '',
+            type: 'text',
+            timestamp: msg.createdAt || new Date().toISOString(),
+          }))
+        );
+      } catch (chatError) {
+        console.error('Failed to fetch game chat:', chatError);
+      }
+    };
+
+    fetchGameChat();
+  }, [getValidGameIdFromUrl]);
+
+  useEffect(() => {
+    const el = chatEndRef.current;
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [chatMessages]);
+
+  useEffect(() => {
     if (loading) return;
     if (!gameData) return;
     if (countdownInitializedRef.current) return;
     if (gameState.status !== 'active') return;
+    if (shouldSkipPreGameCountdown()) {
+      countdownInitializedRef.current = true;
+      setStartCountdown(null);
+      clearStartCountdownInterval();
+      return;
+    }
 
     const hasNoMoves = moves.length === 0;
     const isInitialBoard = game.history().length === 0;
@@ -713,7 +820,7 @@ const GameRoom = () => {
     const gameAgeSeconds = Number.isNaN(startedAtMs)
       ? Number.POSITIVE_INFINITY
       : Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000));
-    const isFreshStartWindow = gameAgeSeconds <= 1;
+    const isFreshStartWindow = gameAgeSeconds <= 4;
 
     countdownInitializedRef.current = true;
     if (hasNoMoves && isInitialBoard && !clockAlreadyRunning && !hasClockMoved && isFreshStartWindow) {
@@ -722,7 +829,7 @@ const GameRoom = () => {
       setStartCountdown(null);
       clearStartCountdownInterval();
     }
-  }, [loading, gameData, gameState.status, moves.length, game, timers.isRunning, timers.white, timers.black, startPreGameCountdown, clearStartCountdownInterval]);
+  }, [loading, gameData, gameState.status, moves.length, game, timers.isRunning, timers.white, timers.black, startPreGameCountdown, clearStartCountdownInterval, shouldSkipPreGameCountdown]);
 
   useEffect(() => {
     return () => {
@@ -750,7 +857,7 @@ const GameRoom = () => {
     const gameAgeSeconds = Number.isNaN(startedAtMs)
       ? Number.POSITIVE_INFINITY
       : Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000));
-    const isFreshStartWindow = gameAgeSeconds <= 1;
+    const isFreshStartWindow = gameAgeSeconds <= 4;
 
     // While 3-2-1 is visible, keep timers frozen only in very fresh brand-new games.
     if (startCountdown !== null && !serverClockAdvanced && isFreshStartWindow) {
@@ -902,12 +1009,7 @@ const GameRoom = () => {
   const handleOpponentMove = useCallback((data: any) => {
     
     const { move: san, fen, movedBy, currentTurn, isPhysical = false } = data;
-    
-    // Ignore moves from current player
-    if (movedBy === currentPlayer) {
-      return;
-    }
-    
+    if (!fen) return;
     
     // Handle physical move notification
     if (isPhysical) {
@@ -919,11 +1021,9 @@ const GameRoom = () => {
       setTimeout(() => setIsPhysicalMove(false), 3000);
     }
 
-    // Update game with new FEN
-    if (game && fen) {
-      game.load(fen);
-      setGame(game);
-    }
+    // Update game with new FEN (immutable instance to ensure UI/effects update consistently)
+    const syncedGame = new Chess(fen);
+    setGame(syncedGame);
 
     // Update game state
     setGameState(prev => ({
@@ -961,7 +1061,7 @@ const GameRoom = () => {
     }
 
     setIsProcessingMove(false);
-  }, [currentPlayer, handleGameEnd, playSoundEffect]);
+  }, [handleGameEnd, playSoundEffect, toast]);
 
   const handleGameTimeout = useCallback((data: { winner: string; reason?: string }) => {
     
@@ -1011,6 +1111,29 @@ const GameRoom = () => {
     setIsProcessingMove(false);
   }, []);
 
+  const handleIncomingGameChat = useCallback((data: any) => {
+    const incomingId = String(data?.id || '');
+    if (!incomingId) return;
+
+    setChatMessages((prev) => {
+      if (prev.some((msg) => String(msg.id) === incomingId)) {
+        return prev;
+      }
+      return [
+        ...prev,
+        {
+          id: data.id,
+          userId: data.userId,
+          username: data.username || 'مستخدم',
+          thumbnail: data.thumbnail || null,
+          message: data.message || '',
+          type: 'text',
+          timestamp: data.createdAt || new Date().toISOString(),
+        },
+      ];
+    });
+  }, []);
+
   // WebSocket events for real-time updates
   useEffect(() => {
     if (!user || !token) return;
@@ -1030,6 +1153,7 @@ const GameRoom = () => {
     socketService.onGameTimeout(handleGameTimeout);
     socketService.onGameEnd(handleGameEnd);
     socketService.onMoveConfirmed(handleMoveConfirmed);
+    socketService.onGameChatMessage(handleIncomingGameChat);
 
     socketService.joinGameRoom(gameId);
 
@@ -1041,6 +1165,7 @@ const GameRoom = () => {
       socketService.offGameTimeout();
       socketService.offGameEnd();
       socketService.offMoveConfirmed();
+      socketService.offGameChatMessage();
       removeConnectionCallback();
     };
   }, [
@@ -1052,10 +1177,19 @@ const GameRoom = () => {
     handleGameTimeout,
     handleGameEnd,
     handleMoveConfirmed,
+    handleIncomingGameChat,
     getValidGameIdFromUrl,
   ]);
 
   const handleMove = useCallback((from: Square, to: Square, promotion?: string) => {
+    if (isSpectatorMode || !isCurrentUserPlayer) {
+      toast({
+        title: "وضع المشاهدة المباشرة",
+        description: "لا يمكن تحريك القطع أثناء المشاهدة",
+        variant: "destructive"
+      });
+      return false;
+    }
     
     // Check if it's player's turn
     if (gameState.currentTurn !== currentPlayer) {
@@ -1179,7 +1313,7 @@ const GameRoom = () => {
     }
 
     return false;
-  }, [game, gameState.currentTurn, gameState.status, currentPlayer, isProcessingMove, handleGameEnd, getValidGameIdFromUrl, playSoundEffect, toast]);
+  }, [game, gameState.currentTurn, gameState.status, currentPlayer, isProcessingMove, handleGameEnd, getValidGameIdFromUrl, playSoundEffect, toast, isSpectatorMode, isCurrentUserPlayer]);
 
   const handleResign = () => {
     setShowResignConfirmModal(true);
@@ -1239,27 +1373,62 @@ const GameRoom = () => {
     }
   };
 
-  const handleSendMessage = () => {
-    if (!chatInput.trim() || !players[currentPlayer]) return;
+  const handleSendMessage = async () => {
+    const trimmed = chatInput.trim();
+    if (!trimmed) return;
 
+    if (isSpectatorMode || !isCurrentUserPlayer) {
+      toast({
+        title: 'وضع المشاهدة المباشرة',
+        description: 'لا يمكنك إرسال رسائل في وضع المشاهدة',
+        variant: 'destructive',
+      });
+      return;
+    }
 
-    const message: ChatMessage = {
-      id: Date.now().toString(),
-      userId: players[currentPlayer]?.id?.toString() || 'unknown',
-      username: players[currentPlayer]?.name || 'Unknown',
-      message: chatInput,
-      type: 'text',
-      timestamp: new Date()
-    };
+    const gameId = getValidGameIdFromUrl();
+    if (!gameId) return;
 
-    setChatMessages(prev => [...prev, message]);
     setChatInput('');
 
-    // REST: POST /api/games/:id/chat
-    // SOCKET: socket.emit('chatMessage', {
-    //   gameId: gameState.id,
-    //   message: chatInput
-    // });
+    const socketAck = await socketService.sendGameChatMessage({
+      gameId,
+      message: trimmed,
+    });
+
+    if (socketAck.success) {
+      return;
+    }
+
+    try {
+      const response = await api.post(`/api/game/${gameId}/chat`, { message: trimmed });
+      const msg = response?.data?.data;
+      if (response?.data?.success && msg) {
+        setChatMessages((prev) => {
+          if (prev.some((m) => String(m.id) === String(msg.id))) {
+            return prev;
+          }
+          return [
+            ...prev,
+            {
+              id: msg.id,
+              userId: msg.userId,
+              username: msg.username || 'مستخدم',
+              thumbnail: msg.thumbnail || null,
+              message: msg.message || trimmed,
+              type: 'text',
+              timestamp: msg.createdAt || new Date().toISOString(),
+            },
+          ];
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'فشل إرسال الرسالة',
+        description: error instanceof Error ? error.message : 'تعذر إرسال الرسالة حالياً',
+        variant: 'destructive',
+      });
+    }
   };
 
   const formatTime = (seconds: number) => {
@@ -1271,14 +1440,20 @@ const GameRoom = () => {
 
   // دالة لتحديد المؤقت الصحيح حسب اللاعب
   const getPlayerTimer = (playerColor: 'white' | 'black') => {
+    // حساب الوقت المتبقي بناءً على الوقت المنقضي منذ آخر تحديث
+    const now = Date.now();
+    const timeSinceUpdate = (now - timers.lastUpdate) / 1000; // بالثواني
+    
+    let whiteRemaining = Math.max(0, Math.floor(timers.white - (gameState.currentTurn === 'white' && timers.isRunning ? timeSinceUpdate : 0)));
+    let blackRemaining = Math.max(0, Math.floor(timers.black - (gameState.currentTurn === 'black' && timers.isRunning ? timeSinceUpdate : 0)));
     
     let result;
     if (currentPlayer === 'white') {
       // اللاعب الأبيض يرى المؤقتات كما هي
-      result = playerColor === 'white' ? timers.white : timers.black;
+      result = playerColor === 'white' ? whiteRemaining : blackRemaining;
     } else {
       // اللاعب الأسود يرى المؤقتات معكوسة
-      result = playerColor === 'white' ? timers.black : timers.white;
+      result = playerColor === 'white' ? blackRemaining : whiteRemaining;
     }
     
     return result;
@@ -1321,8 +1496,9 @@ const GameRoom = () => {
     );
   }
 
-  const formatMoveTime = (timestamp: Date) => {
-    const formatted = timestamp.toLocaleTimeString('ar-SA', { 
+  const formatMoveTime = (timestamp: Date | string) => {
+    const dateValue = timestamp instanceof Date ? timestamp : new Date(timestamp);
+    const formatted = dateValue.toLocaleTimeString('ar-SA', { 
       hour: '2-digit', 
       minute: '2-digit' 
     });
@@ -1332,7 +1508,7 @@ const GameRoom = () => {
   return (
     <div className="min-h-screen bg-background" ref={gamePageRef}>
       {/* Header */}
-      <header className="bg-card border-b shadow-card">
+      <header className="sticky top-0 z-20 bg-card border-b shadow-card">
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -1414,8 +1590,25 @@ const GameRoom = () => {
                     </div>
                   </div>
 
-                  <Badge variant={gameState.currentTurn === currentPlayer ? 'default' : 'outline'} className="shrink-0">
-                    {gameState.currentTurn === currentPlayer ? 'دورك' : 'دور الخصم'}
+                  <Badge
+                    variant={
+                      isGameEndedForUi
+                        ? 'destructive'
+                        : isSpectatorMode || !isCurrentUserPlayer
+                          ? 'secondary'
+                          : gameState.currentTurn === currentPlayer
+                            ? 'default'
+                            : 'outline'
+                    }
+                    className="shrink-0"
+                  >
+                    {isGameEndedForUi
+                      ? 'المباراة منتهية'
+                      : isSpectatorMode || !isCurrentUserPlayer
+                        ? 'مشاهدة مباشرة'
+                        : gameState.currentTurn === currentPlayer
+                          ? 'دورك'
+                          : 'دور الخصم'}
                   </Badge>
 
                   <div className="min-w-0 flex-1 rounded-md border border-border/60 px-2 py-1.5">
@@ -1489,8 +1682,24 @@ const GameRoom = () => {
 
                 <div className="flex justify-between text-sm">
                   <span>دور اللعب الآن:</span>
-                  <Badge variant={gameState.currentTurn === currentPlayer ? 'default' : 'outline'}>
-                    {gameState.currentTurn === currentPlayer ? 'دورك' : 'دور الخصم'}
+                  <Badge
+                    variant={
+                      isGameEndedForUi
+                        ? 'destructive'
+                        : isSpectatorMode || !isCurrentUserPlayer
+                          ? 'secondary'
+                          : gameState.currentTurn === currentPlayer
+                            ? 'default'
+                            : 'outline'
+                    }
+                  >
+                    {isGameEndedForUi
+                      ? 'المباراة منتهية'
+                      : isSpectatorMode || !isCurrentUserPlayer
+                        ? 'مشاهدة مباشرة'
+                        : gameState.currentTurn === currentPlayer
+                          ? 'دورك'
+                          : 'دور الخصم'}
                   </Badge>
                 </div>
 
@@ -1546,7 +1755,7 @@ const GameRoom = () => {
                 variant="destructive" 
                 className="w-full"
                 onClick={handleResign}
-                disabled={gameState.status !== 'active' ? true : false}
+                disabled={gameState.status !== 'active' || isSpectatorMode || !isCurrentUserPlayer}
               >
                 <Flag className="w-4 h-4 ml-2" />
                 استسلام
@@ -1560,8 +1769,15 @@ const GameRoom = () => {
               <ChessBoard
                 game={game}
                 onMove={handleMove}
-                orientation={currentPlayer}
-                allowMoves={startCountdown === null && gameState.status === 'active' && gameState.currentTurn === currentPlayer && !isProcessingMove}
+                orientation={isCurrentUserPlayer ? currentPlayer : 'white'}
+                allowMoves={
+                  !isSpectatorMode &&
+                  isCurrentUserPlayer &&
+                  startCountdown === null &&
+                  gameState.status === 'active' &&
+                  gameState.currentTurn === currentPlayer &&
+                  !isProcessingMove
+                }
                 resultSticker={boardResultSticker}
               />
             </Card>
@@ -1618,7 +1834,7 @@ const GameRoom = () => {
                 variant="destructive"
                 className="w-full"
                 onClick={handleResign}
-                disabled={gameState.status !== 'active'}
+                disabled={gameState.status !== 'active' || isSpectatorMode || !isCurrentUserPlayer}
               >
                 <Flag className="w-4 h-4 ml-2" />
                 استسلام
@@ -1680,47 +1896,59 @@ const GameRoom = () => {
                 <CardTitle className="text-lg font-amiri">المحادثة</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <ScrollArea className="h-64 px-4">
-                  <div className="space-y-3">
+                <ScrollArea dir="rtl" className="h-64 px-3 bg-[linear-gradient(135deg,rgba(255,255,255,0.03)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.03)_50%,rgba(255,255,255,0.03)_75%,transparent_75%,transparent)] bg-[length:16px_16px]">
+                  <div className="space-y-2 py-3">
                     {chatMessages.map((msg) => (
-                      <div key={msg.id} className={`${
-                        msg.type === 'system' 
-                          ? 'text-center text-muted-foreground text-sm bg-muted/50 rounded p-2' 
-                          : msg.userId === players[currentPlayer].id.toString() 
-                            ? 'text-right' 
-                            : 'text-left'
-                      }`}>
-                        {msg.type !== 'system' && (
-                          <div className="text-xs text-muted-foreground mb-1">
-                            {msg.username} • {formatMoveTime(msg.timestamp)}
+                      <div
+                        key={msg.id}
+                        className={`flex ${Number(msg.userId) === Number(currentUserNumericId) ? 'justify-start' : 'justify-end'}`}
+                      >
+                        {msg.type !== 'system' ? (
+                          <div
+                            className={`max-w-[84%] rounded-2xl px-3 py-2 shadow-sm text-right ${
+                              Number(msg.userId) === Number(currentUserNumericId)
+                                ? 'bg-emerald-600 text-white rounded-br-md'
+                                : 'bg-slate-700 text-slate-100 rounded-bl-md'
+                            }`}
+                          >
+                            <div className="text-sm leading-relaxed break-words">{msg.message}</div>
+                            <div className="text-[10px] opacity-70 mt-1 text-right">
+                              {formatMoveTime(msg.timestamp)}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-center text-muted-foreground text-xs bg-muted/60 rounded px-3 py-1">
+                            {msg.message}
                           </div>
                         )}
-                        <div className={`${
-                          msg.type !== 'system' 
-                            ? msg.userId === players[currentPlayer].id.toString() 
-                              ? 'bg-primary text-primary-foreground p-2 rounded-r-lg rounded-bl-lg inline-block max-w-[80%]'
-                              : 'bg-muted p-2 rounded-l-lg rounded-br-lg inline-block max-w-[80%]'
-                            : ''
-                        }`}>
-                          {msg.message}
-                        </div>
                       </div>
                     ))}
+                    {chatMessages.length === 0 && (
+                      <div className="text-center text-muted-foreground text-sm py-8">
+                        لا توجد رسائل بعد
+                      </div>
+                    )}
+                    <div ref={chatEndRef} />
                   </div>
                 </ScrollArea>
                 
-                <Separator className="my-3" />
+                <Separator className="my-2" />
                 
-                <div className="px-4 pb-4">
+                <div className="px-3 pb-3">
                   <div className="flex gap-2">
                     <Input
-                      placeholder="اكتب رسالة..."
+                      placeholder={isSpectatorMode || !isCurrentUserPlayer ? 'وضع مشاهدة فقط' : 'اكتب رسالة...'}
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                      onKeyDown={(e) => e.key === 'Enter' && void handleSendMessage()}
                       className="text-right"
+                      disabled={isSpectatorMode || !isCurrentUserPlayer}
                     />
-                    <Button size="icon" onClick={handleSendMessage}>
+                    <Button
+                      size="icon"
+                      onClick={() => void handleSendMessage()}
+                      disabled={isSpectatorMode || !isCurrentUserPlayer || !chatInput.trim()}
+                    >
                       <Send className="w-4 h-4" />
                     </Button>
                   </div>
@@ -1818,6 +2046,24 @@ const GameRoom = () => {
               </div>
               
               <div className="flex gap-2">
+                {gameData?.gameType === 'ranked' && quickMatchOpponent && (
+                  <>
+                    <Button
+                      variant="secondary"
+                      onClick={handleQuickRematch}
+                      className="flex-1"
+                    >
+                      إعادة اللعب
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={handleAddOpponentAsFriend}
+                      className="flex-1"
+                    >
+                      إضافة صديق
+                    </Button>
+                  </>
+                )}
                 <Button 
                   onClick={goToDashboard}
                   className="flex-1"

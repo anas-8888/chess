@@ -6,4 +6,6 @@ document.documentElement.classList.add('dark');
 document.documentElement.setAttribute('dir', 'rtl');
 document.documentElement.setAttribute('lang', 'ar');
 
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(
+  <App />
+);

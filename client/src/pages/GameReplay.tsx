@@ -189,7 +189,7 @@ const GameReplay = () => {
 
   return (
     <div className="min-h-screen bg-gradient-subtle" dir="rtl">
-      <header className="border-b border-border bg-card/50 backdrop-blur">
+      <header className="sticky top-0 z-20 border-b border-border bg-card/50 backdrop-blur">
         <div className="container mx-auto px-4 py-4 flex items-center gap-2">
           <Button variant="ghost" size="icon" aria-label="رجوع" onClick={() => navigate(-1)}>
             <ArrowRight className="h-5 w-5" />

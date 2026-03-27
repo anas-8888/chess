@@ -1,7 +1,7 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Search } from "lucide-react";
+import { ArrowRight, Compass, Crown } from "lucide-react";
 
 const NotFound = () => {
   const location = useLocation();
@@ -15,24 +15,27 @@ const NotFound = () => {
   }, [location.pathname]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-hero">
-      <div className="text-center p-8 bg-card/90 backdrop-blur-sm rounded-lg shadow-elegant max-w-md">
-        <div className="text-8xl font-amiri font-bold text-primary mb-4">404</div>
-        <h1 className="text-2xl font-amiri font-bold text-card-foreground mb-2">
-          الصفحة غير موجودة
-        </h1>
-        <p className="text-muted-foreground mb-6">
-          عذراً، لا يمكن العثور على الصفحة المطلوبة
+    <div className="min-h-screen bg-gradient-subtle flex items-center justify-center px-4" dir="rtl">
+      <div className="w-full max-w-xl rounded-2xl border border-border/70 bg-card/95 p-8 text-center shadow-elegant">
+        <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-primary/15">
+          <Crown className="h-8 w-8 text-primary" />
+        </div>
+
+        <p className="text-6xl font-black text-primary/90 leading-none">404</p>
+        <h1 className="mt-4 text-3xl font-cairo font-bold text-foreground">النقلة غير موجودة</h1>
+        <p className="mt-3 text-muted-foreground">
+          الصفحة المطلوبة غير متاحة. ربما تم نقلها أو حذفها.
         </p>
-        <div className="flex gap-3 justify-center">
-          <Button variant="chess" onClick={() => navigate(-1)}>
+
+        <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
+          <Button variant="chess" onClick={() => navigate(-1)} className="gap-2">
             <ArrowRight className="w-4 h-4" />
             رجوع
           </Button>
-          <Button asChild variant="elegant">
+          <Button asChild variant="outline" className="gap-2">
             <a href="/dashboard">
-              <Search className="w-4 h-4" />
-              لوحة التحكم
+              <Compass className="w-4 h-4" />
+              الذهاب إلى لوحة التحكم
             </a>
           </Button>
         </div>

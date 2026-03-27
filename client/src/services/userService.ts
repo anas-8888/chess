@@ -381,16 +381,30 @@ class UserService {
       : {};
 
     const isFile = typeof image !== 'string';
-    const response = await fetch(`${API_BASE_URL}/api/users/profile/avatar`, {
-      method: 'POST',
-      headers: isFile
-        ? authHeaders
-        : {
-            ...authHeaders,
-            'Content-Type': 'application/json',
-          },
-      body: isFile ? image : JSON.stringify({ imageData: image }),
-    });
+    
+    let response;
+    
+    if (isFile) {
+      // رفع الصورة كـ binary raw مع Content-Type الصحيح
+      response = await fetch(`${API_BASE_URL}/api/users/profile/avatar`, {
+        method: 'POST',
+        headers: {
+          ...authHeaders,
+          'Content-Type': image.type || 'image/jpeg',
+        },
+        body: image,
+      });
+    } else {
+      // إرسال base64 كـ JSON
+      response = await fetch(`${API_BASE_URL}/api/users/profile/avatar`, {
+        method: 'POST',
+        headers: {
+          ...authHeaders,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ imageData: image }),
+      });
+    }
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));

@@ -9,6 +9,8 @@ import {
   updatePuzzleValidation,
   puzzleIdValidation,
   listPuzzlesValidation,
+  checkPuzzleMoveValidation,
+  finishPuzzleAttemptValidation,
 } from '../middlewares/validation/puzzleValidation.js';
 
 const router = express.Router();
@@ -18,6 +20,9 @@ router.use(protect);
 
 // GET /api/puzzles - List all puzzles (with pagination and filtering)
 router.get('/', listPuzzlesValidation, puzzleController.list);
+
+// GET /api/puzzles/progress/overview - Current user puzzle progress overview
+router.get('/progress/overview', puzzleController.progressOverview);
 
 // GET /api/puzzles/random - Get random puzzle
 router.get('/random', puzzleController.getRandom);
@@ -36,6 +41,15 @@ router.post(
 
 // GET /api/puzzles/level/:level - Get puzzles by level
 router.get('/level/:level', puzzleController.getByLevel);
+
+// GET /api/puzzles/:id/play - Get playable puzzle payload
+router.get('/:id/play', puzzleIdValidation, puzzleController.getPlayableById);
+
+// POST /api/puzzles/:id/check-move - Validate current move sequence step-by-step
+router.post('/:id/check-move', checkPuzzleMoveValidation, puzzleController.checkMove);
+
+// POST /api/puzzles/:id/finish - Finish puzzle attempt and update progress
+router.post('/:id/finish', finishPuzzleAttemptValidation, puzzleController.finishAttempt);
 
 // POST /api/puzzles/:id/validate - Validate puzzle solution
 router.post(

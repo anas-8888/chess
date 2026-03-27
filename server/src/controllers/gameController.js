@@ -6,6 +6,7 @@ import Game from '../models/Game.js'; // Added import for Game model
 import logger from '../utils/logger.js';
 import { handleGameMove, handleGameEnd } from '../socket/socketHelpers.js';
 import { applyGameRatingChanges } from '../services/ratingService.js';
+import { query } from '../config/db.js';
 
 const AI_SYSTEM_EMAIL = 'ai.bot@system.local';
 const AI_SYSTEM_USERNAME = 'ai_bot';
@@ -49,6 +50,27 @@ const ensureAiSystemUser = async () => {
   });
 
   return aiUser;
+};
+
+const resolveGameAndUserAuthorization = async (gameId, userId) => {
+  const game = await Game.findByPk(gameId, {
+    attributes: ['id', 'white_player_id', 'black_player_id'],
+  });
+  if (!game) return { game: null, isParticipant: false };
+
+  const isParticipant =
+    Number(game.white_player_id) === Number(userId) ||
+    Number(game.black_player_id) === Number(userId);
+
+  if (isParticipant) {
+    return { game, isParticipant: true };
+  }
+
+  const viewer = await User.findByPk(userId, {
+    attributes: ['user_id', 'type'],
+  });
+  const isAdminViewer = viewer?.type === 'admin';
+  return { game, isParticipant: isAdminViewer };
 };
 
 // الحصول على تفاصيل اللعبة
@@ -480,6 +502,167 @@ export const getGameState = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'خطأ في الخادم'
+    });
+  }
+};
+
+export const getGameChatMessages = async (req, res) => {
+  try {
+    const gameId = Number(req.params.id);
+    const userId = Number(req.user?.user_id || 0);
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required',
+      });
+    }
+
+    const { game, isParticipant } = await resolveGameAndUserAuthorization(gameId, userId);
+    if (!game) {
+      return res.status(404).json({
+        success: false,
+        message: 'Game not found',
+      });
+    }
+    if (!isParticipant) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to view this game chat',
+      });
+    }
+
+    const rows = await query(
+      `SELECT
+          gm.id,
+          gm.game_id,
+          gm.user_id,
+          gm.message,
+          gm.created_at,
+          u.username,
+          u.thumbnail
+       FROM game_chat_message gm
+       INNER JOIN users u ON u.user_id = gm.user_id
+       WHERE gm.game_id = ?
+       ORDER BY gm.created_at ASC, gm.id ASC`,
+      [gameId]
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        gameId,
+        messages: rows.map((row) => ({
+          id: Number(row.id),
+          gameId: Number(row.game_id),
+          userId: Number(row.user_id),
+          username: row.username,
+          thumbnail: row.thumbnail || null,
+          message: row.message,
+          createdAt: row.created_at,
+        })),
+      },
+    });
+  } catch (error) {
+    logger.error('Failed to fetch game chat messages:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch game chat messages',
+    });
+  }
+};
+
+export const postGameChatMessage = async (req, res) => {
+  try {
+    const gameId = Number(req.params.id);
+    const userId = Number(req.user?.user_id || 0);
+    const rawMessage = typeof req.body?.message === 'string' ? req.body.message : '';
+    const message = rawMessage.trim();
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required',
+      });
+    }
+
+    if (!message) {
+      return res.status(400).json({
+        success: false,
+        message: 'Message is required',
+      });
+    }
+
+    if (message.length > 500) {
+      return res.status(400).json({
+        success: false,
+        message: 'Message too long',
+      });
+    }
+
+    const { game, isParticipant } = await resolveGameAndUserAuthorization(gameId, userId);
+    if (!game) {
+      return res.status(404).json({
+        success: false,
+        message: 'Game not found',
+      });
+    }
+    if (!isParticipant) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to send message in this game',
+      });
+    }
+
+    const insertResult = await query(
+      `INSERT INTO game_chat_message (game_id, user_id, message)
+       VALUES (?, ?, ?)`,
+      [gameId, userId, message]
+    );
+    const insertedId = Number(insertResult?.insertId || 0);
+
+    const rows = await query(
+      `SELECT
+          gm.id,
+          gm.game_id,
+          gm.user_id,
+          gm.message,
+          gm.created_at,
+          u.username,
+          u.thumbnail
+       FROM game_chat_message gm
+       INNER JOIN users u ON u.user_id = gm.user_id
+       WHERE gm.id = ?
+       LIMIT 1`,
+      [insertedId]
+    );
+
+    const payloadRow = rows?.[0];
+    const chatMessage = {
+      id: Number(payloadRow?.id || insertedId),
+      gameId: Number(payloadRow?.game_id || gameId),
+      userId: Number(payloadRow?.user_id || userId),
+      username: payloadRow?.username || req.user?.username || 'مستخدم',
+      thumbnail: payloadRow?.thumbnail || null,
+      message: payloadRow?.message || message,
+      createdAt: payloadRow?.created_at || new Date().toISOString(),
+    };
+
+    const friendsNamespace = global.io?.of ? global.io.of('/friends') : null;
+    if (friendsNamespace) {
+      friendsNamespace.to(`game::${gameId}`).emit('gameChatMessage', chatMessage);
+    }
+
+    return res.status(201).json({
+      success: true,
+      data: chatMessage,
+      message: 'Message sent',
+    });
+  } catch (error) {
+    logger.error('Failed to send game chat message:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to send game chat message',
     });
   }
 };

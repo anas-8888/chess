@@ -12,29 +12,19 @@ import {
   Puzzle,
   Clock, 
   User,
-  LogOut,
   Check,
   X,
   MessageCircle,
   Crown,
-  BarChart3,
-  UserCircle
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { userService, UserProfile, RecentGame, ActiveGameSummary } from '@/services/userService';
-import { inviteService } from '@/services/inviteService';
+import { inviteService, Invite } from '@/services/inviteService';
 import { useNavigate } from 'react-router-dom';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { socketService } from '@/services/socketService';
+import AppNavHeader from '@/components/AppNavHeader';
 import { getInitialsFromName, hasCustomAvatar } from '@/utils/avatar';
-import BrandLogo from '@/components/BrandLogo';
 
 
 interface GameInvite {
@@ -63,22 +53,35 @@ interface ActiveGame {
   time_left: number;
 }
 
+type InviteAcceptResult = {
+  data?: {
+    game?: {
+      id?: number | string;
+    };
+    gameId?: number | string;
+  };
+  gameId?: number | string;
+};
+
 const DASHBOARD_TAB_STORAGE_KEY = 'dashboard_active_tab_v1';
 const DASHBOARD_TAB_VALUES = ['play', 'games'] as const;
 type DashboardTabValue = (typeof DASHBOARD_TAB_VALUES)[number];
 
 const Dashboard = () => {
-  const { user: authUser, logout } = useAuth();
+  const { user: authUser } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [user, setUser] = useState<UserProfile | null>(null);
 
-  const [invites, setInvites] = useState<any[]>([]);
+  const [invites, setInvites] = useState<Invite[]>([]);
   const [recentGames, setRecentGames] = useState<RecentGame[]>([]);
   const [activeGame, setActiveGame] = useState<ActiveGameSummary | null>(null);
   const [endingGameId, setEndingGameId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const { updateStatus } = useAuth();
+  const { updateStatus, token } = useAuth();
+  const [quickMatchSearching, setQuickMatchSearching] = useState(false);
+  const [quickMatchWaitSeconds, setQuickMatchWaitSeconds] = useState(0);
+  const [quickMatchRange, setQuickMatchRange] = useState(50);
   const [activeTab, setActiveTab] = useState<DashboardTabValue>(() => {
     if (typeof window === 'undefined') return 'play';
     const savedTab = localStorage.getItem(DASHBOARD_TAB_STORAGE_KEY);
@@ -87,6 +90,13 @@ const Dashboard = () => {
     }
     return 'play';
   });
+
+  const getErrorMessage = (error: unknown, fallback: string) => {
+    if (error instanceof Error && error.message) {
+      return error.message;
+    }
+    return fallback;
+  };
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -114,11 +124,11 @@ const Dashboard = () => {
         } catch (error) {
           console.error('Error loading invites:', error);
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('Error fetching user data:', error);
         toast({
           title: "خطأ في جلب البيانات",
-          description: error.message || "فشل في تحميل بيانات المستخدم",
+          description: getErrorMessage(error, "فشل في تحميل بيانات المستخدم"),
           variant: "destructive",
         });
       } finally {
@@ -153,6 +163,104 @@ const Dashboard = () => {
     };
   }, [authUser, updateStatus]);
 
+  useEffect(() => {
+    if (!token) return;
+
+    socketService.connect(token);
+
+    socketService.onQuickMatchJoined((data: { waitSeconds?: number; range?: number }) => {
+      setQuickMatchSearching(true);
+      setQuickMatchWaitSeconds(Number(data?.waitSeconds || 0));
+      setQuickMatchRange(Number(data?.range || 50));
+      toast({
+        title: 'جاري البحث عن خصم',
+        description: 'سنبدأ المباراة فور العثور على خصم مناسب.',
+      });
+    });
+
+    socketService.onQuickMatchSearchProgress((data: { waitSeconds?: number; range?: number }) => {
+      setQuickMatchSearching(true);
+      setQuickMatchWaitSeconds(Number(data?.waitSeconds || 0));
+      setQuickMatchRange(Number(data?.range || 50));
+    });
+
+    socketService.onQuickMatchFound((data: { gameId?: number | string }) => {
+      const gameId = Number(data?.gameId || 0);
+      setQuickMatchSearching(false);
+      setQuickMatchWaitSeconds(0);
+      setQuickMatchRange(50);
+
+      if (!gameId) {
+        toast({
+          title: 'تعذر بدء المباراة',
+          description: 'تم العثور على خصم لكن معرف المباراة غير صالح.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      updateStatus('in-game');
+      toast({
+        title: 'تم العثور على خصم',
+        description: 'جاري الدخول إلى المباراة...',
+      });
+      navigate(`/game?id=${gameId}`);
+    });
+
+    socketService.onRejoinGame((data: { gameId?: number | string }) => {
+      const gameId = Number(data?.gameId || 0);
+      if (!gameId) return;
+      setQuickMatchSearching(false);
+      setQuickMatchWaitSeconds(0);
+      setQuickMatchRange(50);
+      navigate(`/game?id=${gameId}`);
+    });
+
+    socketService.onQuickMatchError((data: { message?: string }) => {
+      setQuickMatchSearching(false);
+      toast({
+        title: 'تعذر البحث عن خصم',
+        description: data?.message || 'حاول مرة أخرى.',
+        variant: 'destructive',
+      });
+      updateStatus('online');
+    });
+
+    socketService.onQuickMatchNotFound((data: { message?: string }) => {
+      setQuickMatchSearching(false);
+      toast({
+        title: 'لم يتم العثور على خصم',
+        description: data?.message || 'يمكنك المحاولة مجددًا أو اللعب ضد الذكاء الاصطناعي.',
+      });
+      updateStatus('online');
+    });
+
+    socketService.onQuickMatchCancelled(() => {
+      setQuickMatchSearching(false);
+      setQuickMatchWaitSeconds(0);
+      setQuickMatchRange(50);
+      updateStatus('online');
+    });
+
+    return () => {
+      socketService.offQuickMatchJoined();
+      socketService.offQuickMatchSearchProgress();
+      socketService.offQuickMatchFound();
+      socketService.offQuickMatchError();
+      socketService.offQuickMatchNotFound();
+      socketService.offQuickMatchCancelled();
+      socketService.offRejoinGame();
+    };
+  }, [token, navigate, toast, updateStatus]);
+
+  useEffect(() => {
+    return () => {
+      if (quickMatchSearching) {
+        socketService.cancelQuickMatchQueue();
+      }
+    };
+  }, [quickMatchSearching]);
+
   const handleStartQuickGame = () => {
     if (activeGame) {
       toast({
@@ -163,10 +271,55 @@ const Dashboard = () => {
       navigate(activeGame.game_type === 'ai' ? '/ai-game' : `/game?id=${activeGame.id}`);
       return;
     }
-    // Update status to in-game
-    updateStatus('in-game');
-    // Navigate to game page
-    navigate('/game');
+    if (!token) {
+      toast({
+        title: 'يجب تسجيل الدخول',
+        description: 'لم يتم العثور على جلسة مستخدم صالحة.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (quickMatchSearching) {
+      socketService.cancelQuickMatchQueue();
+      return;
+    }
+
+    const connectedSocket = socketService.connect(token);
+    if (!connectedSocket) {
+      toast({
+        title: 'الاتصال غير جاهز',
+        description: 'تعذر تهيئة اتصال المباراة السريعة.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const joinPayload = {
+      rating: Number(user?.rating || 1500),
+      timeMinutes: 3,
+      incrementSeconds: 2,
+      playMethod: 'phone' as const,
+    };
+
+    if (!socketService.isSocketConnected()) {
+      const unsubscribe = socketService.setConnectionCallback((connected) => {
+        if (!connected) return;
+        unsubscribe();
+        socketService.joinQuickMatchQueue(joinPayload);
+      });
+      return;
+    }
+
+    const joined = socketService.joinQuickMatchQueue(joinPayload);
+
+    if (!joined) {
+      toast({
+        title: 'تعذر بدء البحث',
+        description: 'فشل إرسال طلب البحث عن خصم.',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleAcceptInvite = async (inviteId: string) => {
@@ -203,7 +356,7 @@ const Dashboard = () => {
 
   const acceptInvite = async (inviteId: string) => {
     try {
-      const result = await inviteService.acceptInvite(inviteId);
+      const result = (await inviteService.acceptInvite(inviteId)) as InviteAcceptResult;
       toast({
         title: "تم قبول الدعوة",
         description: "جاري الانتقال إلى المباراة..."
@@ -232,7 +385,7 @@ const Dashboard = () => {
   };
 
   // دالة بدء المباراة
-  const startGame = async (inviteId: string) => {
+  const startGame = async (inviteId: string | number) => {
     try {
       if (activeGame) {
         toast({
@@ -243,7 +396,7 @@ const Dashboard = () => {
         return;
       }
 
-      const result = await inviteService.startGame(inviteId, 'phone');
+      const result = await inviteService.startGame(String(inviteId), 'phone');
       
       toast({
         title: 'تم بدء المباراة',
@@ -266,8 +419,11 @@ const Dashboard = () => {
   };
 
   // دالة دخول المباراة
-  const joinGame = async (gameId: string) => {
+  const joinGame = async (gameId: string | number) => {
     try {
+      if (!gameId) {
+        throw new Error('معرّف المباراة غير صالح');
+      }
       toast({
         title: 'جاري الانتقال',
         description: 'جاري الانتقال إلى المباراة...',
@@ -275,7 +431,7 @@ const Dashboard = () => {
 
       // الانتقال إلى صفحة المباراة
       setTimeout(() => {
-        navigate(`/game?id=${gameId}`);
+        navigate(`/game?id=${String(gameId)}`);
       }, 1000);
 
     } catch (error) {
@@ -340,10 +496,10 @@ const Dashboard = () => {
         title: 'تم إنهاء المباراة',
         description: 'تم إنهاء المباراة الجارية بنجاح',
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: 'تعذر إنهاء المباراة',
-        description: error.message || 'حدث خطأ أثناء إنهاء المباراة',
+        description: getErrorMessage(error, 'حدث خطأ أثناء إنهاء المباراة'),
         variant: 'destructive',
       });
     } finally {
@@ -358,7 +514,7 @@ const Dashboard = () => {
   };
 
   // دالة معالجة أزرار الدعوة بناءً على الحالة
-  const renderInviteButtons = (invite: any) => {
+  const renderInviteButtons = (invite: Invite) => {
     const status = invite.status;
     
     switch (status) {
@@ -403,7 +559,7 @@ const Dashboard = () => {
       case 'game_started':
         return (
           <Button
-            onClick={() => joinGame(invite.game_id)}
+            onClick={() => joinGame(invite.game_id || invite.game?.id || '')}
             variant="default"
             size="sm"
           >
@@ -471,18 +627,6 @@ const Dashboard = () => {
     return `منذ ${diffYears} ${arabicPlural(diffYears, yearForms)}`;
   };
 
-  const handleLogout = async () => {
-    try {
-      // Update status to offline before logout
-      await updateStatus('offline');
-    } catch (error) {
-      console.error('Failed to update status on logout:', error);
-      // Continue with logout even if status update fails
-    }
-    
-    await logout();
-  };
-
 
 
   // Show loading state
@@ -514,82 +658,12 @@ const Dashboard = () => {
 
   return (
     <div
-      className="min-h-screen bg-[radial-gradient(1200px_400px_at_80%_-10%,rgba(15,23,42,0.08),transparent),linear-gradient(to_bottom,#f8fafc,#f1f5f9)]"
+      className="min-h-screen bg-gradient-subtle"
       dir="rtl"
     >
-      {/* Header */}
-      <header className="border-b border-border bg-background/90 backdrop-blur sticky top-0 z-20">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button className="flex items-center gap-4 rounded-xl border border-border bg-card px-3 py-2 hover:bg-muted/30 transition-colors">
-                    <Avatar className="h-11 w-11 ring-2 ring-border">
-                      <AvatarImage src={hasCustomAvatar(user.avatar) ? user.avatar : undefined} />
-                      <AvatarFallback className="bg-primary text-primary-foreground font-bold">
-                        {getInitialsFromName(user.username)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="text-right">
-                      <h2 className="font-cairo text-lg font-bold text-foreground">{user.username}</h2>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="border-border text-foreground">
-                          <Trophy className="w-3 h-3 ml-1 text-muted-foreground" />
-                          {user.rating || 1500}
-                        </Badge>
-                      </div>
-                    </div>
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-56 text-right" dir="rtl">
-                  <DropdownMenuLabel>حسابي</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => navigate('/my-profile')} className="justify-start gap-2">
-                    <UserCircle className="h-4 w-4 shrink-0" />
-                    الملف الشخصي
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate('/my-statistics')} className="justify-start gap-2">
-                    <BarChart3 className="h-4 w-4 shrink-0" />
-                    الإحصائيات
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate('/friends')} className="justify-start gap-2">
-                    <Users className="h-4 w-4 shrink-0" />
-                    الأصدقاء
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate('/connect-board')} className="justify-start gap-2">
-                    <Trophy className="h-4 w-4 shrink-0" />
-                    ربط الرقعة
-                  </DropdownMenuItem>
-                  {authUser?.type === 'admin' && (
-                    <DropdownMenuItem onClick={() => navigate('/admin')} className="justify-start gap-2">
-                      <Crown className="h-4 w-4 shrink-0" />
-                      لوحة الإدارة
-                    </DropdownMenuItem>
-                  )}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleLogout} className="justify-start gap-2">
-                    <LogOut className="h-4 w-4 shrink-0" />
-                    تسجيل الخروج
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <BrandLogo variant="icon" imgClassName="h-8 w-8" />
-              {authUser?.type === 'admin' && <Badge variant="outline" className="border-border text-foreground">مدير</Badge>}
-            </div>
-          </div>
-        </div>
-      </header>
+      <AppNavHeader profileRating={user?.rating} />
 
       <div className="container mx-auto px-4 py-8">
-        <div className="mb-8 rounded-2xl border border-border bg-card p-6 shadow-card">
-          <h1 className="text-2xl font-bold text-foreground font-cairo">لوحة التحكم</h1>
-          <p className="mt-1 text-sm text-muted-foreground">إدارة الحساب، متابعة الدعوات، والوصول السريع إلى خدمات المنصة.</p>
-        </div>
-
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2">
@@ -615,12 +689,14 @@ const Dashboard = () => {
                         مباراة سريعة
                       </CardTitle>
                       <CardDescription>
-                        إنشاء مباراة مباشرة مع خصم متاح
+                        {quickMatchSearching
+                          ? `جاري البحث... ${quickMatchWaitSeconds}ث | نطاق ±${quickMatchRange}`
+                          : 'إنشاء مباراة مباشرة مع خصم متاح'}
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
                       <Button variant="outline" className="w-full border-border">
-                        بدء الآن
+                        {quickMatchSearching ? 'إلغاء البحث' : 'بدء الآن'}
                       </Button>
                     </CardContent>
                   </Card>
@@ -809,7 +885,7 @@ const Dashboard = () => {
                                 : undefined
                             }
                           />
-                          <AvatarFallback>{getInitialsFromName(invite.fromUser?.username)}</AvatarFallback>
+                          <AvatarFallback>{getInitialsFromName(invite.fromUser?.username || 'مستخدم')}</AvatarFallback>
                         </Avatar>
                         <div className="flex-1">
                           <p className="font-medium text-sm text-foreground">{invite.fromUser?.username || 'مستخدم غير معروف'}</p>

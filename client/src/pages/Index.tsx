@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Crown, Users, Zap, Trophy, Globe, Puzzle, MessageCircle, User } from "lucide-react";
+import { Crown, Users, Zap, Trophy, Globe, Puzzle, MessageCircle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import chessHero from "@/assets/chess-hero.jpg";
 import BrandLogo from "@/components/BrandLogo";
@@ -14,7 +14,7 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-gradient-subtle" dir="rtl">
       {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur">
+      <header className="sticky top-0 z-20 border-b border-border bg-card/50 backdrop-blur">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -24,16 +24,7 @@ const Index = () => {
               />
             </div>
             <div className="flex items-center gap-4">
-              {isAuthenticated ? (
-                // Show dashboard button for authenticated users
-                <Link to="/dashboard">
-                  <Button variant="chess" className="flex items-center gap-2">
-                    <User className="h-4 w-4" />
-                    لوحة التحكم
-                  </Button>
-                </Link>
-              ) : (
-                // Show login and register buttons for non-authenticated users
+              {!isAuthenticated ? (
                 <>
                   <Link to="/auth?tab=login">
                     <Button variant="ghost">تسجيل دخول</Button>
@@ -42,7 +33,7 @@ const Index = () => {
                     <Button variant="chess">انضم الآن</Button>
                   </Link>
                 </>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
@@ -68,16 +59,10 @@ const Index = () => {
               </div>
               
               <div className="flex flex-col sm:flex-row gap-4">
-                <Link to="/play">
+                <Link to="/dashboard">
                   <Button size="lg" variant="chess" className="w-full sm:w-auto">
                     <Crown className="ml-2 h-5 w-5" />
                     ابدأ اللعب الآن
-                  </Button>
-                </Link>
-                <Link to="/puzzle">
-                  <Button size="lg" variant="elegant" className="w-full sm:w-auto">
-                    <Puzzle className="ml-2 h-5 w-5" />
-                    حل الألغاز
                   </Button>
                 </Link>
               </div>

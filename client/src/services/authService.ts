@@ -158,6 +158,36 @@ class AuthService {
     }
   }
 
+  // Refresh token
+  public async refreshToken(): Promise<boolean> {
+    if (!this.token) {
+      return false;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ token: this.token })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data && data.data.token) {
+          this.token = data.data.token;
+          this.saveToStorage();
+          return true;
+        }
+      }
+      return false;
+    } catch (error) {
+      console.error('Token refresh error:', error);
+      return false;
+    }
+  }
+
   // Get auth headers for API requests
   public getAuthHeaders(): Record<string, string> {
     const headers: Record<string, string> = {
@@ -173,7 +203,4 @@ class AuthService {
 }
 
 // Export singleton instance
-export const authService = new AuthService();
-
-// Export types
-export type { User, AuthState }; 
+export const authService = new AuthService(); 

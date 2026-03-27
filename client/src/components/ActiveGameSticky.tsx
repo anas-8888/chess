@@ -8,7 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { ActiveGameSummary, userService } from '@/services/userService';
 
-const PLAY_PAGES = ['/game', '/ai-game', '/ai-loading', '/play', '/puzzle'];
+const PLAY_PAGES = ['/game', '/ai-game', '/ai-loading', '/puzzle'];
 
 const GAME_TYPE_LABELS: Record<string, string> = {
   ai: 'ضد الذكاء الاصطناعي',
