@@ -19,7 +19,7 @@ CREATE TABLE users (
     email VARCHAR(100) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     thumbnail VARCHAR(255) DEFAULT '/img/default-avatar.png',
-    rank INT DEFAULT 1200,
+    rank INT DEFAULT 1500,
     puzzle_level INT DEFAULT 1,
     state ENUM('online', 'offline', 'in-game') DEFAULT 'offline' NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
