@@ -3,7 +3,7 @@ import { formatDate } from './helpers.js';
 // نظام تسجيل مركزي لتقليل الضوضاء
 class Logger {
   constructor() {
-    this.debugMode = process.env.DEBUG === '1' || process.env.NODE_ENV === 'development';
+    this.debugMode = process.env.NODE_ENV !== 'production' && (process.env.DEBUG === '1' || process.env.NODE_ENV === 'development');
     this.logLevel = process.env.LOG_LEVEL || 'info';
     this.messageCache = new Map(); // لتجنب تكرار الرسائل
     this.cacheTimeout = 5000; // 5 ثوان
@@ -194,6 +194,8 @@ class Logger {
       '📡 Sent status for',
       '📡 Sent status update for',
       'User ',
+      'user_id:',
+      '❌',
     ];
 
     if (noisyPrefixes.some((prefix) => normalized.startsWith(prefix))) {
@@ -272,3 +274,5 @@ setInterval(() => {
 }, 60000);
 
 export default logger;
+
+

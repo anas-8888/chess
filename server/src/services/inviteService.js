@@ -2,7 +2,7 @@ import Invite from '../models/Invite.js';
 import User from '../models/User.js';
 import Game from '../models/Game.js';
 // import Friend from '../models/Friend.js'; // Removed unused import
-import { NotFoundError, ValidationError } from '../middlewares/errorHandler.js';
+import { NotFoundError, ValidationError, ConflictError } from '../middlewares/errorHandler.js';
 import sequelize from '../models/index.js';
 import { Op } from 'sequelize';
 
@@ -49,7 +49,7 @@ const ensureUsersHaveNoActiveGames = async userIds => {
   });
 
   if (existingGame) {
-    throw new ValidationError('يوجد مباراة جارية بالفعل لأحد اللاعبين');
+    throw new ConflictError('يوجد مباراة جارية بالفعل لأحد اللاعبين');
   }
 };
 
@@ -315,7 +315,7 @@ export const createGameInvite = async (fromUserId, toUserId, gameType, playMetho
   });
 
   if (existingInvite) {
-    throw new ValidationError('A pending invite already exists between these users');
+    throw new ConflictError('A pending invite already exists between these users');
   }
 
   // Set expiration time (1 hour from now)
@@ -792,3 +792,5 @@ export const cancelInvite = async (inviteId, userId) => {
     message: 'تم إلغاء الدعوة بنجاح'
   };
 };
+
+

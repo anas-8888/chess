@@ -118,6 +118,63 @@ const Settings = () => {
     }
   };
 
+  const createCenteredSquareImage = (file: File): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      const objectUrl = URL.createObjectURL(file);
+
+      image.onload = () => {
+        const sourceSize = Math.min(image.naturalWidth, image.naturalHeight);
+        const sourceX = Math.floor((image.naturalWidth - sourceSize) / 2);
+        const sourceY = Math.floor((image.naturalHeight - sourceSize) / 2);
+        const targetSize = Math.min(sourceSize, 1024);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = targetSize;
+        canvas.height = targetSize;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          URL.revokeObjectURL(objectUrl);
+          reject(new Error('تعذر تجهيز الصورة للقص'));
+          return;
+        }
+
+        ctx.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, targetSize, targetSize);
+
+        const outputType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        const outputExt = outputType === 'image/png' ? '.png' : '.jpg';
+        const baseName = file.name.replace(/\.[^.]+$/, '');
+
+        canvas.toBlob(
+          (blob) => {
+            URL.revokeObjectURL(objectUrl);
+            if (!blob) {
+              reject(new Error('فشل تحويل الصورة بعد القص'));
+              return;
+            }
+
+            resolve(
+              new File([blob], baseName + outputExt, {
+                type: outputType,
+                lastModified: Date.now(),
+              })
+            );
+          },
+          outputType,
+          0.92
+        );
+      };
+
+      image.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error('تعذر قراءة الصورة المختارة'));
+      };
+
+      image.src = objectUrl;
+    });
+  };
+
   const handleAvatarFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -132,13 +189,23 @@ const Settings = () => {
       return;
     }
 
-    if (selectedImageData?.startsWith('blob:')) {
-      URL.revokeObjectURL(selectedImageData);
-    }
+    try {
+      const croppedFile = await createCenteredSquareImage(file);
 
-    const previewUrl = URL.createObjectURL(file);
-    setSelectedImageFile(file);
-    setSelectedImageData(previewUrl);
+      if (selectedImageData?.startsWith('blob:')) {
+        URL.revokeObjectURL(selectedImageData);
+      }
+
+      const previewUrl = URL.createObjectURL(croppedFile);
+      setSelectedImageFile(croppedFile);
+      setSelectedImageData(previewUrl);
+    } catch (error: any) {
+      toast({
+        title: 'خطأ',
+        description: error?.message || 'فشل تجهيز الصورة المختارة',
+        variant: 'destructive',
+      });
+    }
   };
 
   const uploadAvatar = async () => {
@@ -232,6 +299,7 @@ const Settings = () => {
                     {uploadingAvatar ? 'جاري الرفع...' : 'رفع الصورة'}
                   </Button>
                 </div>
+                  <p className="text-xs text-muted-foreground">سيتم قص الصورة تلقائيًا إلى مربع قبل الرفع.</p>
               </div>
             </div>
             <div className="grid gap-2">
@@ -313,3 +381,4 @@ const Settings = () => {
 };
 
 export default Settings;
+

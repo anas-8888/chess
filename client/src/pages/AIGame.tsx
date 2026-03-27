@@ -848,6 +848,12 @@ const AIGame = () => {
     setShowNewGameConfirm(false);
   }, [storageSessionKey]);
 
+  const openSetupModalForNewGame = useCallback(() => {
+    setSetupColor(playerColor);
+    setSetupDifficulty(difficulty);
+    setShowSetupModal(true);
+  }, [playerColor, difficulty]);
+
   const handleConfirmNewGame = useCallback(async () => {
     setRestartingGame(true);
     try {
@@ -906,12 +912,6 @@ const AIGame = () => {
       setStartingWithSetup(false);
     }
   }, [resetForNewGame, initializeAiPersistence, setupColor, setupDifficulty]);
-
-  const openSetupModalForNewGame = () => {
-    setSetupColor(playerColor);
-    setSetupDifficulty(difficulty);
-    setShowSetupModal(true);
-  };
 
   const getPendingNewGameResultText = () => {
     const result = getFinalizeResultForCurrentGame();
@@ -1341,12 +1341,4 @@ const AIGame = () => {
 };
 
 export default AIGame; 
-
-
-
-
-
-
-
-
 

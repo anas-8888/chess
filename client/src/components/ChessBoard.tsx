@@ -10,12 +10,12 @@ interface ChessBoardProps {
 
 const pieceSymbols: Record<'w' | 'b', Record<Uppercase<Piece['type']>, string>> = {
   w: {
-    K: '♔',
-    Q: '♕',
-    R: '♖',
-    B: '♗',
-    N: '♘',
-    P: '♙',
+    K: '♚',
+    Q: '♛',
+    R: '♜',
+    B: '♝',
+    N: '♞',
+    P: '♟',
   },
   b: {
     K: '♚',
@@ -218,7 +218,7 @@ const ChessBoard: React.FC<ChessBoardProps> = ({ game, onMove, orientation, allo
   const getPieceClasses = (piece: Piece | null | undefined) => {
     if (!piece) return '';
     return piece.color === 'w'
-      ? 'text-slate-50 drop-shadow-[0_1px_2px_rgba(15,23,42,0.85)]'
+      ? 'text-white font-black drop-shadow-[0_1px_2px_rgba(15,23,42,0.9)]'
       : 'text-slate-900 drop-shadow-[0_1px_1px_rgba(226,232,240,0.25)]';
   };
 
@@ -382,3 +382,4 @@ const ChessBoard: React.FC<ChessBoardProps> = ({ game, onMove, orientation, allo
 };
 
 export default ChessBoard;
+

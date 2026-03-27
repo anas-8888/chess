@@ -5,7 +5,6 @@ import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import session from 'express-session';
 import config from '../config/index.js';
 import { errorHandler, notFound } from './middlewares/errorHandler.js';
 import logger from './utils/logger.js';
@@ -127,22 +126,6 @@ app.use(
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  })
-);
-
-// Session middleware
-app.use(
-  session({
-    secret: process.env.SESSION_SECRET || 'smart-chess-secret-key',
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      secure: process.env.NODE_ENV === 'production',
-      httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
-      sameSite: 'strict',
-    },
-    name: 'smart-chess-session',
   })
 );
 
@@ -626,3 +609,4 @@ process.on('uncaughtException', err => {
 });
 
 export default app;
+

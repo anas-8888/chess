@@ -37,7 +37,13 @@ export const errorHandler = (error, req, res, next) => {
   let statusCode = Number(error.statusCode || error.status) || 500;
   let message = 'حدث خطأ في الخادم';
 
-  if (error.name === 'SequelizeValidationError') {
+  if (error.name === 'ValidationError') {
+    statusCode = Number(error.statusCode) || 400;
+    message = error.message || 'بيانات غير صحيحة';
+  } else if (error.name === 'ConflictError') {
+    statusCode = Number(error.statusCode) || 409;
+    message = error.message || 'يوجد تعارض في الطلب';
+  } else if (error.name === 'SequelizeValidationError') {
     statusCode = 400;
     message = 'بيانات غير صحيحة';
   } else if (error.name === 'SequelizeDatabaseError') {
@@ -93,6 +99,15 @@ export class ValidationError extends Error {
   constructor(message) {
     super(message);
     this.name = 'ValidationError';
+    this.statusCode = 400;
+  }
+}
+
+export class ConflictError extends Error {
+  constructor(message = 'يوجد تعارض في الطلب') {
+    super(message);
+    this.name = 'ConflictError';
+    this.statusCode = 409;
   }
 }
 
@@ -179,3 +194,4 @@ export const formatErrorResponse = (error, req, statusCode = 500, fallbackMessag
 
   return errorResponse;
 };
+

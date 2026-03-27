@@ -71,7 +71,7 @@ const ActiveGameSticky: React.FC = () => {
   const handleResume = () => {
     if (!activeGame) return;
 
-    const path = activeGame.game_type === 'ai' ? '/ai-game' : '/game';
+    const path = activeGame.game_type === 'ai' ? '/ai-game' : `/game?id=${activeGame.id}`;
     navigate(path);
   };
 
@@ -167,3 +167,4 @@ const ActiveGameSticky: React.FC = () => {
 };
 
 export default ActiveGameSticky;
+
