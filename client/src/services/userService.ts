@@ -536,6 +536,25 @@ class UserService {
     return data.data;
   }
 
+  async getAiBestMove(payload: {
+    fen: string;
+    difficulty?: 'easy' | 'medium' | 'hard' | 'impossible';
+  }): Promise<{ bestMove: string }> {
+    const response = await fetch(`${API_BASE_URL}/api/game/ai/best-move`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'فشل في حساب نقلة الذكاء الاصطناعي');
+    }
+
+    const data = await response.json();
+    return data?.data || data;
+  }
+
   async getActiveAiGameSession(): Promise<ActiveAiGameSession | null> {
     const response = await fetch(`${API_BASE_URL}/api/game/ai/session/active`, {
       method: 'GET',

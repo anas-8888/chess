@@ -14,6 +14,7 @@ import {
   getActiveAiGameSession,
   recordAiGameMove,
   finalizeAiGame,
+  getAiBestMove,
 } from '../controllers/gameController.js';
 import { validateGameId, validateUpdateTime } from '../middlewares/validation/gameValidation.js';
 import { protect } from '../middlewares/authMiddleware.js';
@@ -24,6 +25,7 @@ const router = express.Router();
 router.post('/ai/result', protect, recordAiGameResult);
 router.post('/ai/session', protect, createAiGameSession);
 router.get('/ai/session/active', protect, getActiveAiGameSession);
+router.post('/ai/best-move', protect, getAiBestMove);
 router.post('/ai/:gameId/move', protect, recordAiGameMove);
 router.post('/ai/:gameId/finalize', protect, finalizeAiGame);
 

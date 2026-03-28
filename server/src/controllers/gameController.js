@@ -7,6 +7,7 @@ import logger from '../utils/logger.js';
 import { handleGameMove, handleGameEnd } from '../socket/socketHelpers.js';
 import { applyGameRatingChanges } from '../services/ratingService.js';
 import { query } from '../config/db.js';
+import { getStockfishBestMove } from '../services/stockfishService.js';
 
 const AI_SYSTEM_EMAIL = 'ai.bot@system.local';
 const AI_SYSTEM_USERNAME = 'ai_bot';
@@ -15,6 +16,7 @@ const AI_DIFFICULTY_LEVELS = {
   easy: 1100,
   medium: 1500,
   hard: 1900,
+  impossible: 2600,
 };
 
 const resolveAiLevel = (difficulty, aiLevel) => {
@@ -776,7 +778,7 @@ export const recordAiGameResult = async (req, res) => {
     if (difficulty && !Object.prototype.hasOwnProperty.call(AI_DIFFICULTY_LEVELS, difficulty)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid difficulty value. Use easy, medium, or hard.',
+        message: 'Invalid difficulty value. Use easy, medium, hard, or impossible.',
       });
     }
 
@@ -877,7 +879,7 @@ export const createAiGameSession = async (req, res) => {
     if (difficulty && !Object.prototype.hasOwnProperty.call(AI_DIFFICULTY_LEVELS, difficulty)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid difficulty value. Use easy, medium, or hard.',
+        message: 'Invalid difficulty value. Use easy, medium, hard, or impossible.',
       });
     }
 
@@ -1021,6 +1023,48 @@ export const getActiveAiGameSession = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to get active AI game session',
+    });
+  }
+};
+
+// الحصول على أفضل نقلة من محرك الذكاء الاصطناعي (Server-side Stockfish)
+export const getAiBestMove = async (req, res) => {
+  try {
+    const userId = req.user?.user_id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required',
+      });
+    }
+
+    const { fen, difficulty = 'medium' } = req.body || {};
+    if (!fen || typeof fen !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'FEN is required',
+      });
+    }
+
+    if (difficulty && !Object.prototype.hasOwnProperty.call(AI_DIFFICULTY_LEVELS, difficulty)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid difficulty value. Use easy, medium, hard, or impossible.',
+      });
+    }
+
+    const bestMove = await getStockfishBestMove({ fen, difficulty });
+    return res.status(200).json({
+      success: true,
+      data: {
+        bestMove,
+      },
+    });
+  } catch (error) {
+    logger.error('Failed to get AI best move:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to calculate AI move',
     });
   }
 };

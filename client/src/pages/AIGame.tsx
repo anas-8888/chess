@@ -49,7 +49,7 @@ interface ApiConflictError extends Error {
   };
 }
 
-type AIDifficulty = 'easy' | 'medium' | 'hard';
+type AIDifficulty = 'easy' | 'medium' | 'hard' | 'impossible';
 
 const AI_DIFFICULTY_CONFIG: Record<
   AIDifficulty,
@@ -64,6 +64,7 @@ const AI_DIFFICULTY_CONFIG: Record<
   easy: { label: 'سهل', rating: 900, skillLevel: 2, depth: 5, moveTimeMs: 250 },
   medium: { label: 'متوسط', rating: 1500, skillLevel: 10, depth: 10, moveTimeMs: 900 },
   hard: { label: 'عالي', rating: 2300, skillLevel: 20, depth: 22, moveTimeMs: 3200 },
+  impossible: { label: 'الصعوبة المستحيلة', rating: 3500, skillLevel: 20, depth: 64, moveTimeMs: 12000 },
 };
 
 const AI_TIME_CONTROL_OPTIONS = ['1', '3', '5', '10', '15', '30'] as const;
@@ -99,6 +100,7 @@ const getTimeControlFromSearch = (search: string): (typeof AI_TIME_CONTROL_OPTIO
 const getDifficultyFromRating = (rating?: number): AIDifficulty => {
   const safe = Number(rating) || 1500;
   if (safe <= 1250) return 'easy';
+  if (safe >= 2600) return 'impossible';
   if (safe >= 1800) return 'hard';
   return 'medium';
 };
@@ -114,10 +116,6 @@ const AIGame = () => {
   const resultSavedRef = useRef(false);
   const clockSyncInFlightRef = useRef(false);
   const startCountdownIntervalRef = useRef<number | null>(null);
-  const stockfishWorkerRef = useRef<Worker | null>(null);
-  const stockfishReadyRef = useRef(false);
-  const stockfishSearchResolverRef = useRef<((bestMove: string | null) => void) | null>(null);
-  const stockfishSearchTimeoutRef = useRef<number | null>(null);
   const [persistedGameId, setPersistedGameId] = useState<number | null>(null);
   const [showNewGameConfirm, setShowNewGameConfirm] = useState(false);
   const [showResignConfirm, setShowResignConfirm] = useState(false);
@@ -228,131 +226,6 @@ const AIGame = () => {
       fen: pair.fen || '',
     }));
   }, []);
-
-  const stopPendingStockfishSearch = useCallback(() => {
-    if (stockfishSearchTimeoutRef.current !== null) {
-      window.clearTimeout(stockfishSearchTimeoutRef.current);
-      stockfishSearchTimeoutRef.current = null;
-    }
-    if (stockfishSearchResolverRef.current) {
-      stockfishSearchResolverRef.current(null);
-      stockfishSearchResolverRef.current = null;
-    }
-  }, []);
-
-  const initializeStockfishEngine = useCallback(() => {
-    if (stockfishWorkerRef.current) {
-      return;
-    }
-
-    try {
-      const worker = new Worker('/stockfish/stockfish-18-single.js');
-      stockfishWorkerRef.current = worker;
-
-      worker.onmessage = (event: MessageEvent<string>) => {
-        const line = String(event.data || '').trim();
-        if (!line) return;
-
-        if (line === 'uciok') {
-          worker.postMessage('isready');
-          return;
-        }
-
-        if (line === 'readyok') {
-          stockfishReadyRef.current = true;
-          return;
-        }
-
-        if (line.startsWith('bestmove')) {
-          const parts = line.split(/\s+/);
-          const bestMove = parts[1] && parts[1] !== '(none)' ? parts[1] : null;
-          if (stockfishSearchTimeoutRef.current !== null) {
-            window.clearTimeout(stockfishSearchTimeoutRef.current);
-            stockfishSearchTimeoutRef.current = null;
-          }
-          if (stockfishSearchResolverRef.current) {
-            stockfishSearchResolverRef.current(bestMove);
-            stockfishSearchResolverRef.current = null;
-          }
-        }
-      };
-
-      worker.onerror = (error) => {
-        console.error('Stockfish worker error:', error);
-      };
-
-      worker.postMessage('uci');
-      worker.postMessage('setoption name Ponder value false');
-      worker.postMessage('setoption name UCI_LimitStrength value false');
-    } catch (error) {
-      console.error('Failed to initialize Stockfish worker:', error);
-      stockfishWorkerRef.current = null;
-      stockfishReadyRef.current = false;
-    }
-  }, []);
-
-  const waitForStockfishReady = useCallback(async () => {
-    if (!stockfishWorkerRef.current) return false;
-    if (stockfishReadyRef.current) return true;
-
-    const startedAt = Date.now();
-    while (!stockfishReadyRef.current && Date.now() - startedAt < 4000) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-
-    return stockfishReadyRef.current;
-  }, []);
-
-  const requestBestMoveFromStockfish = useCallback(
-    async (fen: string, aiDifficulty: AIDifficulty): Promise<string | null> => {
-      const worker = stockfishWorkerRef.current;
-      if (!worker) return null;
-
-      const ready = await waitForStockfishReady();
-      if (!ready) return null;
-
-      const config = AI_DIFFICULTY_CONFIG[aiDifficulty];
-
-      worker.postMessage(`setoption name Skill Level value ${config.skillLevel}`);
-      if (aiDifficulty === 'hard') {
-        worker.postMessage('setoption name UCI_LimitStrength value false');
-      } else {
-        worker.postMessage('setoption name UCI_LimitStrength value true');
-        worker.postMessage(`setoption name UCI_Elo value ${Math.max(800, Math.min(2500, config.rating))}`);
-      }
-      worker.postMessage('ucinewgame');
-      worker.postMessage(`position fen ${fen}`);
-
-      const bestMove = await new Promise<string | null>((resolve) => {
-        stockfishSearchResolverRef.current = resolve;
-        stockfishSearchTimeoutRef.current = window.setTimeout(() => {
-          worker.postMessage('stop');
-          if (stockfishSearchResolverRef.current) {
-            stockfishSearchResolverRef.current(null);
-            stockfishSearchResolverRef.current = null;
-          }
-        }, Math.max(config.moveTimeMs + 3000, 5000));
-
-        worker.postMessage(`go depth ${config.depth} movetime ${config.moveTimeMs}`);
-      });
-
-      return bestMove;
-    },
-    [waitForStockfishReady]
-  );
-
-  useEffect(() => {
-    initializeStockfishEngine();
-
-    return () => {
-      stopPendingStockfishSearch();
-      if (stockfishWorkerRef.current) {
-        stockfishWorkerRef.current.terminate();
-        stockfishWorkerRef.current = null;
-      }
-      stockfishReadyRef.current = false;
-    };
-  }, [initializeStockfishEngine, stopPendingStockfishSearch]);
 
   useEffect(() => {
     if (loading) return;
@@ -781,7 +654,11 @@ const AIGame = () => {
         return;
       }
 
-      const bestMoveUci = await requestBestMoveFromStockfish(gameCopy.fen(), difficulty);
+      const bestMoveResult = await userService.getAiBestMove({
+        fen: gameCopy.fen(),
+        difficulty,
+      });
+      const bestMoveUci = bestMoveResult?.bestMove || null;
 
       let aiMove: Move | null = null;
 
@@ -890,7 +767,6 @@ const AIGame = () => {
     toast,
     persistedGameId,
     startCountdown,
-    requestBestMoveFromStockfish,
     difficulty,
   ]);
 
@@ -1508,7 +1384,7 @@ const AIGame = () => {
             <div className="mb-5">
               <p className="mb-2 text-sm font-semibold">اختر مستوى الصعوبة</p>
               <div className="grid grid-cols-3 gap-2">
-                {(['easy', 'medium', 'hard'] as const).map((level) => (
+                {(['easy', 'medium', 'hard', 'impossible'] as const).map((level) => (
                   <Button
                     key={level}
                     type="button"
