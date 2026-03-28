@@ -13,11 +13,10 @@ import {
   Flag, 
   RotateCcw,
   Crown,
-  Brain,
   User,
   Trophy,
   RefreshCw,
-  ArrowLeft,
+  ArrowRight,
   CircleHelp
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -1198,7 +1197,7 @@ const AIGame = () => {
                 size="icon"
                 onClick={() => navigate('/dashboard')}
               >
-                <ArrowLeft className="w-5 h-5" />
+                <ArrowRight className="w-5 h-5" />
               </Button>
               <h1 className="font-amiri text-xl font-bold">اللعب ضد الذكاء الاصطناعي</h1>
               {loading && (
@@ -1227,8 +1226,62 @@ const AIGame = () => {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Players & Game Info */}
           <div className="lg:col-span-1 space-y-4">
+            {/* Mobile Compact Header */}
+            <Card className="md:hidden">
+              <CardContent className="p-3">
+                <div className="flex items-center justify-between gap-2" dir="rtl">
+                  <div className="min-w-0 flex-1 rounded-md border border-border/60 px-2 py-1.5">
+                    <div className="flex items-center justify-start gap-2">
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={hasCustomAvatar(aiPlayer.avatar) ? aiPlayer.avatar : undefined} />
+                        <AvatarFallback className="bg-secondary text-secondary-foreground text-xs">
+                          {getInitialsFromName(aiPlayer.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="truncate text-sm font-cairo font-semibold">{aiPlayer.name}</span>
+                    </div>
+                    <div className={`mt-1 text-right text-sm font-mono ${gameState.currentTurn === aiPlayer.color ? 'text-primary font-bold' : 'text-muted-foreground'}`}>
+                      {formatTime(getPlayerTimer(aiPlayer.color))}
+                    </div>
+                  </div>
+
+                  <Badge
+                    variant={
+                      gameState.status !== 'active'
+                        ? 'destructive'
+                        : gameState.currentTurn === playerColor
+                          ? 'default'
+                          : 'outline'
+                    }
+                    className="shrink-0"
+                  >
+                    {gameState.status !== 'active'
+                      ? 'المباراة منتهية'
+                      : gameState.currentTurn === playerColor
+                        ? 'دورك'
+                        : 'دور الذكاء'}
+                  </Badge>
+
+                  <div className="min-w-0 flex-1 rounded-md border border-border/60 px-2 py-1.5">
+                    <div className="flex items-center justify-start gap-2">
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={hasCustomAvatar(humanPlayer.avatar) ? humanPlayer.avatar : undefined} />
+                        <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                          {getInitialsFromName(humanPlayer.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="truncate text-sm font-cairo font-semibold">{humanPlayer.name}</span>
+                    </div>
+                    <div className={`mt-1 text-right text-sm font-mono ${gameState.currentTurn === humanPlayer.color ? 'text-primary font-bold' : 'text-muted-foreground'}`}>
+                      {formatTime(getPlayerTimer(humanPlayer.color))}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* AI Player */}
-            <Card>
+            <Card className="hidden md:block">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <Avatar>
@@ -1248,14 +1301,14 @@ const AIGame = () => {
                 <div className="mt-3 flex items-center justify-between">
                   <div className="text-2xl font-mono font-bold text-primary">
                     <Clock className="w-4 h-4 inline ml-2" />
-                    {formatTime(getPlayerTimer('black'))}
+                    {formatTime(getPlayerTimer(aiPlayer.color))}
                   </div>
                 </div>
               </CardContent>
             </Card>
 
             {/* Game Status */}
-            <Card>
+            <Card className="hidden md:block">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg font-amiri">حالة المباراة</CardTitle>
               </CardHeader>
@@ -1289,7 +1342,7 @@ const AIGame = () => {
             </Card>
 
             {/* Human Player */}
-            <Card>
+            <Card className="hidden md:block">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <Avatar>
@@ -1309,14 +1362,14 @@ const AIGame = () => {
                 <div className="mt-3 flex items-center justify-between">
                   <div className="text-2xl font-mono font-bold text-primary">
                     <Clock className="w-4 h-4 inline ml-2" />
-                    {formatTime(getPlayerTimer('white'))}
+                    {formatTime(getPlayerTimer(humanPlayer.color))}
                   </div>
                 </div>
               </CardContent>
             </Card>
 
             {/* Game Controls */}
-            <div className="space-y-2">
+            <div className="space-y-2 hidden md:block">
               <Button 
                 variant="destructive" 
                 className="w-full"
@@ -1332,12 +1385,6 @@ const AIGame = () => {
           {/* Chess Board */}
           <div className="lg:col-span-2">
             <Card className="p-4">
-              <div className="mb-4 text-center">
-                <Badge variant="outline" className="mb-2">
-                  <Brain className="w-4 h-4 ml-1" />
-                  ضد الذكاء الاصطناعي
-                </Badge>
-</div>
               <ChessBoard
                 game={game}
                 onMove={handleMove}
@@ -1346,6 +1393,48 @@ const AIGame = () => {
                 resultSticker={boardResultSticker}
               />
             </Card>
+
+            {/* Mobile Secondary Info */}
+            <Card className="mt-4 md:hidden">
+              <CardContent className="p-3 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">نوع المباراة</span>
+                  <Badge variant="outline">لعبة ضد الذكاء الاصطناعي</Badge>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">الصعوبة</span>
+                  <Badge variant="outline">{aiConfig.label}</Badge>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">عدد النقلات</span>
+                  <span>{game.history().length}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">حالة اللعبة</span>
+                  <Badge variant="secondary">
+                    {gameState.status === 'active' ? 'نشطة' : 'منتهية'}
+                  </Badge>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">دور اللعب</span>
+                  <Badge variant={gameState.currentTurn === playerColor ? "default" : "outline"}>
+                    {gameState.currentTurn === playerColor ? 'دورك' : 'دور الذكاء'}
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="mt-4 md:hidden">
+              <Button
+                variant="destructive"
+                className="w-full"
+                onClick={handleResign}
+                disabled={gameState.status !== 'active'}
+              >
+                <Flag className="w-4 h-4 ml-2" />
+                استسلام
+              </Button>
+            </div>
           </div>
 
           {/* Moves List */}
@@ -1355,8 +1444,8 @@ const AIGame = () => {
                 <CardTitle className="text-lg font-amiri">النقلات</CardTitle>
               </CardHeader>
               <CardContent>
-                <ScrollArea className="h-96">
-                  <div className="space-y-1">
+                <ScrollArea className="h-48" dir="rtl">
+                  <div className="space-y-1 text-right">
                     {moves.length === 0 ? (
                       <div className="text-center text-muted-foreground text-sm py-4">
                         لا توجد نقلات بعد
@@ -1364,9 +1453,9 @@ const AIGame = () => {
                     ) : (
                       moves.map((move, index) => (
                         <div key={index} className="flex items-center gap-2 text-sm p-2 rounded hover:bg-muted/50 border border-transparent hover:border-border">
-                          <span className="text-muted-foreground w-8 text-xs font-mono">{move.moveNumber}.</span>
+                          <span className="text-muted-foreground w-8 text-right text-xs font-mono">{move.moveNumber}.</span>
                           <div className="flex-1 grid grid-cols-2 gap-2">
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center justify-end gap-1">
                               <span className="text-xs text-muted-foreground">أبيض:</span>
                               {move.white ? (
                                 <span className="font-mono text-sm bg-primary/10 px-2 py-1 rounded">
@@ -1376,7 +1465,7 @@ const AIGame = () => {
                                 <span className="text-muted-foreground text-xs">-</span>
                               )}
                             </div>
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center justify-end gap-1">
                               <span className="text-xs text-muted-foreground">أسود:</span>
                               {move.black ? (
                                 <span className="font-mono text-sm bg-secondary/10 px-2 py-1 rounded">
@@ -1554,19 +1643,19 @@ const AIGame = () => {
       )}
       {showResignConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="mx-4 w-full max-w-md rounded-lg bg-card p-6 shadow-lg">
+          <div className="mx-4 w-full max-w-md rounded-lg bg-card p-6 shadow-lg text-center">
             <h2 className="mb-2 text-xl font-bold">تأكيد الاستسلام</h2>
             <p className="mb-4 text-sm text-muted-foreground">هل أنت متأكد أنك تريد الاستسلام؟ سيتم احتساب المباراة كخسارة.</p>
 
-            <div className="flex gap-2">
+            <div className="flex items-center justify-center gap-2">
               <Button
                 variant="outline"
-                className="flex-1"
+                className="min-w-24"
                 onClick={() => setShowResignConfirm(false)}
               >
                 إلغاء
               </Button>
-              <Button variant="destructive" className="flex-1" onClick={handleConfirmResign}>
+              <Button variant="destructive" className="min-w-32" onClick={handleConfirmResign}>
                 تأكيد الاستسلام
               </Button>
             </div>

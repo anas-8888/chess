@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/sheet";
 import { useAuth } from "@/contexts/AuthContext";
 import type { User as AuthUser } from "@/services/authService";
-import { getInitialsFromName, hasCustomAvatar } from "@/utils/avatar";
+import { getInitialsFromName, hasCustomAvatar, normalizeAvatarUrl } from "@/utils/avatar";
 import BrandLogo from "@/components/BrandLogo";
 import { BarChart3, Crown, House, LogOut, Menu, Trophy, UserCircle, Users } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -51,7 +51,7 @@ const AppNavHeader = ({ profileRating }: AppNavHeaderProps) => {
   const ratingValue = Number(profileRating ?? headerUser?.rating ?? headerUser?.rank ?? 1500) || 1500;
   const username = headerUser?.username || "مستخدم";
   const avatarUrl = hasCustomAvatar(headerUser?.avatar || headerUser?.thumbnail)
-    ? (headerUser?.avatar || headerUser?.thumbnail)
+    ? normalizeAvatarUrl(headerUser?.avatar || headerUser?.thumbnail)
     : undefined;
 
   const isPathActive = (path: string) => {

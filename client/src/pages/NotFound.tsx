@@ -1,7 +1,7 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Compass, Crown } from "lucide-react";
+import { ArrowLeft, Compass, Crown } from "lucide-react";
 
 const NotFound = () => {
   const location = useLocation();
@@ -29,7 +29,7 @@ const NotFound = () => {
 
         <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
           <Button variant="chess" onClick={() => navigate(-1)} className="gap-2">
-            <ArrowRight className="w-4 h-4" />
+            <ArrowLeft className="w-4 h-4" />
             رجوع
           </Button>
           <Button asChild variant="outline" className="gap-2">

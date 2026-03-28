@@ -171,7 +171,7 @@ export const uploadCurrentAvatar = asyncHandler(async (req, res) => {
     return res.status(400).json(formatError('Image is too large (max 2MB)'));
   }
 
-  const storageDir = path.join(__dirname, '../../storage');
+  const storageDir = path.join(__dirname, '../../storage', 'thumbnails');
   if (!fs.existsSync(storageDir)) {
     fs.mkdirSync(storageDir, { recursive: true });
   }
@@ -180,10 +180,9 @@ export const uploadCurrentAvatar = asyncHandler(async (req, res) => {
   const absoluteFilePath = path.join(storageDir, fileName);
   fs.writeFileSync(absoluteFilePath, imageBuffer);
 
-  const thumbnailsBaseUrl =
-    (process.env.THUBNAILS_URL || process.env.THUMBNAILS_URL || `${req.protocol}://${req.get('host')}/thumbnails`)
-      .replace(/\/+$/, '');
-  const publicPath = `${thumbnailsBaseUrl}/${fileName}`;
+  // Store avatar as a relative path to avoid host/proxy mismatches between
+  // environments (dev/prod) and keep it stable after page refreshes.
+  const publicPath = `/thumbnails/${fileName}`;
   const [updatedRows] = await User.update(
     { thumbnail: publicPath },
     { where: { user_id: userId } }

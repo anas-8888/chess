@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, ArrowRight, RotateCcw } from "lucide-react";
+import { AlertTriangle, ArrowLeft, RotateCcw } from "lucide-react";
 
 const ServerError = () => {
   const navigate = useNavigate();
@@ -28,7 +28,7 @@ const ServerError = () => {
             إعادة تحميل الصفحة
           </Button>
           <Button variant="outline" onClick={() => navigate('/dashboard')} className="gap-2">
-            <ArrowRight className="h-4 w-4" />
+            <ArrowLeft className="h-4 w-4" />
             العودة إلى لوحة التحكم
           </Button>
         </div>
@@ -38,4 +38,3 @@ const ServerError = () => {
 };
 
 export default ServerError;
-

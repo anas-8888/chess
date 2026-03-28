@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { authService } from '@/services/authService';
 import { API_BASE_URL } from '@/config/urls';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface AdminRouteProps {
   children: React.ReactNode;
@@ -10,7 +11,22 @@ interface AdminRouteProps {
 
 const AdminRoute: React.FC<AdminRouteProps> = ({
   children,
-  fallback = <div className="flex items-center justify-center min-h-screen">جاري التحقق من صلاحيات المدير...</div>,
+  fallback = (
+    <div className="min-h-screen bg-gradient-subtle" dir="rtl">
+      <div className="container mx-auto px-4 py-8 space-y-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <Skeleton className="h-28 w-full rounded-xl" />
+          <Skeleton className="h-28 w-full rounded-xl" />
+          <Skeleton className="h-28 w-full rounded-xl" />
+          <Skeleton className="h-28 w-full rounded-xl" />
+          <Skeleton className="h-28 w-full rounded-xl" />
+          <Skeleton className="h-28 w-full rounded-xl" />
+        </div>
+        <Skeleton className="h-10 w-full rounded-lg" />
+        <Skeleton className="h-80 w-full rounded-xl" />
+      </div>
+    </div>
+  ),
 }) => {
   const [isValidating, setIsValidating] = useState(true);
   const [isAllowed, setIsAllowed] = useState(false);

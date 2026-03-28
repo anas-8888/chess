@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -977,8 +978,28 @@ const Admin = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-subtle flex items-center justify-center" dir="rtl">
-        جاري تحميل لوحة الإدارة...
+      <div className="min-h-screen bg-gradient-subtle" dir="rtl">
+        <AppNavHeader />
+        <div className="container mx-auto px-4 py-8 space-y-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <Skeleton className="h-28 w-full rounded-xl" />
+            <Skeleton className="h-28 w-full rounded-xl" />
+            <Skeleton className="h-28 w-full rounded-xl" />
+            <Skeleton className="h-28 w-full rounded-xl" />
+            <Skeleton className="h-28 w-full rounded-xl" />
+            <Skeleton className="h-28 w-full rounded-xl" />
+          </div>
+          <Skeleton className="h-10 w-full rounded-lg" />
+          <Card>
+            <CardContent className="p-4 space-y-3">
+              <Skeleton className="h-10 w-full rounded-md" />
+              <Skeleton className="h-10 w-full rounded-md" />
+              <Skeleton className="h-10 w-full rounded-md" />
+              <Skeleton className="h-10 w-full rounded-md" />
+              <Skeleton className="h-10 w-full rounded-md" />
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
@@ -1007,8 +1028,8 @@ const Admin = () => {
 
           <TabsContent value="users" className="space-y-6">
             <Card>
-              <CardContent className="p-4 flex items-center justify-between gap-3">
-                <div>
+              <CardContent className="p-4 flex flex-row-reverse items-center justify-between gap-3">
+                <div className="text-right">
                   <div className="font-cairo font-semibold">إدارة المستخدمين</div>
                   <div className="text-sm text-muted-foreground">إضافة وتعديل وحذف المستخدمين من نافذة منبثقة</div>
                 </div>
@@ -1163,14 +1184,14 @@ const Admin = () => {
           <TabsContent value="games" className="space-y-6">
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between gap-2">
-                  <CardTitle className="font-cairo">إدارة المباريات</CardTitle>
+                <div className="flex flex-row-reverse items-center justify-between gap-2">
+                  <CardTitle className="font-cairo text-right">إدارة المباريات</CardTitle>
                   <Button variant="outline" className="gap-2" onClick={() => toggleAdvancedFilter("games")}>
                     <Search className="h-4 w-4" />
                     بحث متقدم وفلترة
                   </Button>
                 </div>
-                <CardDescription>مراقبة والتحكم في المباريات</CardDescription>
+                <CardDescription className="text-right">مراقبة والتحكم في المباريات</CardDescription>
               </CardHeader>
               <CardContent>
                 {showAdvancedFilters.games && (
@@ -1289,14 +1310,14 @@ const Admin = () => {
           <TabsContent value="invites" className="space-y-6">
             <Card>
               <CardHeader>
-                <div className="flex items-center justify-between gap-2">
-                  <CardTitle className="font-cairo">إدارة الدعوات</CardTitle>
+                <div className="flex flex-row-reverse items-center justify-between gap-2">
+                  <CardTitle className="font-cairo text-right">إدارة الدعوات</CardTitle>
                   <Button variant="outline" className="gap-2" onClick={() => toggleAdvancedFilter("invites")}>
                     <Search className="h-4 w-4" />
                     بحث متقدم وفلترة
                   </Button>
                 </div>
-                <CardDescription>مراقبة الدعوات المعلقة والمنتهية</CardDescription>
+                <CardDescription className="text-right">مراقبة الدعوات المعلقة والمنتهية</CardDescription>
               </CardHeader>
               <CardContent>
                 {showAdvancedFilters.invites && (
@@ -1364,8 +1385,8 @@ const Admin = () => {
 
           <TabsContent value="puzzles" className="space-y-6">
             <Card>
-              <CardContent className="p-4 flex items-center justify-between gap-3">
-                <div>
+              <CardContent className="p-4 flex flex-row-reverse items-center justify-between gap-3">
+                <div className="text-right">
                   <div className="font-cairo font-semibold">إدارة الألغاز</div>
                   <div className="text-sm text-muted-foreground">إضافة وتعديل الألغاز من نافذة منبثقة</div>
                 </div>
@@ -1730,15 +1751,20 @@ const Admin = () => {
           <DialogHeader>
             <DialogTitle className="font-cairo">تفاصيل المستخدم المحدد</DialogTitle>
             <DialogDescription>
-              {loadingUserDetails
-                ? "جاري تحميل التفاصيل..."
-                : userDetails?.user
+              {userDetails?.user
                   ? `المستخدم: ${userDetails.user.username}`
                   : "لا توجد بيانات لعرضها"}
             </DialogDescription>
           </DialogHeader>
 
-          {!userDetails?.user ? (
+          {loadingUserDetails ? (
+            <div className="space-y-3">
+              <Skeleton className="h-5 w-52" />
+              <Skeleton className="h-10 w-full rounded-md" />
+              <Skeleton className="h-10 w-full rounded-md" />
+              <Skeleton className="h-10 w-full rounded-md" />
+            </div>
+          ) : !userDetails?.user ? (
             <div className="text-muted-foreground">لا توجد بيانات لعرضها حاليًا.</div>
           ) : (
             <div className="space-y-4">
@@ -1815,15 +1841,20 @@ const Admin = () => {
           <DialogHeader>
             <DialogTitle className="font-cairo">تفاصيل المباراة المحددة</DialogTitle>
             <DialogDescription>
-              {loadingGameDetails
-                ? "جاري تحميل التفاصيل..."
-                : gameDetails?.game
+              {gameDetails?.game
                   ? `المباراة #${gameDetails.game.id}`
                   : "اختر مباراة لعرض تفاصيلها"}
             </DialogDescription>
           </DialogHeader>
 
-          {!gameDetails?.game ? (
+          {loadingGameDetails ? (
+            <div className="space-y-3">
+              <Skeleton className="h-5 w-44" />
+              <Skeleton className="h-10 w-full rounded-md" />
+              <Skeleton className="h-10 w-full rounded-md" />
+              <Skeleton className="h-40 w-full rounded-md" />
+            </div>
+          ) : !gameDetails?.game ? (
             <div className="text-muted-foreground">لا توجد مباراة محددة حالياً.</div>
           ) : (
             <div className="space-y-4">

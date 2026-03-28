@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Smartphone, 
@@ -116,7 +117,7 @@ const ConnectBoard = () => {
       case "connected":
         return <CheckCircle className="h-5 w-5 text-green-500" />;
       case "connecting":
-        return <div className="animate-spin w-5 h-5 border-2 border-primary border-t-transparent rounded-full" />;
+        return <Skeleton className="h-5 w-5 rounded-full" />;
       default:
         return <WifiOff className="h-5 w-5 text-muted-foreground" />;
     }
@@ -260,8 +261,8 @@ const ConnectBoard = () => {
                       <div className="text-center space-y-2">
                         {connectionStatus === "connecting" ? (
                           <>
-                            <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto"></div>
-                            <p className="text-sm text-muted-foreground">جاري البحث...</p>
+                            <Skeleton className="h-8 w-8 rounded-full mx-auto" />
+                            <Skeleton className="h-4 w-32 mx-auto" />
                           </>
                         ) : (
                           <>

@@ -110,6 +110,10 @@ export interface RatingHistoryResponse {
 }
 
 class UserService {
+  private avatarDebug(...args: unknown[]): void {
+    console.log('[AvatarDebug:userService]', ...args);
+  }
+
   private getAuthHeaders(): Record<string, string> {
     return authService.getAuthHeaders();
   }
@@ -117,6 +121,7 @@ class UserService {
   // Get current user profile
   async getCurrentUserProfile(): Promise<UserProfile> {
     try {
+      this.avatarDebug('getCurrentUserProfile:start');
       const response = await fetch(`${API_BASE_URL}/api/users/profile`, {
         method: 'GET',
         headers: this.getAuthHeaders(),
@@ -129,6 +134,11 @@ class UserService {
 
       const data = await response.json();
       const profile = data.data || data;
+      this.avatarDebug('getCurrentUserProfile:rawProfile', {
+        userId: profile?.user_id ?? profile?.id,
+        thumbnail: profile?.thumbnail,
+        avatar: profile?.avatar,
+      });
       return {
         ...profile,
         avatar: profile.avatar || profile.thumbnail,
@@ -385,6 +395,11 @@ class UserService {
     let response;
     
     if (isFile) {
+      this.avatarDebug('uploadAvatar:start:file', {
+        name: image.name,
+        type: image.type,
+        size: image.size,
+      });
       // رفع الصورة كـ binary raw مع Content-Type الصحيح
       response = await fetch(`${API_BASE_URL}/api/users/profile/avatar`, {
         method: 'POST',
@@ -395,6 +410,9 @@ class UserService {
         body: image,
       });
     } else {
+      this.avatarDebug('uploadAvatar:start:base64', {
+        length: image.length,
+      });
       // إرسال base64 كـ JSON
       response = await fetch(`${API_BASE_URL}/api/users/profile/avatar`, {
         method: 'POST',
@@ -408,10 +426,15 @@ class UserService {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      this.avatarDebug('uploadAvatar:errorResponse', {
+        status: response.status,
+        errorData,
+      });
       throw new Error(errorData.message || 'فشل في رفع الصورة');
     }
 
     const data = await response.json();
+    this.avatarDebug('uploadAvatar:successResponse', data);
     return data.data || data;
   }
 
@@ -622,4 +645,3 @@ export const userService = new UserService();
 
 // Export types
 export type { UserProfile, UserStats }; 
-

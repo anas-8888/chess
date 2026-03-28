@@ -7,7 +7,7 @@ import {
   Crown,
   Trophy,
   Clock,
-  ArrowLeft,
+  ArrowRight,
   Loader2
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -154,7 +154,7 @@ const AILoading = () => {
                 className="w-full"
                 onClick={() => navigate('/dashboard')}
               >
-                <ArrowLeft className="w-4 h-4 ml-2" />
+                <ArrowRight className="w-4 h-4 ml-2" />
                 إلغاء والعودة للوحة التحكم
               </Button>
             </div>

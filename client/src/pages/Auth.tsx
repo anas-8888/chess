@@ -32,6 +32,43 @@ const Auth = () => {
     }
   }, [searchParams]);
 
+  const getAuthErrorMessage = (rawError: unknown, mode: 'login' | 'register'): string => {
+    const message = (rawError instanceof Error ? rawError.message : String(rawError || '')).trim();
+    const normalized = message.toLowerCase();
+
+    if (mode === 'register') {
+      if (normalized.includes('البريد الإلكتروني مستخدم بالفعل') || normalized.includes('email')) {
+        return 'هذا البريد الإلكتروني مستخدم من قبل';
+      }
+      if (normalized.includes('اسم المستخدم مستخدم بالفعل') || normalized.includes('username')) {
+        return 'اسم المستخدم مستخدم من قبل';
+      }
+      if (normalized.includes('صيغة البريد')) {
+        return 'صيغة البريد الإلكتروني غير صحيحة';
+      }
+      if (normalized.includes('كلمة المرور')) {
+        return message;
+      }
+    }
+
+    if (mode === 'login') {
+      if (normalized.includes('بيانات الدخول غير صحيحة')) {
+        return 'كلمة المرور أو البريد الإلكتروني غير صحيحين';
+      }
+      if (normalized.includes('تم حذف الحساب')) {
+        return 'هذا الحساب غير متاح';
+      }
+      if (normalized.includes('حظر')) {
+        return 'تم حظر هذا الحساب، راجع الإدارة';
+      }
+      if (normalized.includes('مطلوب')) {
+        return 'أدخل البريد الإلكتروني وكلمة المرور';
+      }
+    }
+
+    return message || (mode === 'login' ? 'فشل تسجيل الدخول' : 'فشل إنشاء الحساب');
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -45,7 +82,8 @@ const Auth = () => {
       // Store token and user data using auth context
       login(response.token, {
         ...response.user,
-        email: loginData.email // Add email from login data
+        email: loginData.email, // Add email from login data
+        thumbnail: response.user?.avatar,
       });
       
       toast({
@@ -60,7 +98,7 @@ const Auth = () => {
     } catch (error: any) {
       toast({
         title: "خطأ في تسجيل الدخول",
-        description: error.message || "يرجى التحقق من البيانات المدخلة",
+        description: getAuthErrorMessage(error, 'login'),
         variant: "destructive",
       });
     } finally {
@@ -93,7 +131,8 @@ const Auth = () => {
       // Store token and user data using auth context
       login(response.token, {
         ...response.user,
-        email: registerData.email // Add email from register data
+        email: registerData.email, // Add email from register data
+        thumbnail: response.user?.avatar,
       });
       
       toast({
@@ -108,7 +147,7 @@ const Auth = () => {
     } catch (error: any) {
       toast({
         title: "خطأ في إنشاء الحساب",
-        description: error.message || "يرجى المحاولة مرة أخرى",
+        description: getAuthErrorMessage(error, 'register'),
         variant: "destructive",
       });
     } finally {

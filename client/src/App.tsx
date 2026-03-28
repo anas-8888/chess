@@ -7,6 +7,7 @@ import { AuthProvider } from "./contexts/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AdminRoute from "./components/AdminRoute";
 import PublicRoute from "./components/PublicRoute";
+import BlockIfActiveGameRoute from "./components/BlockIfActiveGameRoute";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
@@ -42,12 +43,12 @@ const App = () => (
             {/* Protected Routes (authentication required) */}
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/game" element={<ProtectedRoute><GameRoom /></ProtectedRoute>} />
-            <Route path="/puzzle" element={<ProtectedRoute><Puzzle /></ProtectedRoute>} />
+            <Route path="/puzzle" element={<ProtectedRoute><BlockIfActiveGameRoute><Puzzle /></BlockIfActiveGameRoute></ProtectedRoute>} />
             <Route path="/friends" element={<ProtectedRoute><Friends /></ProtectedRoute>} />
             <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
             <Route path="/connect-board" element={<ProtectedRoute><ConnectBoard /></ProtectedRoute>} />
             <Route path="/courses" element={<ProtectedRoute><Courses /></ProtectedRoute>} />
-            <Route path="/ai-loading" element={<ProtectedRoute><AILoading /></ProtectedRoute>} />
+            <Route path="/ai-loading" element={<ProtectedRoute><BlockIfActiveGameRoute><AILoading /></BlockIfActiveGameRoute></ProtectedRoute>} />
             <Route path="/ai-game" element={<ProtectedRoute><AIGame /></ProtectedRoute>} />
             <Route path="/my-profile" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/my-statistics" element={<ProtectedRoute><MyStatistics /></ProtectedRoute>} />
@@ -63,5 +64,4 @@ const App = () => (
 );
 
 export default App;
-
 

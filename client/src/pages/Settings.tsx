@@ -4,12 +4,19 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import AppNavHeader from '@/components/AppNavHeader';
 import { userService } from '@/services/userService';
+import { useAuth } from '@/contexts/AuthContext';
+import { normalizeAvatarUrl } from '@/utils/avatar';
 
 const Settings = () => {
   const { toast } = useToast();
+  const { refreshAuth } = useAuth();
+  const avatarDebug = (...args: unknown[]) => {
+    console.log('[AvatarDebug:Settings]', ...args);
+  };
   const [loading, setLoading] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
@@ -27,14 +34,21 @@ const Settings = () => {
     confirmPassword: '',
   });
 
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = async (showLoading = true) => {
+    if (showLoading) {
+      setLoading(true);
+    }
     try {
+      avatarDebug('loadData:start', { showLoading });
       const profile = await userService.getCurrentUserProfile();
+      avatarDebug('loadData:profile', {
+        username: profile.username,
+        avatar: profile.avatar,
+      });
       setForm({
         username: profile.username || '',
         email: profile.email || '',
-        avatar: profile.avatar || '',
+        avatar: normalizeAvatarUrl(profile.avatar) || profile.avatar || '',
       });
     } catch (error: any) {
       toast({
@@ -43,7 +57,9 @@ const Settings = () => {
         variant: 'destructive',
       });
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   };
 
@@ -59,12 +75,18 @@ const Settings = () => {
     };
   }, [selectedImageData]);
 
+  useEffect(() => {
+    console.log('[AvatarDebug:Settings]', 'avatarStateChanged', {
+      selectedImageData,
+      formAvatar: form.avatar,
+    });
+  }, [selectedImageData, form.avatar]);
+
   const saveProfile = async () => {
     setSavingProfile(true);
     try {
       await userService.updateProfile({
         username: form.username,
-        avatar: form.avatar,
       });
       toast({
         title: 'تم الحفظ',
@@ -175,6 +197,11 @@ const Settings = () => {
   const handleAvatarFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    avatarDebug('handleAvatarFileChange:selectedFile', {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+    });
 
     const maxBytes = 2 * 1024 * 1024;
     if (file.size > maxBytes) {
@@ -194,6 +221,12 @@ const Settings = () => {
       }
 
       const previewUrl = URL.createObjectURL(croppedFile);
+      avatarDebug('handleAvatarFileChange:cropped', {
+        name: croppedFile.name,
+        type: croppedFile.type,
+        size: croppedFile.size,
+        previewUrl,
+      });
       setSelectedImageFile(croppedFile);
       setSelectedImageData(previewUrl);
     } catch (error: any) {
@@ -216,18 +249,26 @@ const Settings = () => {
 
     setUploadingAvatar(true);
     try {
-      const result = await userService.uploadAvatar(selectedImageFile);
-      const avatarUrl = result.avatar || result.thumbnail;
-      setForm(prev => ({ ...prev, avatar: avatarUrl }));
-      
-      // حفظ الصورة مباشرة في قاعدة البيانات بعد الرفع
-      await userService.updateProfile({
-        username: form.username,
-        avatar: avatarUrl,
+      avatarDebug('uploadAvatar:start', {
+        selectedImageFile: selectedImageFile
+          ? {
+              name: selectedImageFile.name,
+              type: selectedImageFile.type,
+              size: selectedImageFile.size,
+            }
+          : null,
       });
-      
+      const result = await userService.uploadAvatar(selectedImageFile);
+      const avatarUrl = normalizeAvatarUrl(result.avatar || result.thumbnail) || result.avatar || result.thumbnail;
+      avatarDebug('uploadAvatar:apiResult', result);
+      avatarDebug('uploadAvatar:avatarUrlSelected', avatarUrl);
+      setForm(prev => ({ ...prev, avatar: avatarUrl }));
+
       setSelectedImageData(null);
       setSelectedImageFile(null);
+      await loadData(false);
+      await refreshAuth();
+      avatarDebug('uploadAvatar:afterReloadFormAvatar', { avatar: avatarUrl });
       toast({
         title: 'تم الحفظ',
         description: 'تم رفع وحفظ الصورة الشخصية بنجاح',
@@ -245,8 +286,44 @@ const Settings = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-subtle flex items-center justify-center" dir="rtl">
-        جاري تحميل الإعدادات...
+      <div className="min-h-screen bg-gradient-subtle" dir="rtl">
+        <AppNavHeader />
+        <main className="container mx-auto max-w-4xl px-4 py-8 space-y-6">
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-6 w-40" />
+              <Skeleton className="h-4 w-56" />
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center gap-4">
+                <Skeleton className="h-20 w-20 rounded-full" />
+                <div className="space-y-2">
+                  <Skeleton className="h-10 w-56" />
+                  <Skeleton className="h-10 w-32" />
+                </div>
+              </div>
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <div className="flex justify-end">
+                <Skeleton className="h-10 w-36" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-6 w-44" />
+              <Skeleton className="h-4 w-64" />
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <div className="flex justify-end">
+                <Skeleton className="h-10 w-40" />
+              </div>
+            </CardContent>
+          </Card>
+        </main>
       </div>
     );
   }

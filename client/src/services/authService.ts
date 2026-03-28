@@ -6,6 +6,7 @@ export interface User {
   id: string;
   username: string;
   avatar?: string;
+  thumbnail?: string;
   rating: number;
   email: string;
   type?: 'user' | 'admin';
@@ -141,6 +142,7 @@ class AuthService {
             rating: data.data.rank || 1500,
             email: data.data.email,
             avatar: data.data.thumbnail,
+            thumbnail: data.data.thumbnail,
             type: data.data.type,
           };
           this.saveToStorage();

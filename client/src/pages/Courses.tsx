@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { 
-  ArrowRight, 
+  ArrowLeft, 
   BookOpen, 
   Play, 
   Clock, 
@@ -173,7 +173,7 @@ const Courses = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <Button variant="ghost" size="icon" aria-label="رجوع" onClick={() => navigate(-1)}>
-                <ArrowRight className="h-5 w-5" />
+                <ArrowLeft className="h-5 w-5" />
               </Button>
               <div className="flex items-center gap-2">
                 <BookOpen className="h-6 w-6 text-primary" />

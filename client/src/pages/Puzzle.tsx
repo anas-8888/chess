@@ -7,11 +7,12 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import ChessBoard from '@/components/ChessBoard';
 import { puzzleService, type PlayablePuzzle, type PuzzleItem, type PuzzleLevel } from '@/services/puzzleService';
 import {
-  ArrowRight,
+  ArrowLeft,
   Lightbulb,
   Eye,
   SkipForward,
@@ -430,8 +431,18 @@ const Puzzle = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-subtle flex items-center justify-center" dir="rtl">
-        جاري تحميل الألغاز...
+      <div className="min-h-screen bg-gradient-subtle" dir="rtl">
+        <div className="container mx-auto px-4 py-8 space-y-6">
+          <Skeleton className="h-16 w-full rounded-xl" />
+          <div className="grid lg:grid-cols-3 gap-8">
+            <Skeleton className="h-[620px] w-full rounded-xl lg:col-span-2" />
+            <div className="space-y-6">
+              <Skeleton className="h-72 w-full rounded-xl" />
+              <Skeleton className="h-60 w-full rounded-xl" />
+              <Skeleton className="h-52 w-full rounded-xl" />
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -440,28 +451,34 @@ const Puzzle = () => {
     <div className="min-h-screen bg-gradient-subtle" dir="rtl">
       <header className="sticky top-0 z-20 border-b border-border bg-card/50 backdrop-blur">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" aria-label="رجوع" onClick={() => navigate(-1)}>
-                <ArrowRight className="h-5 w-5" />
-              </Button>
-              <div className="flex items-center gap-2">
-                <Target className="h-6 w-6 text-primary" />
-                <h1 className="text-xl font-bold text-foreground font-cairo">الألغاز التكتيكية</h1>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center justify-between gap-3 md:justify-start">
+              <div className="flex items-center gap-3 min-w-0">
+                <Button variant="ghost" size="icon" aria-label="رجوع" onClick={() => navigate(-1)}>
+                  <ArrowLeft className="h-5 w-5" />
+                </Button>
+                <div className="flex items-center gap-2 min-w-0">
+                  <Target className="h-6 w-6 text-primary shrink-0" />
+                  <h1 className="text-base sm:text-xl font-bold text-foreground font-cairo truncate">الألغاز التكتيكية</h1>
+                </div>
               </div>
-              <Button onClick={() => setShowLevelMap(true)} variant="ghost" className="gap-2">
+              <div className="flex items-center gap-2 text-sm md:hidden shrink-0">
+                <Trophy className="h-4 w-4 text-primary" />
+                <span className="font-medium">{overview?.stats.totalPoints || 0}</span>
+              </div>
+            </div>
+
+            <div className="hidden md:flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+              <Button onClick={() => setShowLevelMap(true)} variant="ghost" className="gap-2 w-full sm:w-auto">
                 <Map className="h-4 w-4" />
                 خريطة المستويات
               </Button>
-            </div>
-
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 text-sm">
+              <div className="hidden md:flex items-center gap-2 text-sm">
                 <Trophy className="h-4 w-4 text-primary" />
                 <span className="font-medium">{overview?.stats.totalPoints || 0} نقطة</span>
               </div>
               <Select value={selectedLevel} onValueChange={loadByDifficulty}>
-                <SelectTrigger className="w-36">
+                <SelectTrigger className="w-full sm:w-40">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -473,21 +490,40 @@ const Puzzle = () => {
               </Select>
             </div>
           </div>
+          <div className="mt-3 flex flex-col gap-2 md:hidden">
+            <Button onClick={() => setShowLevelMap(true)} variant="ghost" className="gap-2 w-full">
+              <Map className="h-4 w-4" />
+              خريطة المستويات
+            </Button>
+            <Select value={selectedLevel} onValueChange={loadByDifficulty}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">كل المستويات</SelectItem>
+                <SelectItem value="easy">سهل</SelectItem>
+                <SelectItem value="medium">متوسط</SelectItem>
+                <SelectItem value="hard">صعب</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </header>
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-5 sm:py-8">
         {playingLoading ? (
-          <div className="flex items-center justify-center h-96">
-            <div className="text-center space-y-4">
-              <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto" />
-              <p className="text-muted-foreground">جاري تحميل اللغز...</p>
+          <div className="grid lg:grid-cols-3 gap-6 sm:gap-8">
+            <Skeleton className="h-[620px] w-full rounded-xl lg:col-span-2" />
+            <div className="space-y-6">
+              <Skeleton className="h-72 w-full rounded-xl" />
+              <Skeleton className="h-60 w-full rounded-xl" />
+              <Skeleton className="h-52 w-full rounded-xl" />
             </div>
           </div>
         ) : playablePuzzle ? (
           <div className="grid lg:grid-cols-3 gap-8">
             <div className="lg:col-span-2">
-              <Card className="p-6">
+              <Card className="p-3 sm:p-6">
                 <div className="relative aspect-square max-w-lg mx-auto">
                   <ChessBoard
                     game={game}
@@ -527,7 +563,7 @@ const Puzzle = () => {
               </Card>
             </div>
 
-            <div className="space-y-6">
+            <div className="space-y-4 sm:space-y-6">
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
@@ -651,7 +687,7 @@ const Puzzle = () => {
         )}
 
         <Dialog open={showLevelMap} onOpenChange={setShowLevelMap}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto" dir="rtl">
+          <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto" dir="rtl">
             <DialogHeader>
               <DialogTitle className="font-cairo">خريطة المستويات</DialogTitle>
             </DialogHeader>

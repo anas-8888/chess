@@ -201,6 +201,8 @@ app.use('/css', express.static(path.join(__dirname, '../../public/css')));
 app.use('/js', express.static(path.join(__dirname, '../../public/js')));
 app.use('/img', express.static(path.join(__dirname, '../../public/img')));
 app.use('/admin', express.static(path.join(__dirname, '../../public/admin')));
+// Serve uploaded avatars first, then fallback to legacy chess piece assets.
+app.use('/thumbnails', express.static(path.join(__dirname, '../storage/thumbnails')));
 app.use('/thumbnails', express.static(path.join(__dirname, '../storage')));
 
 // Backward-compatible avatar path used by existing DB records.

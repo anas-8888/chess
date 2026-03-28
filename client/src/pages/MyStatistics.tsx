@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Trophy, FileText, Loader2, PlayCircle } from 'lucide-react';
+import { Trophy, FileText, PlayCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import PlacementProgress from '@/components/PlacementProgress';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -148,8 +149,21 @@ const MyStatistics = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-subtle flex items-center justify-center" dir="rtl">
-        جاري تحميل الإحصائيات...
+      <div className="min-h-screen bg-gradient-subtle" dir="rtl">
+        <AppNavHeader />
+        <main className="container mx-auto px-4 py-8 space-y-6">
+          <Skeleton className="h-56 w-full rounded-xl" />
+          <Skeleton className="h-28 w-full rounded-xl" />
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <Skeleton className="h-24 w-full rounded-xl" />
+            <Skeleton className="h-24 w-full rounded-xl" />
+            <Skeleton className="h-24 w-full rounded-xl" />
+            <Skeleton className="h-24 w-full rounded-xl" />
+            <Skeleton className="h-24 w-full rounded-xl" />
+          </div>
+          <Skeleton className="h-80 w-full rounded-xl" />
+          <Skeleton className="h-72 w-full rounded-xl" />
+        </main>
       </div>
     );
   }
@@ -249,9 +263,10 @@ const MyStatistics = () => {
                   {expandedGameId === game.id && (
                     <div className="rounded-md border bg-muted/30 p-3 space-y-3">
                       {reportLoading ? (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          جاري إعداد التقرير...
+                        <div className="space-y-2">
+                          <Skeleton className="h-4 w-44" />
+                          <Skeleton className="h-4 w-full" />
+                          <Skeleton className="h-4 w-5/6" />
                         </div>
                       ) : gameReport?.gameId === game.id ? (
                         <>

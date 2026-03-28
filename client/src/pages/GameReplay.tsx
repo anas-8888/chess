@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Chess } from 'chess.js';
 import {
-  ArrowRight,
+  ArrowLeft,
   Play,
   Pause,
   SkipBack,
@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { userService, type GameMovePair } from '@/services/userService';
 
@@ -192,7 +193,7 @@ const GameReplay = () => {
       <header className="sticky top-0 z-20 border-b border-border bg-card/50 backdrop-blur">
         <div className="container mx-auto px-4 py-4 flex items-center gap-2">
           <Button variant="ghost" size="icon" aria-label="رجوع" onClick={() => navigate(-1)}>
-            <ArrowRight className="h-5 w-5" />
+            <ArrowLeft className="h-5 w-5" />
           </Button>
           <h1 className="text-xl font-bold font-cairo">مشاهدة المباراة</h1>
         </div>
@@ -210,7 +211,23 @@ const GameReplay = () => {
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="text-muted-foreground">جاري تحميل المباراة...</div>
+              <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,680px)_minmax(300px,1fr)] gap-5">
+                <div className="space-y-4">
+                  <Skeleton className="aspect-square w-full max-w-[680px] mx-auto rounded-xl" />
+                  <Skeleton className="h-48 w-full rounded-xl" />
+                </div>
+                <Card className="bg-background/35">
+                  <CardHeader className="pb-3">
+                    <Skeleton className="h-5 w-32" />
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <Skeleton className="h-12 w-full rounded-md" />
+                    <Skeleton className="h-12 w-full rounded-md" />
+                    <Skeleton className="h-12 w-full rounded-md" />
+                    <Skeleton className="h-12 w-full rounded-md" />
+                  </CardContent>
+                </Card>
+              </div>
             ) : totalPlies === 0 ? (
               <div className="text-muted-foreground">لا توجد نقلات متاحة لهذه المباراة.</div>
             ) : (

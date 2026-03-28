@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
   Clock, 
   Flag, 
@@ -21,8 +22,9 @@ import {
   Wifi,
   WifiOff,
   Minimize2,
-  ArrowRight,
-  CircleHelp
+  ArrowLeft,
+  CircleHelp,
+  MessageCircle
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { api } from '@/config/api';
@@ -283,6 +285,8 @@ const GameRoom = () => {
   const [moves, setMoves] = useState<GameMove[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
+  const [isMobileChatModalOpen, setIsMobileChatModalOpen] = useState(false);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [isSoundEnabled, setIsSoundEnabled] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
@@ -1115,10 +1119,12 @@ const GameRoom = () => {
     const incomingId = String(data?.id || '');
     if (!incomingId) return;
 
+    let isNewMessage = false;
     setChatMessages((prev) => {
       if (prev.some((msg) => String(msg.id) === incomingId)) {
         return prev;
       }
+      isNewMessage = true;
       return [
         ...prev,
         {
@@ -1132,7 +1138,22 @@ const GameRoom = () => {
         },
       ];
     });
-  }, []);
+
+    const incomingUserId = Number(data?.userId);
+    const isFromOtherUser =
+      Number.isFinite(incomingUserId) &&
+      incomingUserId !== Number(currentUserNumericId);
+
+    if (isNewMessage && isFromOtherUser && isMobileDevice() && !isMobileChatModalOpen) {
+      setUnreadChatCount((prev) => prev + 1);
+    }
+  }, [currentUserNumericId, isMobileChatModalOpen, isMobileDevice]);
+
+  useEffect(() => {
+    if (isMobileChatModalOpen) {
+      setUnreadChatCount(0);
+    }
+  }, [isMobileChatModalOpen]);
 
   // WebSocket events for real-time updates
   useEffect(() => {
@@ -1518,7 +1539,7 @@ const GameRoom = () => {
                 aria-label="رجوع"
                 onClick={() => window.history.back()}
               >
-                <ArrowRight className="w-5 h-5" />
+                <ArrowLeft className="w-5 h-5" />
               </Button>
               <h1 className="font-amiri text-xl font-bold">شطرنج العرب</h1>
               <Badge variant={isConnected ? "secondary" : "destructive"} className="flex items-center gap-1">
@@ -1553,6 +1574,22 @@ const GameRoom = () => {
               >
                 {isSoundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
               </Button>
+              {isMobileDevice() && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setIsMobileChatModalOpen(true)}
+                  aria-label="فتح المحادثة"
+                  className="relative md:hidden"
+                >
+                  <MessageCircle className="w-5 h-5" />
+                  {unreadChatCount > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] leading-5 text-center font-semibold">
+                      {unreadChatCount > 99 ? '99+' : unreadChatCount}
+                    </span>
+                  )}
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon"
@@ -1574,9 +1611,9 @@ const GameRoom = () => {
             {/* Mobile Compact Header */}
             <Card className="md:hidden">
               <CardContent className="p-3">
-                <div className="flex items-center justify-between gap-2 [direction:ltr]">
+                <div className="flex items-center justify-between gap-2" dir="rtl">
                   <div className="min-w-0 flex-1 rounded-md border border-border/60 px-2 py-1.5">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-start gap-2">
                       <Avatar className="h-8 w-8">
                         <AvatarImage src={players.black.thumbnail || ''} />
                         <AvatarFallback className="bg-secondary text-secondary-foreground text-xs">
@@ -1585,7 +1622,7 @@ const GameRoom = () => {
                       </Avatar>
                       <span className="truncate text-sm font-cairo font-semibold">{players.black.name}</span>
                     </div>
-                    <div className={`mt-1 text-sm font-mono ${getPlayerTurn('black') ? 'text-primary font-bold' : 'text-muted-foreground'}`}>
+                    <div className={`mt-1 text-right text-sm font-mono ${getPlayerTurn('black') ? 'text-primary font-bold' : 'text-muted-foreground'}`}>
                       {formatTime(getPlayerTimer('black'))}
                     </div>
                   </div>
@@ -1612,7 +1649,7 @@ const GameRoom = () => {
                   </Badge>
 
                   <div className="min-w-0 flex-1 rounded-md border border-border/60 px-2 py-1.5">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-start gap-2">
                       <Avatar className="h-8 w-8">
                         <AvatarImage src={players.white.thumbnail || ''} />
                         <AvatarFallback className="bg-primary text-primary-foreground text-xs">
@@ -1621,7 +1658,7 @@ const GameRoom = () => {
                       </Avatar>
                       <span className="truncate text-sm font-cairo font-semibold">{players.white.name}</span>
                     </div>
-                    <div className={`mt-1 text-sm font-mono ${getPlayerTurn('white') ? 'text-primary font-bold' : 'text-muted-foreground'}`}>
+                    <div className={`mt-1 text-right text-sm font-mono ${getPlayerTurn('white') ? 'text-primary font-bold' : 'text-muted-foreground'}`}>
                       {formatTime(getPlayerTimer('white'))}
                     </div>
                   </div>
@@ -1850,8 +1887,8 @@ const GameRoom = () => {
                 <CardTitle className="text-lg font-amiri">النقلات</CardTitle>
               </CardHeader>
               <CardContent>
-                <ScrollArea className="h-48">
-                  <div className="space-y-1">
+                <ScrollArea className="h-48" dir="rtl">
+                  <div className="space-y-1 text-right">
                     {moves.length === 0 ? (
                       <div className="text-center text-muted-foreground text-sm py-4">
                         لا توجد نقلات بعد
@@ -1859,9 +1896,9 @@ const GameRoom = () => {
                     ) : (
                       moves.map((move, index) => (
                         <div key={index} className="flex items-center gap-2 text-sm p-2 rounded hover:bg-muted/50 border border-transparent hover:border-border">
-                          <span className="text-muted-foreground w-8 text-xs font-mono">{move.moveNumber}.</span>
+                          <span className="text-muted-foreground w-8 text-right text-xs font-mono">{move.moveNumber}.</span>
                           <div className="flex-1 grid grid-cols-2 gap-2">
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center justify-end gap-1">
                               <span className="text-xs text-muted-foreground">أبيض:</span>
                               {move.white ? (
                                 <span className="font-mono text-sm bg-primary/10 px-2 py-1 rounded">
@@ -1871,7 +1908,7 @@ const GameRoom = () => {
                                 <span className="text-muted-foreground text-xs">-</span>
                               )}
                             </div>
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center justify-end gap-1">
                               <span className="text-xs text-muted-foreground">أسود:</span>
                               {move.black ? (
                                 <span className="font-mono text-sm bg-secondary/10 px-2 py-1 rounded">
@@ -1891,7 +1928,7 @@ const GameRoom = () => {
             </Card>
 
             {/* Chat */}
-            <Card>
+            <Card className="hidden md:block">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg font-amiri">المحادثة</CardTitle>
               </CardHeader>
@@ -1958,6 +1995,72 @@ const GameRoom = () => {
           </div>
         </div>
       </div>
+
+      <Dialog open={isMobileChatModalOpen} onOpenChange={setIsMobileChatModalOpen}>
+        <DialogContent className="w-[96vw] max-w-[96vw] p-0 sm:max-w-md">
+          <DialogHeader className="px-4 pt-4 pb-1">
+            <DialogTitle className="font-amiri text-lg">المحادثة</DialogTitle>
+          </DialogHeader>
+          <div className="px-3 pb-3">
+            <ScrollArea dir="rtl" className="h-[56vh] px-2 bg-[linear-gradient(135deg,rgba(255,255,255,0.03)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.03)_50%,rgba(255,255,255,0.03)_75%,transparent_75%,transparent)] bg-[length:16px_16px] rounded-md">
+              <div className="space-y-2 py-3">
+                {chatMessages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex ${Number(msg.userId) === Number(currentUserNumericId) ? 'justify-start' : 'justify-end'}`}
+                  >
+                    {msg.type !== 'system' ? (
+                      <div
+                        className={`max-w-[84%] rounded-2xl px-3 py-2 shadow-sm text-right ${
+                          Number(msg.userId) === Number(currentUserNumericId)
+                            ? 'bg-emerald-600 text-white rounded-br-md'
+                            : 'bg-slate-700 text-slate-100 rounded-bl-md'
+                        }`}
+                      >
+                        <div className="text-sm leading-relaxed break-words">{msg.message}</div>
+                        <div className="text-[10px] opacity-70 mt-1 text-right">
+                          {formatMoveTime(msg.timestamp)}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center text-muted-foreground text-xs bg-muted/60 rounded px-3 py-1">
+                        {msg.message}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {chatMessages.length === 0 && (
+                  <div className="text-center text-muted-foreground text-sm py-8">
+                    لا توجد رسائل بعد
+                  </div>
+                )}
+                <div ref={chatEndRef} />
+              </div>
+            </ScrollArea>
+
+            <Separator className="my-2" />
+
+            <div className="flex gap-2">
+              <Input
+                placeholder={isSpectatorMode || !isCurrentUserPlayer ? 'وضع مشاهدة فقط' : 'اكتب رسالة...'}
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && void handleSendMessage()}
+                className="text-right text-[16px]"
+                style={{ fontSize: 16 }}
+                disabled={isSpectatorMode || !isCurrentUserPlayer}
+              />
+              <Button
+                size="icon"
+                onClick={() => void handleSendMessage()}
+                disabled={isSpectatorMode || !isCurrentUserPlayer || !chatInput.trim()}
+              >
+                <Send className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {startCountdown !== null && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 backdrop-blur-sm">
@@ -2086,16 +2189,16 @@ const GameRoom = () => {
       {/* Resign Confirmation Modal */}
       {showResignConfirmModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-card p-6 rounded-lg shadow-lg max-w-md w-full mx-4">
+          <div className="bg-card p-6 rounded-lg shadow-lg max-w-md w-full mx-4 text-center">
             <div className="text-center">
               <div className="mb-4">
-                <Flag className="w-12 h-12 text-destructive" />
+                <Flag className="w-12 h-12 text-destructive mx-auto" />
               </div>
               <h2 className="text-2xl font-bold mb-2">تأكيد الاستسلام</h2>
               <p className="text-muted-foreground mb-6">
                 هل أنت متأكد من الاستسلام؟ سيتم إعلام الخصم وإغلاق المباراة.
               </p>
-              <div className="flex gap-2">
+              <div className="flex items-center justify-center gap-2">
                 <Button variant="outline" onClick={cancelResign}>
                   إلغاء
                 </Button>

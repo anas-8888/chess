@@ -135,6 +135,17 @@ export async function registerUser(data) {
       token,
     };
   } catch (error) {
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      const duplicateFields = (error.errors || []).map(err => err.path);
+      if (duplicateFields.includes('email')) {
+        throw new Error('البريد الإلكتروني مستخدم بالفعل');
+      }
+      if (duplicateFields.includes('username')) {
+        throw new Error('اسم المستخدم مستخدم بالفعل');
+      }
+      throw new Error('هذا الحساب موجود مسبقاً');
+    }
+
     if (error.name === 'SequelizeValidationError') {
       const validationErrors = {};
       error.errors.forEach(err => {
@@ -296,6 +307,7 @@ export async function validateSession(token) {
     type: user.type,
     rank: user.rank,
     email: user.email,
+    thumbnail: user.thumbnail,
     is_banned: Boolean(user.is_banned),
   };
 }

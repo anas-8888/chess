@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
 import AppNavHeader from "@/components/AppNavHeader";
@@ -10,6 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { userService } from "@/services/userService";
 import { friendService, type Friend } from "@/services/friendService";
@@ -99,8 +100,9 @@ const Friends = () => {
   // متغيرات مودال قبول الدعوة
   const [showAcceptInviteModal, setShowAcceptInviteModal] = useState(false);
   const [selectedInvite, setSelectedInvite] = useState<Invite | null>(null);
-  const [acceptPlayMethod, setAcceptPlayMethod] = useState<'phone' | 'physical_board' | null>(null);
+  const [acceptPlayMethod, setAcceptPlayMethod] = useState<'phone' | 'physical_board'>('phone');
   const [isAcceptingInvite, setIsAcceptingInvite] = useState(false);
+  const refreshInFlightRef = useRef(false);
   const [activeTab, setActiveTab] = useState<FriendsTabValue>(() => {
     if (typeof window === "undefined") return "friends";
     const saved = localStorage.getItem(FRIENDS_TAB_STORAGE_KEY);
@@ -144,22 +146,24 @@ const Friends = () => {
     });
   };
 
-  const loadFriendsData = useCallback(async () => {
+  const loadFriendsData = useCallback(async (silent = false) => {
     try {
       // REST: GET /api/friends -> fetch user's friends list
       const friendsData = await friendService.getFriends();
       setFriends(friendsData);
     } catch (error) {
       console.error('Error loading friends:', error);
-      toast({
-        title: "خطأ",
-        description: "لم نتمكن من تحميل قائمة الأصدقاء",
-        variant: "destructive"
-      });
+      if (!silent) {
+        toast({
+          title: "خطأ",
+          description: "لم نتمكن من تحميل قائمة الأصدقاء",
+          variant: "destructive"
+        });
+      }
     }
   }, [toast]);
 
-  const loadInvites = useCallback(async () => {
+  const loadInvites = useCallback(async (silent = false) => {
     try {
       const invitesData = await inviteService.getReceivedInvites();
       setInvites(invitesData);
@@ -168,26 +172,30 @@ const Friends = () => {
       setPendingInvites(sentInvitesData);
     } catch (error) {
       console.error('Error loading invites:', error);
-      toast({
-        title: "خطأ",
-        description: "لم نتمكن من تحميل الدعوات",
-        variant: "destructive"
-      });
+      if (!silent) {
+        toast({
+          title: "خطأ",
+          description: "لم نتمكن من تحميل الدعوات",
+          variant: "destructive"
+        });
+      }
     }
   }, [toast]);
 
-  const loadIncomingRequests = useCallback(async () => {
+  const loadIncomingRequests = useCallback(async (silent = false) => {
     try {
       setIsLoadingIncoming(true);
       const requests = await friendService.getIncomingRequests() as IncomingFriendRequest[];
       setIncomingRequests(requests);
     } catch (error) {
       console.error('Error loading incoming requests:', error);
-      toast({
-        title: "خطأ",
-        description: "فشل في تحميل طلبات الصداقة الواردة",
-        variant: "destructive"
-      });
+      if (!silent) {
+        toast({
+          title: "خطأ",
+          description: "فشل في تحميل طلبات الصداقة الواردة",
+          variant: "destructive"
+        });
+      }
     } finally {
       setIsLoadingIncoming(false);
     }
@@ -256,6 +264,32 @@ const Friends = () => {
   useEffect(() => {
     localStorage.setItem(FRIENDS_TAB_STORAGE_KEY, activeTab);
   }, [activeTab]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const refreshSectionData = async () => {
+      if (refreshInFlightRef.current || document.hidden) return;
+      refreshInFlightRef.current = true;
+      try {
+        await Promise.all([
+          loadFriendsData(true),
+          loadInvites(true),
+          loadIncomingRequests(true),
+        ]);
+      } finally {
+        refreshInFlightRef.current = false;
+      }
+    };
+
+    const intervalId = window.setInterval(() => {
+      void refreshSectionData();
+    }, 10000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [loadFriendsData, loadInvites, loadIncomingRequests, user?.id]);
 
   const searchUsers = useCallback(async (query: string) => {
     if (query.length < 2) {
@@ -477,7 +511,7 @@ const Friends = () => {
 
       // فتح مودال اختيار طريقة اللعب
       setSelectedInvite(invite);
-      setAcceptPlayMethod(null);
+      setAcceptPlayMethod('phone');
       setShowAcceptInviteModal(true);
 
     } catch (error) {
@@ -950,8 +984,8 @@ const Friends = () => {
           <TabsContent value="friends" className="space-y-6">
             {/* Add Friend */}
             <Card>
-              <CardHeader>
-                <CardTitle className="font-cairo flex items-center gap-2">
+              <CardHeader className="text-right">
+                <CardTitle className="font-cairo flex items-center justify-end gap-2">
                   <UserPlus className="h-5 w-5" />
                   إضافة صديق جديد
                 </CardTitle>
@@ -973,23 +1007,24 @@ const Friends = () => {
                 {searchTerm.length >= 2 && (
                   <div className="mt-4 space-y-2">
                     {isSearching ? (
-                      <div className="text-center py-4">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto"></div>
-                        <p className="text-sm text-muted-foreground mt-2">جاري البحث...</p>
+                      <div className="space-y-2 py-2">
+                        <Skeleton className="h-16 w-full rounded-lg" />
+                        <Skeleton className="h-16 w-full rounded-lg" />
+                        <Skeleton className="h-16 w-full rounded-lg" />
                       </div>
                     ) : searchResults.length > 0 ? (
                       <div className="space-y-2">
-                        <h4 className="text-sm font-medium text-muted-foreground">نتائج البحث:</h4>
+                        <h4 className="text-sm font-medium text-muted-foreground text-right">نتائج البحث:</h4>
                         {searchResults.map((user) => (
-                          <div key={user.user_id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 border rounded-lg">
-                            <div className="flex items-center gap-3 min-w-0">
+                          <div key={user.user_id} className="flex flex-col sm:flex-row-reverse sm:items-center sm:justify-between gap-3 p-3 border rounded-lg">
+                            <div className="flex items-center gap-3 min-w-0 sm:flex-row-reverse">
                               <Avatar className="h-8 w-8 shrink-0">
                                 <AvatarImage src={hasCustomAvatar(user.thumbnail) ? user.thumbnail : undefined} />
                                 <AvatarFallback>{getInitialsFromName(user.username)}</AvatarFallback>
                               </Avatar>
-                              <div className="min-w-0">
+                              <div className="min-w-0 text-right">
                                 <h4 className="font-medium truncate">{user.username}</h4>
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <div className="flex items-center justify-end gap-2 text-sm text-muted-foreground">
                                   <Crown className="h-3 w-3" />
                                   <span>{user.rank || 1500}</span>
                                 </div>
@@ -1017,23 +1052,24 @@ const Friends = () => {
             </Card>
             {/* Incoming Friend Requests */}
             <Card>
-              <CardHeader>
-                <CardTitle className="font-cairo flex items-center gap-2">
+              <CardHeader className="text-right">
+                <CardTitle className="font-cairo flex items-center justify-end gap-2">
                   <UserPlus className="h-5 w-5" />
                   طلبات الصداقة الواردة
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {isLoadingIncoming ? (
-                  <div className="text-center py-4">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto"></div>
-                    <p className="text-sm text-muted-foreground mt-2">جاري التحميل...</p>
+                  <div className="space-y-3 py-1">
+                    <Skeleton className="h-16 w-full rounded-lg" />
+                    <Skeleton className="h-16 w-full rounded-lg" />
+                    <Skeleton className="h-16 w-full rounded-lg" />
                   </div>
                 ) : incomingRequests.length > 0 ? (
                   <div className="space-y-3">
                     {incomingRequests.map((request) => (
-                      <div key={request.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 border rounded-lg">
-                        <div className="flex items-center gap-3 min-w-0">
+                      <div key={request.id} className="flex flex-col sm:flex-row-reverse sm:items-center sm:justify-between gap-3 p-3 border rounded-lg">
+                        <div className="flex items-center gap-3 min-w-0 sm:flex-row-reverse">
                           <Avatar className="h-8 w-8 shrink-0">
                             <AvatarImage
                               src={
@@ -1044,9 +1080,9 @@ const Friends = () => {
                             />
                             <AvatarFallback>{getInitialsFromName(request.from_user?.username || "مستخدم")}</AvatarFallback>
                           </Avatar>
-                          <div className="min-w-0">
+                          <div className="min-w-0 text-right">
                             <h4 className="font-medium truncate">{request.from_user?.username}</h4>
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <div className="flex items-center justify-end gap-2 text-sm text-muted-foreground">
                               <Clock className="h-3 w-3" />
                               <span>{getTimeAgo(request.created_at)}</span>
                             </div>
@@ -1090,15 +1126,15 @@ const Friends = () => {
                friends.map((friend) => (
                  <Card key={friend.user_id}>
                    <CardContent className="p-3 sm:p-6">
-                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                       <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                     <div className="flex flex-col sm:flex-row-reverse sm:items-center sm:justify-between gap-3">
+                       <div className="flex items-center gap-3 sm:gap-4 min-w-0 sm:flex-row-reverse">
                          <Avatar className="h-10 w-10 shrink-0">
                            <AvatarImage src={hasCustomAvatar(friend.thumbnail) ? friend.thumbnail : undefined} />
                            <AvatarFallback>{getInitialsFromName(friend.username)}</AvatarFallback>
                          </Avatar>
-                         <div className="space-y-1 min-w-0">
+                         <div className="space-y-1 min-w-0 text-right">
                            <h3 className="font-semibold font-cairo truncate">{friend.username}</h3>
-                           <div className="flex items-center gap-2">
+                           <div className="flex items-center justify-end gap-2">
                              {getStatusBadge(friend.state, false)}
                              <div className="flex items-center gap-1 text-sm text-muted-foreground">
                                <Crown className="h-3 w-3" />
@@ -1153,17 +1189,17 @@ const Friends = () => {
             {getFilteredReceivedInvites().map((invite) => (
               <Card key={invite.id} className="border-primary/20">
                 <CardContent className="p-3 sm:p-6">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                  <div className="flex flex-col sm:flex-row-reverse sm:items-center sm:justify-between gap-3">
+                    <div className="flex items-center gap-3 sm:gap-4 min-w-0 sm:flex-row-reverse">
                       <Avatar className="h-10 w-10 shrink-0">
                         <AvatarImage
                           src={hasCustomAvatar(invite.fromUser?.thumbnail) ? invite.fromUser?.thumbnail : undefined}
                         />
                         <AvatarFallback>{getInitialsFromName(invite.fromUser?.username || "مستخدم")}</AvatarFallback>
                       </Avatar>
-                                             <div className="space-y-1 min-w-0">
+                                             <div className="space-y-1 min-w-0 text-right">
                          <h3 className="font-semibold font-cairo truncate">{invite.fromUser?.username || 'مستخدم غير معروف'}</h3>
-                         <div className="flex items-center gap-2">
+                         <div className="flex items-center justify-end gap-2">
                            {getStatusBadge(invite.fromUser?.state || 'offline', false)}
                            <div className="flex items-center gap-1 text-sm text-muted-foreground">
                              <Crown className="h-3 w-3" />
@@ -1206,15 +1242,15 @@ const Friends = () => {
             {getFilteredSentInvites().map((invite) => (
               <Card key={invite.id}>
                 <CardContent className="p-3 sm:p-6">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                  <div className="flex flex-col sm:flex-row-reverse sm:items-center sm:justify-between gap-3">
+                    <div className="flex items-center gap-3 sm:gap-4 min-w-0 sm:flex-row-reverse">
                       <Avatar className="h-10 w-10 shrink-0">
                         <AvatarImage
                           src={hasCustomAvatar(invite.toUser?.thumbnail) ? invite.toUser?.thumbnail : undefined}
                         />
                         <AvatarFallback>{getInitialsFromName(invite.toUser?.username || "مستخدم")}</AvatarFallback>
                       </Avatar>
-                      <div className="space-y-1 min-w-0">
+                      <div className="space-y-1 min-w-0 text-right">
                         <h3 className="font-semibold font-cairo truncate">{invite.toUser?.username}</h3>
                         <div className="text-sm text-muted-foreground">
                           {getTimeAgo(invite.date_time)}
