@@ -205,6 +205,12 @@ export function initFriendSocket(io) {
       });
     });
 
+    socket.on('boardSensorUpdate', (data) => {
+      if (!data || !Array.isArray(data.rows) || data.rows.length !== 8) return;
+      // Relay only to this user's private room — not to game partners
+      nsp.to(`user::${userId}`).emit('boardSensorUpdate', { rows: data.rows });
+    });
+
     socket.on('joinGameRoom', async ({ gameId }) => {
       try {
         const normalizedGameId = String(gameId || '').trim();

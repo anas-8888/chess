@@ -24,6 +24,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { getInitialsFromName, hasCustomAvatar } from '@/utils/avatar';
 import { ActiveAiGameSession, GameMovePair, userService } from '@/services/userService';
+import { socketService, BoardSensorPayload } from '@/services/socketService';
 
 interface GameMove {
   moveNumber: number;
@@ -106,7 +107,7 @@ const getDifficultyFromRating = (rating?: number): AIDifficulty => {
 };
 
 const AIGame = () => {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const { toast } = useToast();
   const DRAWING_GUIDE_STORAGE_KEY = 'drawing_guide_ai_v1';
   const navigate = useNavigate();
@@ -116,6 +117,7 @@ const AIGame = () => {
   const resultSavedRef = useRef(false);
   const clockSyncInFlightRef = useRef(false);
   const startCountdownIntervalRef = useRef<number | null>(null);
+  const currentFenRef = useRef<string>('');
   const [persistedGameId, setPersistedGameId] = useState<number | null>(null);
   const [showNewGameConfirm, setShowNewGameConfirm] = useState(false);
   const [showResignConfirm, setShowResignConfirm] = useState(false);
@@ -144,6 +146,7 @@ const AIGame = () => {
   });
   
   const [moves, setMoves] = useState<GameMove[]>([]);
+  const [sensorOverlay, setSensorOverlay] = useState<number[] | null>(null);
   const [playerColor, setPlayerColor] = useState<'white' | 'black'>('white');
   const [difficulty, setDifficulty] = useState<AIDifficulty>('medium');
   const [aiInitialTimeSeconds, setAiInitialTimeSeconds] = useState(Number(preferredTimeControl) * 60);
@@ -473,6 +476,51 @@ const AIGame = () => {
     }, 1000);
     return () => window.clearInterval(interval);
   }, [persistedGameId, loading, gameState.status, syncClockToServer]);
+
+  // Keep currentFenRef in sync so the socket handler always sees the latest FEN
+  useEffect(() => {
+    currentFenRef.current = game.fen();
+  }, [game]);
+
+  // Socket connection for physical board sync in AI games
+  useEffect(() => {
+    if (!persistedGameId || !token) return;
+
+    socketService.connect(token);
+    socketService.joinGameRoom(String(persistedGameId));
+
+    socketService.onMoveMade((data: unknown) => {
+      const payload = data as { fen?: string; currentTurn?: string; movedBy?: string } | null;
+      if (!payload?.fen || !payload?.currentTurn) return;
+      // If the FEN already matches our local state this is an echo of a move we submitted — skip
+      if (payload.fen === currentFenRef.current) return;
+      // Physical board move received: sync game state
+      setGame(new Chess(payload.fen));
+      setGameState(prev => ({ ...prev, currentTurn: payload.currentTurn! }));
+    });
+
+    return () => {
+      socketService.offMoveMade();
+      socketService.leaveGameRoom(String(persistedGameId));
+    };
+  }, [persistedGameId, token]);
+
+  // Physical board sensor overlay — auto-clears if ESP32 goes silent for 2 s
+  useEffect(() => {
+    let silenceTimer: ReturnType<typeof setTimeout> | null = null;
+    const SILENCE_TIMEOUT_MS = 2000;
+
+    socketService.onBoardSensorUpdate((data: BoardSensorPayload) => {
+      if (!Array.isArray(data.rows) || data.rows.length !== 8) return;
+      setSensorOverlay(data.rows);
+      if (silenceTimer !== null) clearTimeout(silenceTimer);
+      silenceTimer = setTimeout(() => setSensorOverlay(null), SILENCE_TIMEOUT_MS);
+    });
+
+    return () => {
+      if (silenceTimer !== null) clearTimeout(silenceTimer);
+    };
+  }, []);
 
   useEffect(() => {
     const flushClock = () => {
@@ -1267,6 +1315,7 @@ const AIGame = () => {
                 orientation={playerColor}
                 allowMoves={!loading && startCountdown === null && gameState.status === 'active' && gameState.currentTurn === playerColor && !aiThinking}
                 resultSticker={boardResultSticker}
+                sensorOverlay={sensorOverlay}
               />
             </Card>
 

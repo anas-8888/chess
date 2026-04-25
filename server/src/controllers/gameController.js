@@ -289,7 +289,8 @@ export const controlPlayer = async (req, res) => {
         }
         
         // إرسال الحركة عبر WebSocket
-        if (global.io) {
+        const friendsNsp = global.io?.of ? global.io.of('/friends') : null;
+        if (friendsNsp) {
           const movePayload = {
             gameId: gameId,
             from: moveData.from,
@@ -300,11 +301,11 @@ export const controlPlayer = async (req, res) => {
             movedBy: playerColor,
             currentTurn: playerColor === 'white' ? 'black' : 'white'
           };
-          
-          global.io.to(`game::${gameId}`).emit('move', movePayload);
-          
+
+          friendsNsp.to(`game::${gameId}`).emit('move', movePayload);
+
           // معالجة الحركة
-          await handleGameMove(global.io, gameId, movePayload);
+          await handleGameMove(friendsNsp, gameId, movePayload);
         }
         
         res.json({
@@ -1120,15 +1121,33 @@ export const recordAiGameMove = async (req, res) => {
       fen_after: String(fenAfter).slice(0, 100),
     });
 
+    const resolvedNextTurn =
+      nextTurn === 'white' || nextTurn === 'black'
+        ? nextTurn
+        : game.current_turn === 'white'
+          ? 'black'
+          : 'white';
+
     await game.update({
       current_fen: String(fenAfter).slice(0, 100),
-      current_turn:
-        nextTurn === 'white' || nextTurn === 'black'
-          ? nextTurn
-          : game.current_turn === 'white'
-            ? 'black'
-            : 'white',
+      current_turn: resolvedNextTurn,
     });
+
+    // Broadcast AI move to /friends namespace so ESP and phone receive it in real-time
+    const friendsNspAi = global.io?.of ? global.io.of('/friends') : null;
+    if (friendsNspAi) {
+      const aiMovePayload = {
+        gameId,
+        move: san,
+        fen: String(fenAfter).slice(0, 100),
+        movedBy: movedBy === 'ai' ? (game.white_player_id === userId ? 'black' : 'white') : (game.white_player_id === userId ? 'white' : 'black'),
+        currentTurn: resolvedNextTurn,
+        timestamp: Date.now(),
+      };
+      friendsNspAi.to(`game::${gameId}`).emit('moveMade', aiMovePayload);
+      if (game.white_player_id) friendsNspAi.to(`user::${game.white_player_id}`).emit('moveMade', aiMovePayload);
+      if (game.black_player_id) friendsNspAi.to(`user::${game.black_player_id}`).emit('moveMade', aiMovePayload);
+    }
 
     return res.status(201).json({
       success: true,

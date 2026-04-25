@@ -29,7 +29,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { api } from '@/config/api';
 import { useAuth } from '@/contexts/AuthContext';
-import { socketService } from '@/services/socketService';
+import { socketService, BoardSensorPayload } from '@/services/socketService';
 import { friendService } from '@/services/friendService';
 
 interface Player {
@@ -153,6 +153,7 @@ const GameRoom = () => {
   const [gameData, setGameData] = useState<GameData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sensorOverlay, setSensorOverlay] = useState<number[] | null>(null);
   
   const [gameState, setGameState] = useState({
     id: '',
@@ -846,7 +847,7 @@ const GameRoom = () => {
                     if (gameState.status !== 'active') {
                       return;
                     }
-                    const { whiteTimeLeft, blackTimeLeft, currentTurn } = data;
+                    const { whiteTimeLeft, blackTimeLeft } = data;
                     
                     // Validate data
     if (typeof whiteTimeLeft !== 'number' || typeof blackTimeLeft !== 'number') {
@@ -871,11 +872,6 @@ const GameRoom = () => {
         isRunning: false,
         lastUpdate: Date.now()
       });
-
-      setGameState(prev => ({
-        ...prev,
-        currentTurn
-      }));
       return;
     }
 
@@ -886,17 +882,14 @@ const GameRoom = () => {
     }
 
     // Update timers with server data (this overrides local countdown)
+    // NOTE: do NOT update gameState.currentTurn from clockUpdate — it fires every second
+    // and can carry stale turn data that races with moveMade. Turn is set by moveMade/turnUpdate.
     setTimers({
                       white: whiteTimeLeft,
                       black: blackTimeLeft,
                       isRunning: true,
                       lastUpdate: Date.now()
     });
-                    
-    setGameState(prev => ({
-                        ...prev,
-                        currentTurn
-    }));
     
   }, [gameState.status, startCountdown, gameData?.initialTime, gameData?.startedAt, clearStartCountdownInterval]); // Keep timers frozen once game is finished
 
@@ -1201,6 +1194,23 @@ const GameRoom = () => {
     handleIncomingGameChat,
     getValidGameIdFromUrl,
   ]);
+
+  // Physical board sensor overlay — auto-clears if ESP32 goes silent for 2 s
+  useEffect(() => {
+    let silenceTimer: ReturnType<typeof setTimeout> | null = null;
+    const SILENCE_TIMEOUT_MS = 2000;
+
+    socketService.onBoardSensorUpdate((data: BoardSensorPayload) => {
+      if (!Array.isArray(data.rows) || data.rows.length !== 8) return;
+      setSensorOverlay(data.rows);
+      if (silenceTimer !== null) clearTimeout(silenceTimer);
+      silenceTimer = setTimeout(() => setSensorOverlay(null), SILENCE_TIMEOUT_MS);
+    });
+
+    return () => {
+      if (silenceTimer !== null) clearTimeout(silenceTimer);
+    };
+  }, []);
 
   const handleMove = useCallback((from: Square, to: Square, promotion?: string) => {
     if (isSpectatorMode || !isCurrentUserPlayer) {
@@ -1816,6 +1826,7 @@ const GameRoom = () => {
                   !isProcessingMove
                 }
                 resultSticker={boardResultSticker}
+                sensorOverlay={sensorOverlay}
               />
             </Card>
 

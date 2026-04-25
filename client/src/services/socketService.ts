@@ -115,6 +115,10 @@ type GameChatMessagePayload = {
   createdAt: string;
 };
 
+export type BoardSensorPayload = {
+  rows: number[]; // 8 uint8 values: rows[r] bit c = piece at rank(r+1) file(a+c)
+};
+
 class SocketService {
   private static readonly MOVE_MADE_DEDUP_WINDOW_MS = 1800;
 
@@ -138,6 +142,7 @@ class SocketService {
   private quickMatchNotFoundCallback: ((data: { message: string; waitSeconds?: number }) => void) | null = null;
   private gameChatMessageCallback: ((data: GameChatMessagePayload) => void) | null = null;
   private rejoinGameCallback: ((data: RejoinGamePayload) => void) | null = null;
+  private boardSensorCallback: ((data: BoardSensorPayload) => void) | null = null;
 
   private toMoveMadePayload(data: unknown): MoveMadePayload | null {
     if (!data || typeof data !== 'object') return null;
@@ -202,8 +207,8 @@ class SocketService {
       auth: { token },
       query: { token },
       path: '/socket.io',
-      transports: ['polling'],
-      upgrade: false,
+      transports: ['websocket', 'polling'],
+      upgrade: true,
       withCredentials: true,
       reconnection: true,
       reconnectionAttempts: Infinity,
@@ -287,6 +292,10 @@ class SocketService {
 
     this.socket.on('gameChatMessage', (data: GameChatMessagePayload) => {
       this.gameChatMessageCallback?.(data);
+    });
+
+    this.socket.on('boardSensorUpdate', (data: BoardSensorPayload) => {
+      this.boardSensorCallback?.(data);
     });
 
     return this.socket;
@@ -513,6 +522,14 @@ class SocketService {
     if (!this.socket || !this.socket.connected) return false;
     this.socket.emit('quickMatch:cancel');
     return true;
+  }
+
+  onBoardSensorUpdate(callback: (data: BoardSensorPayload) => void) {
+    this.boardSensorCallback = callback;
+  }
+
+  offBoardSensorUpdate() {
+    this.boardSensorCallback = null;
   }
 }
 

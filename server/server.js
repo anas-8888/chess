@@ -23,6 +23,12 @@ const io = new Server(server, {
     origin: config.cors.allowedOrigins,
     credentials: true,
   },
+  // Generous heartbeat timing so slow devices (ESP32) never time out
+  pingInterval: 25000,
+  pingTimeout: 60000,
+  // Allow direct WebSocket connections (no polling upgrade required)
+  transports: ['websocket', 'polling'],
+  allowEIO3: false,
 });
 
 // Set global io

@@ -9,6 +9,7 @@ interface ChessBoardProps {
   orientation: 'white' | 'black';
   allowMoves: boolean;
   resultSticker?: 'win' | 'loss' | 'draw' | null;
+  sensorOverlay?: number[] | null; // 8 uint8 rows: rows[r] bit c = piece at rank(r+1) file(a+c)
 }
 
 const PIECE_IMAGE_NAMES: Record<'w' | 'b', Record<Uppercase<Piece['type']>, string>> = {
@@ -219,7 +220,7 @@ const detectMoveFromSnapshots = (prev: BoardSnapshot, next: BoardSnapshot) => {
   return { fromSquare, toSquare, movedPiece };
 };
 
-const ChessBoard: React.FC<ChessBoardProps> = ({ game, onMove, orientation, allowMoves, resultSticker = null }) => {
+const ChessBoard: React.FC<ChessBoardProps> = ({ game, onMove, orientation, allowMoves, resultSticker = null, sensorOverlay = null }) => {
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
   const [possibleMoves, setPossibleMoves] = useState<Square[]>([]);
   const [moveAnimation, setMoveAnimation] = useState<MoveAnimation | null>(null);
@@ -699,6 +700,10 @@ const ChessBoard: React.FC<ChessBoardProps> = ({ game, onMove, orientation, allo
               const piece = game.get(square);
               const pieceImageSrc = getPieceImageSrc(piece);
 
+              const chessFileIdx = FILES.indexOf(file as (typeof FILES)[number]);
+              const chessRankIdx = rank - 1;
+              const sensorActive = sensorOverlay != null && ((sensorOverlay[chessRankIdx] >> chessFileIdx) & 1) === 1;
+
               return (
                 <div
                   key={square}
@@ -723,6 +728,10 @@ const ChessBoard: React.FC<ChessBoardProps> = ({ game, onMove, orientation, allo
                       decoding="async"
                       className="h-[74%] w-[74%] object-contain drop-shadow-[0_2px_4px_rgba(0,0,0,0.35)] transition-transform duration-150"
                     />
+                  )}
+
+                  {sensorOverlay != null && sensorActive && (
+                    <div className="pointer-events-none absolute inset-0 z-10 transition-all duration-150 bg-emerald-400/20 shadow-[inset_0_0_0_2px_rgba(52,211,153,0.6)]" />
                   )}
 
                   <div className="absolute bottom-0 left-0 p-1 text-xs font-mono opacity-30 hidden md:block">
