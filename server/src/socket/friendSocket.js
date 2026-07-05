@@ -89,8 +89,9 @@ export function initFriendSocket(io) {
     try {
       userId = authenticateSocket(socket);
       socket.userId = userId;
+      logger.info(`Socket authenticated: userId=${userId} query_token_len=${String(socket.handshake.query.token||'').length} auth_token_len=${String(socket.handshake.auth?.token||'').length}`);
     } catch (error) {
-      logger.error('Authentication error:', error.message);
+      logger.error(`Auth FAILED: ${error.message} | query.token=${String(socket.handshake.query.token||'').substring(0,30)}...`);
       socket.emit('error', { message: 'Authentication required' });
       socket.disconnect();
       return;
@@ -174,7 +175,8 @@ export function initFriendSocket(io) {
       socket.join(`user::${userId}`);
     });
 
-    socket.on('disconnect', async () => {
+    socket.on('disconnect', async (reason) => {
+      logger.info(`Socket disconnected: userId=${userId} reason=${reason}`);
       handleQuickMatchDisconnect(userId);
       removeUserConnection(userId, socket.id);
       activeConnections.delete(socket.id);

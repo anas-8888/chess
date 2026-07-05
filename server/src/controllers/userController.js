@@ -13,6 +13,7 @@ import {
   getUserSessions,
   revokeSession,
   revokeAllOtherSessions,
+  generateToken,
 } from '../services/authService.js';
 import { formatResponse, formatError } from '../utils/helpers.js';
 import { asyncHandler } from '../middlewares/errorHandler.js';
@@ -838,24 +839,25 @@ export const getUserTokenAndLastGame = asyncHandler(async (req, res) => {
       });
     }
 
-    // البحث عن آخر جلسة نشطة للمستخدم
-    const activeSession = await Session.findOne({
-      where: {
-        user_id: userId,
-        deleted_at: null,
-        expires_at: {
-          [Op.gt]: new Date()
-        }
-      },
-      order: [['last_activity', 'DESC']]
+    // Generate a fresh JWT for the ESP32 — valid for 30 days so the board works
+    // independently without requiring an active browser session.
+    const freshToken = generateToken({
+      user_id: user.user_id,
+      username: user.username,
+      type: user.type,
+      rank: user.rank || 1200,
     });
 
-    if (!activeSession) {
-      return res.status(404).json({
-        success: false,
-        message: 'لا توجد جلسة نشطة للمستخدم'
-      });
-    }
+    // Persist the session so server-side auth middleware can validate it
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+    await Session.upsert({
+      id: freshToken,
+      user_id: user.user_id,
+      ip_address: req.ip || null,
+      user_agent: 'ESP32-ChessBoard',
+      expires_at: expiresAt,
+      deleted_at: null,
+    });
 
     // البحث عن آخر لعبة نشطة للمستخدم مع معلومات طريقة اللعب
     const lastGame = await Game.findOne({
@@ -874,7 +876,7 @@ export const getUserTokenAndLastGame = asyncHandler(async (req, res) => {
     // تحديد طريقة اللعب للاعب
     let playerPlayMethod = null;
     let playerColor = null;
-    
+
     if (lastGame) {
       if (lastGame.white_player_id == userId) {
         playerColor = 'white';
@@ -891,13 +893,13 @@ export const getUserTokenAndLastGame = asyncHandler(async (req, res) => {
       data: {
         userId: parseInt(userId),
         username: user.username,
-        token: activeSession.id, // توكن الجلسة
+        token: freshToken, // fresh JWT — valid 30 days, independent of browser session
         lastGameId: lastGame ? lastGame.id : null,
         lastGameStatus: lastGame ? lastGame.status : null,
         playerColor: playerColor, // لون اللاعب في اللعبة
         playerPlayMethod: playerPlayMethod, // طريقة اللعب (physical_board, phone, etc.)
-        sessionExpiresAt: activeSession.expires_at,
-        lastActivity: activeSession.last_activity
+        sessionExpiresAt: expiresAt,
+        lastActivity: new Date()
       }
     });
 

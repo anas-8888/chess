@@ -32,9 +32,9 @@
     const int SERVO_STEP_DELAY_MS = 0;
 
     // Connection Settings
-    const String ssid = "Nexa Group";
-    const String password = "123zx123";
-    const String host = "192.168.1.23";   // local IP (used when DEPLOY_DOMAIN is empty)
+    const String ssid = "Adham";
+    const String password = "12345678";
+    const String host = "172.23.186.127";   // local IP (used when DEPLOY_DOMAIN is empty)
     const uint16_t port = 3003;            // local port (used when DEPLOY_DOMAIN is empty)
     const int userId = 1;
 
@@ -59,7 +59,8 @@
     const int SERVER_SYNC_SKIP_CYCLES = 1; // تقليل فترة حماية التزامن لتسريع الاستجابة
     bool hasResigned = false; // علم الاستسلام للانتقال للعبة الجديدة
     bool isFetchingNewGame = false; // منع فحص حالة اللعبة أثناء انتظار المباراة الجديدة
-    bool wsConnected = false; // تتبع حالة اتصال WebSocket
+    bool wsConnected = false;       // TCP WebSocket connection established
+    bool namespaceJoined = false;   // Socket.IO /friends namespace confirmed joined
     String lastEndedGameId = "";
     volatile bool opponentMovePending = false; // علامة سريعة: WS وصل حركة خصم جديدة
     unsigned long lastSensorBroadcast = 0;
@@ -674,23 +675,40 @@
     bool getTokenAndGameId() {
         HTTPClient http;
         String url = getServerBaseUrl() + "/api/users/" + String(userId) + "/token-and-game";
+        Serial.println("🌐 Fetching: " + url);
 
         beginHttp(http, url);
         int httpCode = http.GET();
-        
+        Serial.println("📥 HTTP code: " + String(httpCode));
+
         if (httpCode == HTTP_CODE_OK) {
             String payload = http.getString();
-            DynamicJsonDocument doc(1024);
+            Serial.println("📦 Response: " + payload.substring(0, 120));
+            DynamicJsonDocument doc(2048);
             DeserializationError error = deserializeJson(doc, payload);
-            
-            if (!error && doc["success"] == true) {
+
+            if (error) {
+                Serial.println("❌ JSON parse error: " + String(error.c_str()));
+                http.end();
+                return false;
+            }
+
+            if (doc["success"] == true) {
                 userToken = doc["data"]["token"].as<String>();
-                userToken.trim(); // strip whitespace/newlines that break JWT verify
-                gameId = doc["data"]["lastGameId"].as<String>();
-                playerColor = doc["data"]["playerColor"].as<String>();
+                userToken.trim();
+                auto gameIdVal = doc["data"]["lastGameId"];
+                gameId = gameIdVal.isNull() ? "" : gameIdVal.as<String>();
+                auto colorVal = doc["data"]["playerColor"];
+                playerColor = colorVal.isNull() ? "white" : colorVal.as<String>();
+                Serial.println("✅ Token OK, gameId=" + gameId + " color=" + playerColor);
                 http.end();
                 return true;
+            } else {
+                Serial.println("❌ API success=false: " + payload.substring(0, 100));
             }
+        } else {
+            String body = http.getString();
+            Serial.println("❌ HTTP error body: " + body.substring(0, 100));
         }
         http.end();
         return false;
@@ -742,9 +760,11 @@
         if (type == WStype_CONNECTED) {
             Serial.println("🔌 WS connected (token len=" + String(userToken.length()) + ")");
             wsConnected = true;
+            namespaceJoined = false; // reset — must wait for 40/friends confirmation
         } else if (type == WStype_DISCONNECTED) {
             static uint8_t disconnectCount = 0;
             wsConnected = false;
+            namespaceJoined = false;
             disconnectCount++;
             Serial.println("❌ WS disconnected (#" + String(disconnectCount) + ")");
             // After 5 consecutive disconnects, refresh token and re-init WebSocket
@@ -767,6 +787,9 @@
         } else if (type == WStype_TEXT) {
             String msg = String((char*)payload);
 
+            // Log EVERY received message (first 80 chars) for debugging
+            Serial.println("📨 WS rx: " + msg.substring(0, 80));
+
             // Socket.IO / Engine.IO heartbeat: server sends "2" (PING), must reply "3" (PONG)
             if (msg == "2") {
                 webSocket.sendTXT("3");
@@ -779,6 +802,8 @@
             }
 
             if (msg.startsWith("40/friends")) {
+                Serial.println("✅ Namespace /friends joined");
+                namespaceJoined = true;
                 joinCurrentGameRoom();
                 return;
             }
@@ -1070,14 +1095,17 @@
         }
         Serial.println("\n✅ WiFi Connected!");
         
-        if (!getTokenAndGameId()) {
-            Serial.println("❌ Failed to get token and game ID. Restarting...");
-            ESP.restart();
+        // Poll until the server responds successfully (handles transient network issues)
+        while (!getTokenAndGameId()) {
+            Serial.println("⏳ Waiting for server token... retrying in 5s");
+            delay(5000);
         }
-        
-        if (playerColor != "white" && playerColor != "black") {
-            Serial.println("❌ Invalid player color from API: " + playerColor);
-            ESP.restart();
+
+        // If no active game yet, wait until one is found (don't restart, just poll)
+        while (gameId.length() == 0 || (playerColor != "white" && playerColor != "black")) {
+            Serial.println("⏳ No active game found. Waiting 5s...");
+            delay(5000);
+            getTokenAndGameId();
         }
         
         connectWebSocket();
@@ -1118,8 +1146,21 @@
     void loop() {
         webSocket.loop();
 
-        // Real-time sensor broadcast to frontend (every SENSOR_BROADCAST_INTERVAL_MS)
-        if (wsConnected && gameId.length() > 0) {
+        // DEBUG: print connection status every 5 seconds
+        static unsigned long lastLoopDebug = 0;
+        {
+            unsigned long nowDbg = millis();
+            if (nowDbg - lastLoopDebug >= 5000) {
+                lastLoopDebug = nowDbg;
+                Serial.println("💡 [LOOP] wsConnected=" + String(wsConnected) +
+                               " namespaceJoined=" + String(namespaceJoined) +
+                               " gameId=" + gameId +
+                               " playerColor=" + playerColor);
+            }
+        }
+
+        // Real-time sensor broadcast to frontend (only after /friends namespace is confirmed joined)
+        if (namespaceJoined && gameId.length() > 0) {
             unsigned long nowMs = millis();
             if (nowMs - lastSensorBroadcast >= SENSOR_BROADCAST_INTERVAL_MS) {
                 sendBoardSensorUpdate();
@@ -1647,11 +1688,17 @@
         Serial.println("✅ Opponent move executed successfully!");
     }
 
-    // Scan board 10 times and mark any square that fires in ≥8 scans as a baseline false-positive.
+    // Scan board 10 times and mark persistently-active EMPTY squares as baseline false-positives.
+    // Squares that have a piece in the current FEN are never marked, so piece rows are unaffected.
     void calibrateEmptyBoard() {
         Serial.println("🔬 Calibrating empty board baseline...");
+
+        // Build FEN piece map so we skip squares that legitimately have pieces
+        char fenPieces[8][8];
+        fenToBoard(normalizeFenForBoard(currentFen), fenPieces);
+
         const int SAMPLES = 10;
-        const int THRESHOLD = 8; // must fire ≥8/10 scans to be marked as false-positive
+        const int THRESHOLD = 8;
         int counts[8][8] = {};
         for (int s = 0; s < SAMPLES; s++) {
             bool tmp[8][8];
@@ -1661,11 +1708,18 @@
                     if (tmp[r][c]) counts[r][c]++;
             delay(30);
         }
+
         int fpCount = 0;
-        for (int r = 0; r < 8; r++) {
-            for (int c = 0; c < 8; c++) {
-                baselineBoard[r][c] = (counts[r][c] >= THRESHOLD);
-                if (baselineBoard[r][c]) fpCount++;
+        for (int sr = 0; sr < 8; sr++) {
+            for (int sc = 0; sc < 8; sc++) {
+                // Map sensor coords → chess coords to look up the FEN
+                int cr = sr, cc = sc;
+                if (LOCKED_SENSOR_MAP == MAP_MIRROR_ROWS || LOCKED_SENSOR_MAP == MAP_MIRROR_BOTH) cr = 7 - sr;
+                if (LOCKED_SENSOR_MAP == MAP_MIRROR_COLS || LOCKED_SENSOR_MAP == MAP_MIRROR_BOTH) cc = 7 - sc;
+                bool fenHasPiece = (fenPieces[cr][cc] != '.');
+                // A square with a real piece can never be a false-positive
+                baselineBoard[sr][sc] = !fenHasPiece && (counts[sr][sc] >= THRESHOLD);
+                if (baselineBoard[sr][sc]) fpCount++;
             }
         }
         Serial.println("✅ Baseline done. False-positive squares: " + String(fpCount));
@@ -1674,16 +1728,38 @@
     // Broadcast current sensor state to the frontend via WebSocket
     void sendBoardSensorUpdate() {
         static uint8_t prevRows[8] = {0}; // last broadcast (raw, before de-ghosting)
+        static unsigned long lastDebugPrint = 0;
 
         bool sensorBoard[8][8];
         scanBoardTo(sensorBoard);
+
+        // DEBUG: print sensor state every 5 seconds
+        unsigned long nowDbg = millis();
+        if (nowDbg - lastDebugPrint >= 5000) {
+            lastDebugPrint = nowDbg;
+            int activeSensors = 0;
+            for (int r = 0; r < 8; r++)
+                for (int c = 0; c < 8; c++)
+                    if (sensorBoard[r][c]) activeSensors++;
+            Serial.println("🔍 [SENSOR DEBUG] Active sensors: " + String(activeSensors) +
+                           " | namespaceJoined=" + String(namespaceJoined) +
+                           " | gameId=" + gameId);
+            if (activeSensors > 0) {
+                Serial.print("   Active squares (sensorRow,sensorCol): ");
+                for (int r = 0; r < 8; r++)
+                    for (int c = 0; c < 8; c++)
+                        if (sensorBoard[r][c])
+                            Serial.print("(" + String(r) + "," + String(c) + ") ");
+                Serial.println();
+            }
+        }
 
         // Convert sensor → chess coordinates (inverse of LOCKED_SENSOR_MAP).
         // rows[r]: r=0 → rank 1.  bit c: c=0 → file a.
         uint8_t rows[8] = {0};
         for (int sr = 0; sr < 8; sr++) {
             for (int sc = 0; sc < 8; sc++) {
-                if (!sensorBoard[sr][sc] || baselineBoard[sr][sc]) continue; // skip false-positives
+                if (!sensorBoard[sr][sc]) continue;
                 int cr = sr, cc = sc;
                 if (LOCKED_SENSOR_MAP == MAP_MIRROR_ROWS || LOCKED_SENSOR_MAP == MAP_MIRROR_BOTH) cr = 7 - sr;
                 if (LOCKED_SENSOR_MAP == MAP_MIRROR_COLS || LOCKED_SENSOR_MAP == MAP_MIRROR_BOTH) cc = 7 - sc;
